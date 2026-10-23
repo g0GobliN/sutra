@@ -68,7 +68,7 @@ def test_traceback_keeps_the_error_end():
 def test_json_array_elides_the_middle():
     data = [{"id": i, "msg": "x" * 50} for i in range(400)]
     text = json.dumps(data)
-    out, stats = tooltrim.compress(text, max_bytes=2000)
+    out, stats = tooltrim.compress(text, max_bytes=2000, json_items=40)
     parsed = json.loads(out)
     assert stats["rule"] == "json-array"
     assert parsed["tooltrim"]["original_items"] == 400

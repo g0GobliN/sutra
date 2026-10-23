@@ -24,7 +24,7 @@ change:
   TOOLTRIM_HEAD_BYTES   bytes kept from the start (default 12288)
   TOOLTRIM_TAIL_BYTES   bytes kept from the end (default 6144)
   TOOLTRIM_STATS_FILE   where the saving log lives (default ~/.hermes/cache/tooltrim-stats.jsonl)
-  TOOLTRIM_JSON_ITEMS   JSON arrays longer than this are elided in the middle (default 40)
+  TOOLTRIM_JSON_ITEMS   JSON arrays longer than this get elided; 0 disables it (default 0, off)
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ _TRACEBACK_RE = re.compile(r"^Traceback \(most recent call last\):", re.M)
 _DEFAULT_MAX_BYTES = 24_576
 _DEFAULT_HEAD_BYTES = 12_288
 _DEFAULT_TAIL_BYTES = 6_144
-_DEFAULT_JSON_ITEMS = 40
+_DEFAULT_JSON_ITEMS = 0   # off unless asked: exact data is a correctness risk
 
 
 def _env_int(name: str, default: int) -> int:
@@ -153,7 +153,7 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
         stats["rule"] = "diff-kept"
         return text, stats
 
-    elided = _elide_json_array(work, json_items)
+    elided = _elide_json_array(work, json_items) if json_items > 0 else None
     if elided is not None:
         stats.update(compressed_bytes=len(elided.encode("utf-8")), changed=True, rule="json-array")
         return elided, stats

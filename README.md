@@ -25,7 +25,7 @@ A Hermes `tool_execution` middleware: the tool runs normally, then its result is
 | ANSI strip | any result | removes colour/control escapes |
 | Repeat collapse | runs of identical lines | keeps 2, replaces the rest with `[tooltrim: N more identical line(s) omitted]` |
 | Head+tail elision | results over `TOOLTRIM_MAX_BYTES` | keeps the start and the end, inserts an explicit elision marker with the byte count |
-| JSON array elision | a payload that is one long JSON array | keeps the first and last items, reports how many were dropped |
+| JSON array elision | a payload that is one long JSON array | **off by default** (`TOOLTRIM_JSON_ITEMS`); when enabled, keeps first/last items and reports the count |
 
 Two payloads are **never** rewritten:
 
@@ -65,7 +65,7 @@ Environment variables, read on every call:
 | `TOOLTRIM_MAX_BYTES` | `24576` | results at or below this are untouched |
 | `TOOLTRIM_HEAD_BYTES` | `12288` | bytes kept from the start |
 | `TOOLTRIM_TAIL_BYTES` | `6144` | bytes kept from the end |
-| `TOOLTRIM_JSON_ITEMS` | `40` | JSON arrays longer than this get elided |
+| `TOOLTRIM_JSON_ITEMS` | `0` (off) | JSON arrays longer than this get elided; **off by default because exact data is a correctness risk** |
 | `TOOLTRIM_STATS_FILE` | `~/.hermes/cache/tooltrim-stats.jsonl` | where savings are recorded |
 
 ## Measuring the saving
