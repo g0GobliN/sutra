@@ -1,0 +1,56 @@
+[
+  {
+    "case": "12,000-line command output",
+    "note": "plain text, head + tail",
+    "rule": "head-tail",
+    "before_bytes": 60893,
+    "after_bytes": 18567,
+    "saved_bytes": 42326,
+    "saved_pct": 69.5
+  },
+  {
+    "case": "JSON tool envelope",
+    "note": "decoded, string fields trimmed",
+    "rule": "json-fields",
+    "before_bytes": 85921,
+    "after_bytes": 19277,
+    "saved_bytes": 66644,
+    "saved_pct": 77.6
+  },
+  {
+    "case": "test run, 2,000 cases",
+    "note": "repeat collapse + head/tail",
+    "rule": "head-tail+dedupe",
+    "before_bytes": 166555,
+    "after_bytes": 18567,
+    "saved_bytes": 147988,
+    "saved_pct": 88.9
+  },
+  {
+    "case": "3,000-frame traceback",
+    "note": "error end preserved",
+    "rule": "traceback",
+    "before_bytes": 359403,
+    "after_bytes": 10393,
+    "saved_bytes": 349010,
+    "saved_pct": 97.1
+  },
+  {
+    "case": "600 KB patch",
+    "note": "never rewritten (safety case)",
+    "rule": "diff-kept",
+    "before_bytes": 432087,
+    "after_bytes": 432087,
+    "saved_bytes": 0,
+    "saved_pct": 0.0
+  },
+  {
+    "case": "900-row SQL result",
+    "note": "head + tail",
+    "rule": "head-tail",
+    "before_bytes": 46610,
+    "after_bytes": 18567,
+    "saved_bytes": 28043,
+    "saved_pct": 60.2
+  }
+]

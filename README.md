@@ -16,6 +16,8 @@ Nearly every token was context being re-read on the next turn. Tool output is th
 
 Compressing the model's *replies* attacks the 3.2M. Compressing *tool output* attacks the 486M. This plugin does the second one.
 
+![How tooltrim works: the tool runs, five ordered rules decide what happens to its result — untouched when small, byte-identical for diffs, decoded and re-encoded when it is a JSON document, head+tail with the error end kept for a traceback, and ANSI strip plus repeat collapse plus head+tail for everything else — then the model sees a smaller result, with every rewrite recorded in a stats file](docs/how-it-works.svg)
+
 ## What it does
 
 A Hermes `tool_execution` middleware: the tool runs normally, then its result is passed through four deterministic rules before the model sees it.
@@ -72,7 +74,28 @@ Environment variables, read on every call:
 | `TOOLTRIM_JSON_ITEMS` | `0` (off) | JSON arrays longer than this get elided; **off by default because exact data is a correctness risk** |
 | `TOOLTRIM_STATS_FILE` | `~/.hermes/cache/tooltrim-stats.jsonl` | where savings are recorded |
 
-## Measuring the saving
+## Measured, not claimed
+
+![Horizontal bar chart: bytes before and after tooltrim on six real payload shapes. 12,000-line command output 60.9 kB → 18.6 kB (69.5%); JSON tool envelope 85.9 kB → 19.3 kB (77.6%); test run of 2,000 cases 166.6 kB → 18.6 kB (88.9%); 3,000-frame traceback 359.4 kB → 10.4 kB (97.1%); 600 KB patch 432.1 kB → unchanged (safety case); 900-row SQL result 46.6 kB → 18.6 kB (60.2%). Total 1.2 MB → 517.5 kB, 55.1% saved.](bench/savings.svg)
+
+| payload | rule | before | after | saved |
+|---|---|---|---|---|
+| 12,000-line command output | `head-tail` | 60.9 kB | 18.6 kB | 69.5% |
+| JSON tool envelope | `json-fields` | 85.9 kB | 19.3 kB | 77.6% |
+| test run, 2,000 cases | `head-tail+dedupe` | 166.6 kB | 18.6 kB | 88.9% |
+| 3,000-frame traceback | `traceback` | 359.4 kB | 10.4 kB | 97.1% |
+| 600 KB patch | `diff-kept` | 432.1 kB | 432.1 kB | 0.0% |
+| 900-row SQL result | `head-tail` | 46.6 kB | 18.6 kB | 60.2% |
+
+Reproduce it — the payloads are generated, the compressor is the real plugin, nothing touches the network:
+
+```bash
+python3 bench/benchmark.py        # prints this table, writes bench/results.json and bench/savings.svg
+```
+
+The patch row is the one to read twice. A compressor that also shrinks your diffs is a compressor that can hide a code change, so that row saves nothing on purpose.
+
+Savings on your own machine, from the plugin's own log:
 
 ```bash
 python3 - <<'PY'
@@ -92,9 +115,10 @@ The honest test is a before/after on your own workload: run the same task with t
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
 .venv/bin/python -m pytest -q
+python3 bench/benchmark.py        # optional: refreshes the numbers in this README
 ```
 
-Fifteen tests cover every rule, both never-touch payloads, the fail-open paths and the stats file. No Hermes runtime is needed to run them.
+Twenty-four tests cover every rule, both never-touch payloads, the fail-open paths, the stats file, and the JSON invariant (a document in must be a valid document out). No Hermes runtime is needed to run them.
 
 ## Contributing
 

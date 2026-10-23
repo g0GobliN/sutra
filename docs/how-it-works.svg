@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="668" viewBox="0 0 920 668" role="img" aria-label="How tooltrim processes a tool result">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker></defs>
+<rect width="920" height="668" fill="#ffffff"/>
+<text x="30" y="42" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="21" font-weight="600" fill="#0f172a">How tooltrim works</text>
+<text x="30" y="68" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13" fill="#64748b">one middleware on the tool path — the tool runs first, the result is trimmed before the model ever sees it</text>
+<rect x="30" y="285" width="156" height="92" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="108" y="319" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#0f172a">Tool runs</text>
+<text x="108" y="341" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10.5" fill="#64748b">terminal · read_file</text>
+<text x="108" y="357" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10.5" fill="#64748b">execute_code · tests</text>
+<line x1="188" y1="331" x2="238" y2="331" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="242" y="96" width="446" height="470" rx="14" fill="#ffffff" stroke="#94a3b8" stroke-dasharray="6 5"/>
+<text x="262" y="122" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#475569">tooltrim · tool_execution middleware</text>
+<rect x="262" y="134" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<circle cx="284" cy="156" r="10" fill="#dbeafe"/>
+<text x="284" y="160" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">1</text>
+<text x="302" y="160" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">> TOOLTRIM_MAX_BYTES (24 kB)?</text>
+<text x="302" y="182" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">no → returned untouched</text>
+<rect x="262" y="218" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<circle cx="284" cy="240" r="10" fill="#dbeafe"/>
+<text x="284" y="244" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">2</text>
+<text x="302" y="244" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">a diff or patch?</text>
+<text x="302" y="266" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">returned byte-identical, always</text>
+<rect x="262" y="302" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<circle cx="284" cy="324" r="10" fill="#dbeafe"/>
+<text x="284" y="328" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">3</text>
+<text x="302" y="328" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">a JSON document?</text>
+<text x="302" y="350" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">decode → compress string fields → re-encode (valid JSON out)</text>
+<rect x="262" y="386" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<circle cx="284" cy="408" r="10" fill="#dbeafe"/>
+<text x="284" y="412" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">4</text>
+<text x="302" y="412" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">a traceback?</text>
+<text x="302" y="434" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">head + tail; the error end is kept verbatim</text>
+<rect x="262" y="470" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
+<circle cx="284" cy="492" r="10" fill="#dbeafe"/>
+<text x="284" y="496" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">5</text>
+<text x="302" y="496" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">anything else</text>
+<text x="302" y="518" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">ANSI strip · repeat collapse · head+tail + explicit marker</text>
+<line x1="690" y1="331" x2="740" y2="331" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<rect x="744" y="285" width="146" height="92" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="817" y="319" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#1e3a8a">Model context</text>
+<text x="817" y="341" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#1e40af">smaller on every</text>
+<text x="817" y="357" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#1e40af">following turn</text>
+<rect x="30" y="586" width="860" height="62" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+<text x="50" y="610" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#0f172a">Fail open, and never silently.</text>
+<text x="238" y="610" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">Any parse error returns the original untouched. Every rewrite is recorded in a local stats file:</text>
+<text x="50" y="632" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">~/.hermes/cache/tooltrim-stats.jsonl</text>
+<text x="292" y="632" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">— rule, bytes before, bytes after, saved. Diffs and patches are never rewritten.</text>
+</svg>
