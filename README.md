@@ -24,13 +24,16 @@ A Hermes `tool_execution` middleware: the tool runs normally, then its result is
 |---|---|---|
 | ANSI strip | any result | removes colour/control escapes |
 | Repeat collapse | runs of identical lines | keeps 2, replaces the rest with `[tooltrim: N more identical line(s) omitted]` |
-| Head+tail elision | results over `TOOLTRIM_MAX_BYTES` | keeps the start and the end, inserts an explicit elision marker with the byte count |
+| Head+tail elision | plain text results over `TOOLTRIM_MAX_BYTES` | keeps the start and the end, inserts an explicit elision marker with the byte count |
+| JSON field elision | a payload that *is* a JSON document | decodes it, runs the same rules on its string fields, re-encodes — never byte-sliced |
 | JSON array elision | a payload that is one long JSON array | **off by default** (`TOOLTRIM_JSON_ITEMS`); when enabled, keeps first/last items and reports the count |
 
 Two payloads are **never** rewritten:
 
 - **diffs and patches** (`diff --git`, `--- a/`, `+++ b/`, `@@`) — returned byte-identical
 - **tracebacks** — the middle is elided but the error end is always preserved
+
+A JSON document is never cut at a byte offset. Byte 12,288 of a serialized document can land inside an escape (`\n`, `\u00e9`), and the result stops parsing — `json.loads` raises `Invalid control character at line 1 column 12289`, which is a lost tool call, not a saved token. Documents are decoded, their string fields compressed and the document re-encoded; if a document has nothing worth eliding it is returned untouched, and if the re-encoded text somehow fails to parse, the original is returned.
 
 Anything that is not a string or a dict, any parse error, and any internal exception returns the original object untouched. The plugin fails open by design.
 
@@ -40,7 +43,8 @@ Anything that is not a string or a dict, any parse error, and any internal excep
 2. **It always says what it removed** — byte counts and item counts, in a marker the model can read.
 3. **It tells the model how to recover** the elided part: narrow the query, use `grep`, `head`, or an offset.
 4. **It never touches diffs**, and never drops the tail of a traceback.
-5. **It is measurable**: every compression appends a record to a local JSONL file.
+5. **It never breaks a payload's own format.** JSON in, valid JSON out.
+6. **It is measurable**: every compression appends a record to a local JSONL file.
 
 ## Install
 
