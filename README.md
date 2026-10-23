@@ -45,7 +45,7 @@ Anything that is not a string or a dict, any parse error, and any internal excep
 ## Install
 
 ```bash
-git clone https://github.com/<you>/tooltrim ~/.hermes/plugins/tooltrim
+git clone https://github.com/g0GobliN/tooltrim ~/.hermes/plugins/tooltrim
 hermes plugins enable tooltrim
 ```
 
