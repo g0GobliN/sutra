@@ -113,3 +113,52 @@ def test_middleware_shape_calls_next_once():
 @pytest.mark.parametrize("weird", [None, 42, ["a"], object()])
 def test_unknown_result_shapes_pass_through(weird):
     assert tooltrim.compress_result(weird) is weird
+
+
+def test_json_document_is_never_byte_sliced():
+    """Regression: a serialized JSON payload used to be cut inside an escape."""
+    payload = json.dumps({"output": "\n".join(f"line {i}" for i in range(6000)), "exit_code": 0})
+    assert len(payload.encode()) > tooltrim._DEFAULT_MAX_BYTES
+    out, stats = tooltrim.compress(payload)
+    parsed = json.loads(out)          # JSONDecodeError before the fix
+    assert stats["rule"] == "json-fields"
+    assert parsed["exit_code"] == 0
+    assert "tooltrim:" in parsed["output"]
+    assert len(out.encode()) < len(payload.encode())
+
+
+def test_json_document_with_only_small_strings_is_left_alone():
+    payload = json.dumps({"rows": [{"id": i, "tag": "x"} for i in range(8000)]})
+    assert len(payload.encode()) > tooltrim._DEFAULT_MAX_BYTES
+    out, stats = tooltrim.compress(payload)
+    assert out == payload
+    assert stats["changed"] is False
+    assert stats["rule"] == "json-kept"
+
+
+def test_json_with_escaped_unicode_stays_valid():
+    payload = json.dumps({"body": ("caf\u00e9 na\u00efve \u65e5\u672c\u8a9e\n" * 4000)}, ensure_ascii=True)
+    assert len(payload.encode()) > tooltrim._DEFAULT_MAX_BYTES
+    out, _ = tooltrim.compress(payload)
+    json.loads(out)
+    assert len(out.encode()) < len(payload.encode())
+
+
+def test_middleware_keeps_a_json_string_result_parseable():
+    payload = json.dumps({"output": "x" * 40_000})
+
+    def next_call(args):
+        return payload
+
+    out = tooltrim.tool_execution(next_call=next_call, tool_name="execute_code", args={})
+    assert isinstance(out, str)
+    assert json.loads(out)["output"].startswith("x")
+
+
+def test_json_invariant_guard_returns_the_original(monkeypatch):
+    payload = json.dumps({"output": "y" * 40_000})
+    broken = {"original_bytes": 40_000, "compressed_bytes": 10, "changed": True, "rule": "head-tail"}
+    monkeypatch.setattr(tooltrim, "_compress_impl", lambda text, **kw: ('{"broken": 1,}', dict(broken)))
+    out, stats = tooltrim.compress(payload)
+    assert out == payload
+    assert stats["rule"] == "json-kept"

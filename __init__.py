@@ -35,7 +35,7 @@ import re
 import time
 from typing import Any
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 _DIFF_RE = re.compile(r"^(diff --git |--- a/|\+\+\+ b/|@@ )", re.M)
@@ -45,6 +45,7 @@ _DEFAULT_MAX_BYTES = 24_576
 _DEFAULT_HEAD_BYTES = 12_288
 _DEFAULT_TAIL_BYTES = 6_144
 _DEFAULT_JSON_ITEMS = 0   # off unless asked: exact data is a correctness risk
+_JSON_MAX_DEPTH = 12
 
 
 def _env_int(name: str, default: int) -> int:
@@ -133,8 +134,65 @@ def _elide_json_array(text: str, limit: int) -> str | None:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
-             tail_bytes: int | None = None, json_items: int | None = None) -> tuple[str, dict[str, Any]]:
+def _parse_json_document(text: str) -> Any | None:
+    """Return the parsed document if ``text`` is one JSON object/array, else None."""
+    stripped = text.strip()
+    if not stripped or stripped[0] not in "{[":
+        return None
+    try:
+        return json.loads(stripped)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parses_as_json(text: str) -> bool:
+    try:
+        json.loads(text)
+        return True
+    except (ValueError, TypeError):
+        return False
+
+
+def _compress_json_values(value: Any, depth: int = 0) -> tuple[Any, int, int, bool]:
+    """Compress the string fields of a decoded JSON document.
+
+    Returns ``(new_value, original_bytes, compressed_bytes, changed)``. Only
+    strings are rewritten; every other type comes back untouched.
+    """
+    if depth > _JSON_MAX_DEPTH:
+        return value, 0, 0, False
+    if isinstance(value, str):
+        out, stats = compress(value)
+        if stats["changed"]:
+            return out, stats["original_bytes"], stats["compressed_bytes"], True
+        return value, 0, 0, False
+    if isinstance(value, list):
+        items: list[Any] = []
+        original = compressed = 0
+        changed = False
+        for item in value:
+            new, orig, comp, did = _compress_json_values(item, depth + 1)
+            items.append(new)
+            original += orig
+            compressed += comp
+            changed = changed or did
+        return (items if changed else value), original, compressed, changed
+    if isinstance(value, dict):
+        out_map: dict[Any, Any] = {}
+        original = compressed = 0
+        changed = False
+        for key, item in value.items():
+            new, orig, comp, did = _compress_json_values(item, depth + 1)
+            out_map[key] = new
+            original += orig
+            compressed += comp
+            changed = changed or did
+        return (out_map if changed else value), original, compressed, changed
+    return value, 0, 0, False
+
+
+def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
+                   tail_bytes: int | None = None, json_items: int | None = None) -> tuple[str, dict[str, Any]]:
     """Compress one tool result. Returns (possibly new text, stats)."""
     max_bytes = max_bytes or _env_int("TOOLTRIM_MAX_BYTES", _DEFAULT_MAX_BYTES)
     head_bytes = head_bytes or _env_int("TOOLTRIM_HEAD_BYTES", _DEFAULT_HEAD_BYTES)
@@ -158,6 +216,21 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
         stats.update(compressed_bytes=len(elided.encode("utf-8")), changed=True, rule="json-array")
         return elided, stats
 
+    # A payload that *is* a JSON document must never be byte-sliced: a cut inside
+    # an escape ("\n", "\u00e9") leaves text no JSON parser will accept. Decode it,
+    # compress the string fields, and re-encode.
+    document = _parse_json_document(work)
+    if document is not None:
+        new_doc, _, _, changed = _compress_json_values(document)
+        if changed:
+            encoded = json.dumps(new_doc, ensure_ascii=False)
+            if _parses_as_json(encoded):
+                stats.update(compressed_bytes=len(encoded.encode("utf-8")), changed=True,
+                             rule="json-fields")
+                return encoded, stats
+        stats["rule"] = "json-kept"
+        return text, stats
+
     if _TRACEBACK_RE.search(work):
         out = _elide_middle(work, 2_048, 8_192, "traceback kept, middle elided")
         stats.update(compressed_bytes=len(out.encode("utf-8")), changed=True, rule="traceback")
@@ -169,6 +242,25 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
         return text, stats
     stats.update(compressed_bytes=len(out.encode("utf-8")), changed=True,
                  rule="head-tail" if collapsed == work else "head-tail+dedupe")
+    return out, stats
+
+
+def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
+             tail_bytes: int | None = None, json_items: int | None = None) -> tuple[str, dict[str, Any]]:
+    """Compress one result, with the JSON invariant enforced last.
+
+    If the input was a JSON document and the output no longer parses, the
+    original text is returned untouched. A broken result is never worth the bytes.
+    """
+    out, stats = _compress_impl(text, max_bytes=max_bytes, head_bytes=head_bytes,
+                                tail_bytes=tail_bytes, json_items=json_items)
+    if out != text and not _parses_as_json(out) and _parse_json_document(text) is not None:
+        return text, {
+            "original_bytes": stats["original_bytes"],
+            "compressed_bytes": stats["original_bytes"],
+            "changed": False,
+            "rule": "json-kept",
+        }
     return out, stats
 
 
