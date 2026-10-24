@@ -1,7 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="920" height="668" viewBox="0 0 920 668" role="img" aria-label="How tooltrim processes a tool result">
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="668" viewBox="0 0 920 668" role="img" aria-label="How SUTRA processes a tool result">
 <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker></defs>
 <rect width="920" height="668" fill="#ffffff"/>
-<text x="30" y="42" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="21" font-weight="600" fill="#0f172a">How tooltrim works</text>
+<text x="30" y="42" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="21" font-weight="600" fill="#0f172a">How SUTRA works</text>
 <text x="30" y="68" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13" fill="#64748b">one middleware on the tool path — the tool runs first, the result is trimmed before the model ever sees it</text>
 <rect x="30" y="285" width="156" height="92" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
 <text x="108" y="319" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#0f172a">Tool runs</text>
@@ -9,11 +9,11 @@
 <text x="108" y="357" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="10.5" fill="#64748b">execute_code · tests</text>
 <line x1="188" y1="331" x2="238" y2="331" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
 <rect x="242" y="96" width="446" height="470" rx="14" fill="#ffffff" stroke="#94a3b8" stroke-dasharray="6 5"/>
-<text x="262" y="122" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#475569">tooltrim · tool_execution middleware</text>
+<text x="262" y="122" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#475569">SUTRA · tool_execution middleware</text>
 <rect x="262" y="134" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
 <circle cx="284" cy="156" r="10" fill="#dbeafe"/>
 <text x="284" y="160" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1d4ed8">1</text>
-<text x="302" y="160" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">> TOOLTRIM_MAX_BYTES (24 kB)?</text>
+<text x="302" y="160" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12" fill="#0f172a">> SUTRA_MAX_BYTES (24 kB)?</text>
 <text x="302" y="182" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">no → returned untouched</text>
 <rect x="262" y="218" width="406" height="66" rx="8" fill="#f8fafc" stroke="#e2e8f0"/>
 <circle cx="284" cy="240" r="10" fill="#dbeafe"/>
@@ -43,6 +43,6 @@
 <rect x="30" y="586" width="860" height="62" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
 <text x="50" y="610" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#0f172a">Fail open, and never silently.</text>
 <text x="238" y="610" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">Any parse error returns the original untouched. Every rewrite is recorded in a local stats file:</text>
-<text x="50" y="632" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">~/.hermes/cache/tooltrim-stats.jsonl</text>
+<text x="50" y="632" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">~/.hermes/cache/sutra-stats.jsonl</text>
 <text x="292" y="632" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">— rule, bytes before, bytes after, saved. Diffs and patches are never rewritten.</text>
 </svg>

@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="980" height="440" viewBox="0 0 980 440" role="img" aria-label="The SUTRA evidence loop: compress with a marker, retain the original, retrieve the omitted part by id">
+<defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/></marker></defs>
+<rect width="980" height="440" fill="#ffffff"/>
+<text x="30" y="42" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="21" font-weight="600" fill="#0f172a">The evidence loop</text>
+<text x="30" y="68" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13" fill="#64748b">what SUTRA removes stays exactly one bounded request away — the marker carries the id, the store keeps the bytes</text>
+
+<rect x="30" y="110" width="190" height="110" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="125" y="143" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#0f172a">Tool result</text>
+<text x="125" y="166" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">92 kB test output</text>
+<text x="125" y="184" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">one FAIL in line 3,000</text>
+
+<rect x="260" y="110" width="250" height="110" rx="10" fill="#ffffff" stroke="#94a3b8" stroke-dasharray="6 5"/>
+<text x="385" y="140" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" font-weight="600" fill="#475569">tool_execution middleware</text>
+<text x="385" y="163" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#0f172a">classify → policy → marker</text>
+<text x="385" y="181" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#475569">retain first, then rewrite</text>
+<text x="385" y="199" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#b45309">never a marker for bytes it did not keep</text>
+
+<rect x="550" y="110" width="200" height="110" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="650" y="143" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#1e3a8a">Model context</text>
+<text x="650" y="166" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1e40af">18.6 kB visible + marker</text>
+<text x="650" y="184" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1e40af">partial · id=su_… · offsets</text>
+
+<rect x="260" y="300" width="250" height="110" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+<text x="385" y="331" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#0f172a">Original store</text>
+<text x="385" y="354" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">92 kB · sha256 · 0600</text>
+<text x="385" y="372" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#64748b">128 MiB cap · 7-day TTL</text>
+<text x="385" y="390" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#64748b">per profile, never logged</text>
+
+<rect x="550" y="300" width="200" height="110" rx="10" fill="#eff6ff" stroke="#bfdbfe"/>
+<text x="650" y="331" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="14" font-weight="600" fill="#1e3a8a">sutra_restore</text>
+<text x="650" y="354" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1e40af">bytes · lines · search · full</text>
+<text x="650" y="372" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1e40af">literal search only</text>
+<text x="650" y="390" text-anchor="middle" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#1e40af">8 KiB per response</text>
+
+<rect x="800" y="205" width="150" height="100" rx="10" fill="#fffbeb" stroke="#fcd34d"/>
+<text x="875" y="240" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13" font-weight="600" fill="#92400e">Excerpt</text>
+<text x="875" y="262" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#92400e">evidence,</text>
+<text x="875" y="278" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#92400e">never instructions</text>
+
+<line x1="222" y1="165" x2="256" y2="165" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="512" y1="165" x2="546" y2="165" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<line x1="385" y1="222" x2="385" y2="296" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="397" y="266" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#64748b">original bytes</text>
+<line x1="650" y1="222" x2="650" y2="296" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="662" y="266" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#64748b">id from the marker</text>
+<line x1="546" y1="355" x2="514" y2="355" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+<text x="530" y="345" text-anchor="middle" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11" fill="#64748b">exact slice</text>
+<line x1="752" y1="355" x2="796" y2="300" stroke="#94a3b8" stroke-width="1.6" marker-end="url(#ar)"/>
+
+<text x="30" y="425" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#64748b">If storage is off, full, or expired, the marker says the original is gone and tells the agent to re-run the tool with a narrower query — it never claims bytes it did not keep.</text>
+</svg>
