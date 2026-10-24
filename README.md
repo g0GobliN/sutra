@@ -341,7 +341,7 @@ This permanently deletes every retained original; back up anything you need firs
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest -q                 # 147 tests, no Hermes runtime needed
+.venv/bin/python -m pytest -q                 # 163 tests, no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore at the 32 MiB cap
 hermes plugins validate .                     # loads the plugin the way Hermes does
