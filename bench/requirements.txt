@@ -1,0 +1,3 @@
+# Tokenizer measurement only. The plugin and the test suite need no
+# third-party packages.
+tiktoken==0.14.0
