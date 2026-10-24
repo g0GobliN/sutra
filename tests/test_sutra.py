@@ -383,3 +383,92 @@ def test_json_fields_share_one_budget(sutra):
     assert len(out.encode("utf-8")) <= 8_000
     parsed = json.loads(out)
     assert "sutra:" in parsed["a"] and "sutra:" in parsed["b"]
+
+
+# --- behaviors verified against the live gateway (2026-10-24 audit) ---------
+
+def test_nested_dict_text_fields_are_untouched(sutra):
+    """Only top-level _TEXT_KEYS string fields are candidates: a dict result whose
+    text sits one level down is returned unchanged, never rewritten."""
+    big_nested = {"result": {"text": big()}}
+    assert sutra.compress_result(big_nested) is big_nested
+
+
+def test_non_text_keys_are_untouched(sutra):
+    """A big string under a key outside _TEXT_KEYS is not rewritten."""
+    payload = {"html": big()}
+    assert sutra.compress_result(payload) is payload
+
+
+def test_rewritten_output_is_stable_on_a_second_pass(sutra):
+    """The pipeline is idempotent: a rewritten result fed through again is
+    untouched, so the middleware can never compound its own marker."""
+    out, _ = sutra.compress(big())
+    out2, stats = sutra.compress(out)
+    assert out2 == out
+    assert stats["rule"] == "none"
+
+
+def test_over_max_input_is_returned_untouched(sutra):
+    """Above 64 MiB nothing is rewritten (too-large-kept): the store could not
+    hold it and slicing it would cost more than returning it."""
+    huge = "x" * (64 * 1024 * 1024 + 100)
+    out, stats = sutra.compress(huge)
+    assert out is huge
+    assert stats["rule"] == "too-large-kept"
+    assert stats["changed"] is False
+
+
+def test_ansi_only_payload_is_not_rewritten(sutra):
+    """A payload that is empty after ANSI stripping classifies as empty and is
+    kept, not elided."""
+    ansi = "\x1b[31m\x1b[0m" * 4000
+    out, stats = sutra.compress(ansi, max_bytes=1000)
+    assert out == ansi
+    assert stats["rule"] == "empty-kept"
+
+
+def test_small_result_with_ansi_is_untouched(sutra):
+    """The size gate runs before ANSI stripping: a small coloured result is
+    returned byte-identical, escapes included."""
+    text = "\x1b[31mred\x1b[0m small"
+    out, stats = sutra.compress(text, max_bytes=4096)
+    assert out == text
+    assert stats["rule"] == "none"
+
+
+def test_duplicate_keys_survive_in_the_retained_original(sutra):
+    """The visible copy re-encodes (duplicate keys collapse to the last value),
+    but the retained original must be byte-exact: recovery returns the input,
+    duplicate keys and all."""
+    doc = '{"output": "' + "y" * 40000 + '", "a": 1, "a": 2}'
+    out = sutra.compress_result(doc)
+    parsed = json.loads(out)
+    assert parsed["a"] == 2  # the visible copy collapses, as documented
+    entry_id = ID_RE.search(out).group(1)
+    restored = json.loads(sutra.recovery.restore(
+        {"id": entry_id, "mode": "full", "max_bytes": 65536}))
+    assert restored["status"] == "ok"
+    assert restored["content"] == doc
+    assert restored["sha256_verified"] is True
+
+
+def test_crlf_patch_is_never_rewritten(sutra):
+    """Patch detection works on CRLF payloads: a diff with \r\n terminators is
+    byte-identical out."""
+    text = "diff --git a/x b/x\r\n@@ -1 +1 @@\r\n" + "+line\r\n" * 3000
+    out, stats = sutra.compress(text, max_bytes=1000)
+    assert out == text
+    assert stats["rule"] == "diff-kept"
+
+
+def test_two_tracebacks_keep_the_last_error_end(sutra):
+    """A payload containing two tracebacks is one traceback payload; the elision
+    keeps the end, which is where the *last* error lives."""
+    tb1 = "Traceback (most recent call last):\nValueError: first boom\n"
+    tb2 = "Traceback (most recent call last):\nValueError: second boom\n"
+    text = "\n".join(f"frame {i}" for i in range(2000)) + "\n" + tb1 + \
+        "\n".join(f"frame {i}" for i in range(2000)) + "\n" + tb2
+    out, stats = sutra.compress(text, max_bytes=2000)
+    assert stats["rule"] == "traceback"
+    assert "ValueError: second boom" in out
