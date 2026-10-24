@@ -34,10 +34,13 @@ host made, for diffing a failure.
 - Hermes Agent installed with the gateway available (`hermes gateway status`).
 - This plugin installed and **enabled**: `hermes plugins enable sutra`.
 - The `sutra` toolset enabled for `cli` (`hermes plugins enable` adds it).
-- **The gateway must have finished plugin discovery** after (re)starting:
-  discovery is a background thread and sessions started too early see no plugin
-  tools. `grep "Plugin discovery complete" ~/.hermes/logs/agent.log | tail -1`
-  should postdate the last gateway restart.
+- No discovery wait is required. Measured on a cold gateway restart: the plugin
+  registers in the first seconds of boot and the full loop below passed ~30 s
+  after the restart. The periodic "Plugin discovery complete" log lines are
+  later re-discovery cycles, not an availability gate. If a session ever
+  reports `sutra_restore` unknown, the cause is Tool Search deferral (step 3
+  below — the model must go through `tool_search`, a direct call is rejected),
+  not timing.
 - The terminal tool's own output cap (`tool_output_limits`, default 50,000 B)
   must sit **above** the payload and SUTRA's `SUTRA_MAX_BYTES` (24,576 B) below
   it; the default `--command` is sized for both defaults.
