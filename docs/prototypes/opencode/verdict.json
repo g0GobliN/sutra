@@ -1,0 +1,9 @@
+{
+  "question": "did the hook's replacement reach the model?",
+  "tool_result_bytes": 18573,
+  "fixture_bytes": 29701,
+  "marker_present": true,
+  "marker": "[sutra: partial \u00b7 11,283 bytes elided (large output) \u00b7 original not retained \u00b7 re-run the tool with a narrower query (grep/head/offset) to see the middle]",
+  "clue_visible": false,
+  "replacement_reached_model": true
+}

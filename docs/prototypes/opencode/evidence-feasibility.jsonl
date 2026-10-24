@@ -1,0 +1,5 @@
+{"event": "request", "n_tools": 0, "tools": [], "n_tool_results": 0, "t": "23:17:19"}
+{"event": "request", "n_tools": 10, "tools": ["bash", "edit", "glob", "grep", "read", "skill", "task", "todowrite"], "n_tool_results": 0, "t": "23:17:23"}
+{"hook":"after","tool":"bash","call_id":"call_proto","output_keys":["title","metadata","output","attachments"],"output_type":"string","bytes_in":29701}
+{"hook":"replaced","bytes_in":29701,"bytes_out":18573,"rule":"head-tail","changed":true}
+{"event": "request", "n_tools": 10, "tools": ["bash", "edit", "glob", "grep", "read", "skill", "task", "todowrite"], "n_tool_results": 1, "t": "23:17:25"}
