@@ -29,3 +29,21 @@ jobs:
           python-version: "3.12"
       - run: pip install ruff==0.17.2
       - run: ruff check .
+
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: NousResearch/hermes-agent
+          # The revision used for validation in development:
+          # Hermes Agent v0.22.2+3030.g4d04303.
+          ref: 4d04303818b61bf3aa09278af48356315515965b
+          path: .hermes-agent
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install Hermes at the pinned revision
+        run: pip install -e .hermes-agent
+      - run: hermes plugins validate .
