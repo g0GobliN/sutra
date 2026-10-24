@@ -1,0 +1,10 @@
+{
+  "scenario": "bridge process killed before the session",
+  "expected": "hook times out (2 s), fails open, the model receives the untouched tool result, the session completes",
+  "observed": {
+    "model_facing_tool_result_bytes": 48436,
+    "marker_present": false,
+    "session_completed": true,
+    "final_model_answer": "OC-SUTRA-FAIL: no usable marker (the scripted model's own conclusion - no crash, no missing result)"
+  }
+}

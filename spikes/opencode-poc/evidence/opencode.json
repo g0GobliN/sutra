@@ -1,0 +1,28 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
+  "share": "disabled",
+  "permission": {
+    "bash": "allow",
+    "edit": "allow",
+    "webfetch": "allow"
+  },
+  "provider": {
+    "poc-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "POC Local",
+      "options": {
+        "baseURL": "http://127.0.0.1:8908/v1",
+        "apiKey": "poc-local-key"
+      },
+      "models": {
+        "poc-model": {
+          "name": "POC Model",
+          "limit": { "context": 200000, "output": 8192 }
+        }
+      }
+    }
+  },
+  "model": "poc-local/poc-model",
+  "small_model": "poc-local/poc-model"
+}
