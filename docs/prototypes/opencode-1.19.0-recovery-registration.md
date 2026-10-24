@@ -19,7 +19,7 @@ failure was a miscalibrated prototype assertion, documented below — the core
 behavior was correct). No protocol or engine change was needed to make any
 scenario pass.
 
-## Scenario results (each one real OpenCode session; verdicts in `opencode/verdict-*.json`)
+## Scenario results (each one real OpenCode session; per-run verdict files stay in the scratch directory — every value is tabulated here)
 
 | # | Scenario | Assertion | Verdict | Observed |
 |---|---|---|---|---|

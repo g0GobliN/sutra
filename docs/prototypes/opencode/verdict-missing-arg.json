@@ -1,6 +1,0 @@
-{
-  "pass": true,
-  "status": "error",
-  "error": "missing required argument: id",
-  "scenario": "missing-arg"
-}

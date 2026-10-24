@@ -8,6 +8,7 @@ logs the offered tools (discovery evidence) and every tool-result payload
 /tmp/sutra-oc-proto/verdict-<scenario>.json.
 """
 import json
+import os
 import re
 import threading
 import time
@@ -18,7 +19,8 @@ MODEL = "echo"
 CLUE = "483920"
 MARKER_RE = re.compile(r"\[sutra:[^\]]*\]")
 ID_RE = re.compile(r"(su_[0-9a-f]{32})")
-SCENARIO_PATH = "/tmp/sutra-oc-proto/scenario.json"
+BASE = os.environ.get("SUTRA_OC_BASE", "/tmp/sutra-oc-proto")
+SCENARIO_PATH = f"{BASE}/scenario.json"
 
 lock = threading.Lock()
 state = {"scenario": None, "restore_calls": 0, "results": {}}
@@ -26,13 +28,13 @@ state = {"scenario": None, "restore_calls": 0, "results": {}}
 
 def log(event):
     event["t"] = time.strftime("%H:%M:%S")
-    with open("/tmp/sutra-oc-proto/evidence.jsonl", "a") as fh:
+    with open(f"{BASE}/evidence.jsonl", "a") as fh:
         fh.write(json.dumps(event, default=str) + "\n")
 
 
 def verdict(name, data):
     data["scenario"] = name
-    with open(f"/tmp/sutra-oc-proto/verdict-{name}.json", "w") as fh:
+    with open(f"{BASE}/verdict-{name}.json", "w") as fh:
         json.dump(data, fh, indent=2)
     log({"event": "verdict", **data})
 
@@ -70,7 +72,7 @@ def handle_scenario(name, tools, state):
     restores = state.get("restore_payloads", [])
     if not bash:  # first turn: force the cat
         return issue("bash", {"command":
-                     "cat /tmp/sutra-oc-proto/fixture/payload.log"})
+                     f"cat {BASE}/fixture/payload.log"})
     entry = ID_RE.search(MARKER_RE.search(bash).group(0)) if MARKER_RE.search(bash) else None
 
     if name == "full-flow":

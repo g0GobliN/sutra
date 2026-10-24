@@ -67,7 +67,6 @@ loads it (package spec). The core was **not modified** for this prototype.
 | `opencode/sutra-proto.js` | the plugin under test (hook + evidence logging) |
 | `opencode/driver.py` | stdin/stdout bridge to the unmodified SUTRA engine |
 | `opencode/fake_model.py` | scripted OpenAI-compatible provider on 127.0.0.1:8909 |
-| `opencode/verdict.json` | the captured verdict (contents quoted above) |
 | `opencode/evidence-feasibility.jsonl` | per-request hook + provider log |
 
 ## Known limitations

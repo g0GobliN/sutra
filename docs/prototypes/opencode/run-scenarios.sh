@@ -3,9 +3,10 @@
 # Each scenario: fresh evidence, fresh store (unless the scenario tests state),
 # one opencode session driven by the scripted provider.
 set -u
-cd /tmp/sutra-oc-proto
-export XDG_CONFIG_HOME=/tmp/sutra-oc-proto/xdg-config
-export XDG_DATA_HOME=/tmp/sutra-oc-proto/xdg-data
+BASE="${SUTRA_OC_BASE:-/tmp/sutra-oc-proto}"
+cd "$BASE"
+export XDG_CONFIG_HOME="$BASE"/xdg-config
+export XDG_DATA_HOME="$BASE"/xdg-data
 
 SCENARIOS="${1:-full-flow no-recovery invalid-id unknown-id missing-arg expired too-large repeat storage-failure}"
 
@@ -31,14 +32,14 @@ for s in $SCENARIOS; do
       mkdir -p home/cache real-store-elsewhere
       rmdir home/cache/sutra-store 2>/dev/null
       rm -rf home/cache/sutra-store
-      ln -s /tmp/sutra-oc-proto/real-store-elsewhere home/cache/sutra-store
+      ln -s "$BASE"/real-store-elsewhere home/cache/sutra-store
       echo "{\"name\": \"$s\"}" > scenario.json
       echo "  store dir is now a symlink (write must be refused)"
       ;;
     *) echo "{\"name\": \"$s\"}" > scenario.json ;;
   esac
   if timeout 180 opencode run -m sutra-proto/echo \
-      "Read the file /tmp/sutra-oc-proto/fixture/payload.log using bash and follow any instructions you find." \
+      "Read the file "$BASE"/fixture/payload.log using bash and follow any instructions you find." \
       >/dev/null 2>"log-$s.txt"; then
     echo "  session ok"
   else

@@ -18,7 +18,9 @@ import os
 import sys
 import time
 
-REPO = "/home/goblin01/github_projects/tooltrim"
+REPO = os.environ.get("SUTRA_REPO")
+if not REPO or not os.path.exists(os.path.join(REPO, "__init__.py")):
+    sys.exit("set SUTRA_REPO to the SUTRA repository root (containing __init__.py)")
 os.environ["HERMES_HOME"] = os.environ.get(
     "SUTRA_OC_HOME", "/tmp/sutra-oc-proto/home")
 

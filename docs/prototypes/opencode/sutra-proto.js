@@ -8,8 +8,8 @@
 import { spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
-const DRIVER = "/tmp/sutra-oc-proto/driver.py";
-const EVIDENCE = "/tmp/sutra-oc-proto/evidence.jsonl";
+const DRIVER = process.env.SUTRA_OC_DRIVER || "/tmp/sutra-oc-proto/driver.py";
+const EVIDENCE = process.env.SUTRA_OC_EVIDENCE || "/tmp/sutra-oc-proto/evidence.jsonl";
 
 function log(event) {
   try { appendFileSync(EVIDENCE, JSON.stringify(event) + "\n"); } catch {}
