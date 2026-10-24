@@ -1,6 +1,8 @@
 manifest_version: 1
-name: tooltrim
-version: "0.1.1"
-description: "Deterministic compression of oversized tool output before it enters the model context."
+name: sutra
+version: "0.2.0"
+description: "Deterministic tool-output reduction for AI agents, preserving the evidence that matters."
 provides_middleware:
   - tool_execution
+provides_tools:
+  - sutra_restore

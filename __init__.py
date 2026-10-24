@@ -1,322 +1,208 @@
-"""tooltrim — deterministic compression of oversized tool output.
+"""SUTRA — deterministic compression of oversized tool output, with recovery.
 
 Hermes spends most of its tokens re-sending context on every turn, and tool
 output is the part that grows without bound. This plugin sits on the
 ``tool_execution`` middleware path and shrinks a tool result *after* it has run,
 before the model ever sees it.
 
+What makes the shrinking safe is that the original is kept: every rewrite
+quotes an id the agent can hand back to ``sutra_restore`` and get the exact
+bytes that were left out. Correctness first, compression second.
+
 Design rules, in priority order:
 
-1. **Never invent content.** Only remove, collapse, or elide, and always leave a
-   marker saying what was removed and how to get it back.
-2. **Never touch what a human needs verbatim.** Diffs, patches and tracebacks are
-   kept in full; long ones are head+tail trimmed with the error end preserved.
+1. **Never invent content.** Only remove, collapse or elide, and always leave a
+   marker saying what was removed, how much, and how to get it back.
+2. **Never change a payload's own format.** Diffs are returned byte-identical,
+   a JSON array stays an array, a traceback keeps its error end.
 3. **Fail open.** Any unexpected shape, parse error or exception returns the
    original result untouched.
-4. **Measurable.** Every compression appends a line to a local stats file so the
-   saving can be proved rather than claimed.
+4. **Measurable.** Every decision is counted, every rewrite appends a line to a
+   local savings log, and every retained original is a file the agent can ask
+   for by id.
 
 Configuration comes from the environment so it can be tuned without a code
 change:
 
-  TOOLTRIM_ENABLED      "0" disables the plugin entirely (default "1")
-  TOOLTRIM_MAX_BYTES    only results larger than this are touched (default 24576)
-  TOOLTRIM_HEAD_BYTES   bytes kept from the start (default 12288)
-  TOOLTRIM_TAIL_BYTES   bytes kept from the end (default 6144)
-  TOOLTRIM_STATS_FILE   where the saving log lives (default ~/.hermes/cache/tooltrim-stats.jsonl)
-  TOOLTRIM_JSON_ITEMS   JSON arrays longer than this get elided; 0 disables it (default 0, off)
+  SUTRA_ENABLED                 "0" disables compression entirely (default "1")
+  SUTRA_MAX_BYTES               only results larger than this are rewritten (default 24576)
+  SUTRA_HEAD_BYTES              bytes kept from the start (default 12288)
+  SUTRA_TAIL_BYTES              bytes kept from the end (default 6144)
+  SUTRA_STATS_FILE              where the saving log lives (default $HERMES_HOME/cache/sutra-stats.jsonl)
+  SUTRA_STATS_MAX_BYTES         rotate the log at this size (default 5 MiB)
+  SUTRA_STORE                   "0" stops retaining originals (default "1")
+  SUTRA_STORE_DIR               where originals live (default $HERMES_HOME/cache/sutra-store)
+  SUTRA_STORE_TTL_HOURS         how long an original is kept (default 168 = 7 days)
+  SUTRA_STORE_MAX_BYTES         total size of the store (default 128 MiB)
+  SUTRA_STORE_MAX_ENTRY_BYTES   largest single original retained (default 32 MiB)
+  SUTRA_STORE_MAX_ENTRIES       most originals retained (default 2000)
+  SUTRA_RECOVERY_MAX_BYTES      response cap for sutra_restore (default 8192)
+  SUTRA_JSON_ITEMS              retired; ignored (array elision changed the payload's type)
 """
 
 from __future__ import annotations
 
-import json
-import os
-import re
+import logging
 import time
 from typing import Any
 
-__version__ = "0.1.1"
+from . import config as _config
+from . import engine
+from . import metrics
+from . import recovery
+from . import store as _store
+from .engine import (  # re-exported: this was a single-module plugin before 0.2.0
+    _DEFAULT_MAX_BYTES as _DEFAULT_MAX_BYTES,
+    Classification,
+    Ref,
+    classify,
+    collapse_repeats,
+    compress,
+    config_from_env,
+    strip_ansi,
+)
 
-_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
-_DIFF_RE = re.compile(r"^(diff --git |--- a/|\+\+\+ b/|@@ )", re.M)
-_TRACEBACK_RE = re.compile(r"^Traceback \(most recent call last\):", re.M)
+logger = logging.getLogger(__name__)
 
-_DEFAULT_MAX_BYTES = 24_576
-_DEFAULT_HEAD_BYTES = 12_288
-_DEFAULT_TAIL_BYTES = 6_144
-_DEFAULT_JSON_ITEMS = 0   # off unless asked: exact data is a correctness risk
-_JSON_MAX_DEPTH = 12
+__version__ = "0.2.0"
+
+_TEXT_KEYS = ("output", "stdout", "stderr", "content", "text", "result", "data")
+# Reading evidence is the one result that must never be compressed again.
+_NO_COMPRESS_TOOLS = frozenset({recovery.TOOL_NAME})
 
 
-def _env_int(name: str, default: int) -> int:
-    try:
-        value = int(os.environ.get(name, "").strip())
-        return value if value > 0 else default
-    except (TypeError, ValueError):
-        return default
+def configuration() -> _config.Config:
+    """The resolved configuration every component reads from."""
+    return _config.resolve()
 
 
 def enabled() -> bool:
-    return os.environ.get("TOOLTRIM_ENABLED", "1").strip() not in {"0", "false", "off", "no"}
+    return _config.resolve().enabled
 
 
 def stats_path() -> str:
-    return os.environ.get(
-        "TOOLTRIM_STATS_FILE",
-        os.path.join(os.path.expanduser("~"), ".hermes", "cache", "tooltrim-stats.jsonl"),
-    )
+    return _config.resolve().stats_path
 
 
-def strip_ansi(text: str) -> str:
-    return _ANSI_RE.sub("", text)
-
-
-def collapse_repeats(text: str, keep: int = 2) -> str:
-    """Collapse runs of identical consecutive lines, keeping ``keep`` of them."""
-    lines = text.splitlines()
-    out: list[str] = []
-    run_line: str | None = None
-    run_len = 0
-    for line in lines:
-        if line == run_line:
-            run_len += 1
-            if run_len <= keep:
-                out.append(line)
-            continue
-        if run_len > keep and run_line is not None:
-            out.append(f"[tooltrim: {run_len - keep} more identical line(s) omitted]")
-        run_line, run_len = line, 1
-        out.append(line)
-    if run_len > keep and run_line is not None:
-        out.append(f"[tooltrim: {run_len - keep} more identical line(s) omitted]")
-    return "\n".join(out)
-
-
-def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str) -> str:
-    raw = text.encode("utf-8", "replace")
-    if len(raw) <= head_bytes + tail_bytes:
-        return text
-    head = raw[:head_bytes].decode("utf-8", "ignore")
-    tail = raw[-tail_bytes:].decode("utf-8", "ignore")
-    omitted = len(raw) - head_bytes - tail_bytes
-    marker = (
-        f"\n… [tooltrim: {omitted:,} bytes elided — {reason}. "
-        f"Re-run the tool with a narrower query (grep/head/offset) to see the middle.] …\n"
-    )
-    return head + marker + tail
-
-
-def _elide_json_array(text: str, limit: int) -> str | None:
-    """Elide the middle of a JSON array that is the whole payload, else None."""
-    stripped = text.strip()
-    if not (stripped.startswith("[") and stripped.endswith("]")):
-        return None
+def _record_compression(stats: dict[str, Any], cfg: _config.Config) -> None:
+    """Best-effort hand-off to the one telemetry owner."""
     try:
-        data = json.loads(stripped)
-    except (ValueError, TypeError):
-        return None
-    if not isinstance(data, list) or len(data) <= limit:
-        return None
-    keep_head = max(1, limit // 2)
-    keep_tail = max(1, limit // 4)
-    head = data[:keep_head]
-    tail = data[-keep_tail:] if keep_tail else []
-    omitted = len(data) - len(head) - len(tail)
-    payload = {
-        "tooltrim": {
-            "omitted_items": omitted,
-            "kept_head": len(head),
-            "kept_tail": len(tail),
-            "original_items": len(data),
-        },
-        "items": head + [{"tooltrim_elided": f"{omitted} item(s) omitted"}] + tail,
-    }
-    return json.dumps(payload, ensure_ascii=False)
+        metrics.record_compression(stats, cfg)
+    except Exception:  # a metric must never change the tool result
+        logger.debug("sutra: compression metric failed", exc_info=True)
 
 
-def _parse_json_document(text: str) -> Any | None:
-    """Return the parsed document if ``text`` is one JSON object/array, else None."""
-    stripped = text.strip()
-    if not stripped or stripped[0] not in "{[":
-        return None
-    try:
-        return json.loads(stripped)
-    except (ValueError, TypeError):
-        return None
-
-
-def _parses_as_json(text: str) -> bool:
-    try:
-        json.loads(text)
-        return True
-    except (ValueError, TypeError):
-        return False
-
-
-def _compress_json_values(value: Any, depth: int = 0) -> tuple[Any, int, int, bool]:
-    """Compress the string fields of a decoded JSON document.
-
-    Returns ``(new_value, original_bytes, compressed_bytes, changed)``. Only
-    strings are rewritten; every other type comes back untouched.
-    """
-    if depth > _JSON_MAX_DEPTH:
-        return value, 0, 0, False
-    if isinstance(value, str):
-        out, stats = compress(value)
-        if stats["changed"]:
-            return out, stats["original_bytes"], stats["compressed_bytes"], True
-        return value, 0, 0, False
-    if isinstance(value, list):
-        items: list[Any] = []
-        original = compressed = 0
-        changed = False
-        for item in value:
-            new, orig, comp, did = _compress_json_values(item, depth + 1)
-            items.append(new)
-            original += orig
-            compressed += comp
-            changed = changed or did
-        return (items if changed else value), original, compressed, changed
-    if isinstance(value, dict):
-        out_map: dict[Any, Any] = {}
-        original = compressed = 0
-        changed = False
-        for key, item in value.items():
-            new, orig, comp, did = _compress_json_values(item, depth + 1)
-            out_map[key] = new
-            original += orig
-            compressed += comp
-            changed = changed or did
-        return (out_map if changed else value), original, compressed, changed
-    return value, 0, 0, False
-
-
-def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
-                   tail_bytes: int | None = None, json_items: int | None = None) -> tuple[str, dict[str, Any]]:
-    """Compress one tool result. Returns (possibly new text, stats)."""
-    max_bytes = max_bytes or _env_int("TOOLTRIM_MAX_BYTES", _DEFAULT_MAX_BYTES)
-    head_bytes = head_bytes or _env_int("TOOLTRIM_HEAD_BYTES", _DEFAULT_HEAD_BYTES)
-    tail_bytes = tail_bytes or _env_int("TOOLTRIM_TAIL_BYTES", _DEFAULT_TAIL_BYTES)
-    json_items = json_items or _env_int("TOOLTRIM_JSON_ITEMS", _DEFAULT_JSON_ITEMS)
-
-    original_bytes = len(text.encode("utf-8", "replace"))
-    stats: dict[str, Any] = {"original_bytes": original_bytes, "compressed_bytes": original_bytes,
-                             "changed": False, "rule": "none"}
-    if original_bytes <= max_bytes:
-        return text, stats
-
-    work = strip_ansi(text)
-
-    if _DIFF_RE.search(work):
-        stats["rule"] = "diff-kept"
-        return text, stats
-
-    elided = _elide_json_array(work, json_items) if json_items > 0 else None
-    if elided is not None:
-        stats.update(compressed_bytes=len(elided.encode("utf-8")), changed=True, rule="json-array")
-        return elided, stats
-
-    # A payload that *is* a JSON document must never be byte-sliced: a cut inside
-    # an escape ("\n", "\u00e9") leaves text no JSON parser will accept. Decode it,
-    # compress the string fields, and re-encode.
-    document = _parse_json_document(work)
-    if document is not None:
-        new_doc, _, _, changed = _compress_json_values(document)
-        if changed:
-            encoded = json.dumps(new_doc, ensure_ascii=False)
-            if _parses_as_json(encoded):
-                stats.update(compressed_bytes=len(encoded.encode("utf-8")), changed=True,
-                             rule="json-fields")
-                return encoded, stats
-        stats["rule"] = "json-kept"
-        return text, stats
-
-    if _TRACEBACK_RE.search(work):
-        out = _elide_middle(work, 2_048, 8_192, "traceback kept, middle elided")
-        stats.update(compressed_bytes=len(out.encode("utf-8")), changed=True, rule="traceback")
-        return out, stats
-
-    collapsed = collapse_repeats(work)
-    out = _elide_middle(collapsed, head_bytes, tail_bytes, "large output")
-    if out == text:
-        return text, stats
-    stats.update(compressed_bytes=len(out.encode("utf-8")), changed=True,
-                 rule="head-tail" if collapsed == work else "head-tail+dedupe")
+def _process_text(text: str, *, cfg: _config.Config, tool_name: str = "",
+                  session_id: str = "") -> tuple[str, dict[str, Any]]:
+    """Compress one string, retaining the original first when it is rewritten."""
+    started = time.perf_counter()
+    out, stats = engine.compress(text, cfg=cfg)
+    stats.setdefault("stored", False)
+    stats.setdefault("id", None)
+    if stats.get("changed"):
+        store_cfg = _store.StoreConfig.from_config(cfg)
+        if cfg.store_enabled and stats["original_bytes"] <= cfg.store_max_entry_bytes:
+            store = _store.Store(store_cfg)
+            entry = store.put(text, tool_name=tool_name, session_id=session_id)
+            if entry is not None:
+                # Second pass only when the original is actually on disk, so the
+                # marker can quote a real id instead of promising one.
+                kept_out, kept_stats = engine.compress(
+                    text, ref=Ref(entry.id, cfg.store_ttl_hours), cfg=cfg)
+                if kept_stats.get("changed"):
+                    out, stats = kept_out, kept_stats
+                    stats["stored"] = True
+                    stats["id"] = entry.id
+                else:
+                    store.delete(entry.id)
+    stats["duration_ms"] = round((time.perf_counter() - started) * 1000, 2)
+    stats["tool"] = str(tool_name or "")[:64]
     return out, stats
 
 
-def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
-             tail_bytes: int | None = None, json_items: int | None = None) -> tuple[str, dict[str, Any]]:
-    """Compress one result, with the JSON invariant enforced last.
+def compress_result(result: Any, *, tool_name: str | None = None,
+                    session_id: str | None = None) -> Any:
+    """Compress a tool result of any common shape without changing its type.
 
-    If the input was a JSON document and the output no longer parses, the
-    original text is returned untouched. A broken result is never worth the bytes.
+    Never raises: an exotic result shape is never worth a broken tool call.
     """
-    out, stats = _compress_impl(text, max_bytes=max_bytes, head_bytes=head_bytes,
-                                tail_bytes=tail_bytes, json_items=json_items)
-    if out != text and not _parses_as_json(out) and _parse_json_document(text) is not None:
-        return text, {
-            "original_bytes": stats["original_bytes"],
-            "compressed_bytes": stats["original_bytes"],
-            "changed": False,
-            "rule": "json-kept",
-        }
-    return out, stats
-
-
-_TEXT_KEYS = ("output", "stdout", "stderr", "content", "text", "result", "data")
-
-
-def compress_result(result: Any) -> Any:
-    """Compress a tool result of any common shape without changing its type."""
-    if not enabled():
+    cfg = _config.resolve()
+    if not cfg.enabled:
         return result
-    if isinstance(result, str):
-        out, stats = compress(result)
-        if stats["changed"]:
-            _record(stats)
-        return out
-    if isinstance(result, dict):
-        changed = False
-        new = dict(result)
-        for key in _TEXT_KEYS:
-            value = new.get(key)
-            if isinstance(value, str):
-                out, stats = compress(value)
-                if stats["changed"]:
-                    new[key] = out
-                    changed = True
-                    _record(stats)
-        return new if changed else result
+    try:
+        if isinstance(result, str):
+            out, stats = _process_text(result, cfg=cfg, tool_name=tool_name or "",
+                                       session_id=session_id or "")
+            _record_compression(stats, cfg)
+            return out
+        if isinstance(result, dict):
+            changed = False
+            new = dict(result)
+            for key in _TEXT_KEYS:
+                value = new.get(key)
+                if isinstance(value, str):
+                    out, stats = _process_text(value, cfg=cfg, tool_name=tool_name or "",
+                                               session_id=session_id or "")
+                    _record_compression(stats, cfg)
+                    if stats["changed"]:
+                        new[key] = out
+                        changed = True
+            return new if changed else result
+    except Exception:  # fail open, and say so in the log rather than in the result
+        logger.exception("sutra: compression failed; returning the original result")
+        return result
     return result
 
 
-def _record(stats: dict[str, Any]) -> None:
-    """Append one saving record. Best-effort: never break a tool call."""
-    try:
-        path = stats_path()
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        record = {
-            "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "rule": stats["rule"],
-            "original_bytes": stats["original_bytes"],
-            "compressed_bytes": stats["compressed_bytes"],
-            "saved_bytes": max(0, stats["original_bytes"] - stats["compressed_bytes"]),
-        }
-        with open(path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
-    except OSError:
-        pass
+def metrics_snapshot(store=None) -> dict[str, Any]:
+    """One surface for compression, restores, cleanup, and the store's size."""
+    if store is None:
+        try:
+            store = _store.Store(_store.StoreConfig.from_config(_config.resolve()))
+        except Exception:
+            store = None
+    return metrics.snapshot(store)
 
 
-def tool_execution(*, next_call, tool_name: str | None = None, args: Any = None, **_context: Any) -> Any:
+def tool_execution(*, next_call, tool_name: str | None = None, args: Any = None,
+                   session_id: str | None = None, **_context: Any) -> Any:
     """The middleware frame: run the tool, then compress what comes back."""
     result = next_call(args)
+    if tool_name in _NO_COMPRESS_TOOLS:
+        return result
     try:
-        return compress_result(result)
+        return compress_result(result, tool_name=tool_name, session_id=session_id)
     except Exception:  # fail open: an exotic result shape is never worth a broken call
         return result
 
 
 def register(ctx) -> None:
+    """Hermes plugin entry point: middleware plus the recovery tool."""
     ctx.register_middleware("tool_execution", tool_execution)
+    ctx.register_tool(
+        name=recovery.TOOL_NAME,
+        toolset="sutra",
+        schema=recovery.TOOL_SCHEMA,
+        handler=recovery.handle_tool_call,
+        description="Retrieve the omitted part of a tool result SUTRA compressed.",
+        emoji="🔎",
+    )
+
+
+__all__ = [
+    "Classification",
+    "Ref",
+    "classify",
+    "collapse_repeats",
+    "compress",
+    "compress_result",
+    "config_from_env",
+    "configuration",
+    "enabled",
+    "metrics_snapshot",
+    "register",
+    "stats_path",
+    "strip_ansi",
+    "tool_execution",
+    "__version__",
+]
