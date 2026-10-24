@@ -1,0 +1,36 @@
+name: Rule or feature proposal
+description: Propose a new compression rule, a recovery change, or a configuration knob
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SUTRA is deterministic and offline on purpose. Proposals that summarise with a
+        model, rewrite content, or add a dependency are out of scope — see CONTRIBUTING.md.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The output that is too large
+      description: A real example, with secrets removed, and its byte size.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: rule
+    attributes:
+      label: What should be removed, and what marker stays behind
+      description: Only remove, collapse or elide — never invent. Say what the model can still recover.
+    validations:
+      required: true
+  - type: textarea
+    id: savings
+    attributes:
+      label: Expected saving
+      description: Rough byte counts, before and after.
+  - type: textarea
+    id: safety
+    attributes:
+      label: Why this cannot lose protected content
+      description: Explain the effect on diffs, payload schemas, and traceback tails.
+    validations:
+      required: true
