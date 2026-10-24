@@ -1,0 +1,6 @@
+{
+  "ok": true,
+  "marker_present": false,
+  "model_facing_bytes": 48482,
+  "reason": "a diff must reach the model byte-intact, no marker"
+}
