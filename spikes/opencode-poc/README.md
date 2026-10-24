@@ -35,7 +35,7 @@ Three small pieces (this directory):
 
 | File | Role |
 |---|---|
-| `bridge.py` | loopback HTTP server (127.0.0.1) holding the **real, unmodified SUTRA package** in-process; isolated `HERMES_HOME` (default `/tmp/sutra-opencode-home`, never `~/.hermes`); 2 MiB body cap; `GET /health`, `POST /compress` (runs `sutra.compress_result`), `POST /restore` (serves `sutra.recovery.restore` verbatim) |
+| `bridge.py` | loopback HTTP server (127.0.0.1) holding the **real, unmodified SUTRA package** in-process; isolated `HERMES_HOME` (default `/tmp/sutra-opencode-home`, never `~/.hermes`); 2 MiB body cap; **startup-generated token** (0600 file, required as `X-Sutra-Token` on every POST); `GET /health` (no storage paths), `POST /compress` (runs `sutra.compress_result`), `POST /restore` (serves `sutra.recovery.restore` verbatim) |
 | `plugin/sutra-spike.js` | one OpenCode plugin: the `tool.execute.after` hook (string outputs only; 2 s fetch timeout; fail-open on any error; never touches `title`/`metadata`) and the `sutra_restore` tool registered through the factory's `tool` map — served by the real recovery protocol |
 | `fake_model_oc.py` | scripted OpenAI-compatible provider; **its request log is the model-facing evidence** |
 
@@ -49,6 +49,7 @@ git checkout spike/opencode-integration      # this branch
 .venv/bin/python -m pytest -q spikes/opencode-poc/test_bridge.py   # 10 passed
 
 # 2. isolated OpenCode project: plugin + a config pointing at the fake provider
+#    (re-copy the plugin after every edit - a stale copy silently fails open)
 mkdir -p /tmp/oc-poc/.opencode/plugins
 cp spikes/opencode-poc/plugin/sutra-spike.js /tmp/oc-poc/.opencode/plugins/
 # write /tmp/oc-poc/opencode.json: custom provider -> http://127.0.0.1:8908/v1,
@@ -85,13 +86,15 @@ raw verdicts in [evidence/](evidence/).
 |---|---|
 | Model-facing output contains the compressed result and marker | **yes** — model-facing tool result was 18,649 bytes with `[sutra: partial …]`; the raw tool output was 48,436 bytes |
 | Original remains recoverable | **yes** — the model called the plugin-registered `sutra_restore`; real SUTRA answered `status: ok` with the exact buried lines (750–752) from the sha-backed store entry |
-| Recovery failures fail open | **yes** — bridge killed: hook times out at 2 s, the model receives the untouched 48,436-byte result, session completes; store disabled → `status: unavailable` (bridge test); invalid id → `error` without content |
-| Non-text output and metadata preserved | **yes** — the hook only rewrites `output.output` for string outputs (non-strings are skipped; the bridge 400s them); `title`/`metadata` are never touched |
-| No unbounded subprocess/storage/output risk | **yes** — one operator-started bridge process (SUTRA in-process, no per-call subprocesses), 2 s hook timeout, 2 MiB request cap, loopback bind, isolated store with SUTRA's own 128 MiB/32 MiB/2,000-entry/TTL bounds |
+| Invalid/unknown references expose nothing | **yes, in the real host** — the scripted model called `sutra_restore` with a malformed id (`status: error`) and a well-formed unknown id (`status: not_found`) through OpenCode's real tool dispatch before the real id (`ok`); verdict records `["error", "not_found", "ok"]` |
+| Recovery failures fail open | **yes** — bridge killed: hook times out at 2 s, the model receives the untouched 48,436-byte result, session completes; store disabled → `status: unavailable` (bridge test); tokenless/wrong-token requests → 401, and the hook's fail-open keeps the session working (observed live with a stale plugin copy) |
+| Diffs and metadata preserved | **yes, in the real host** — a 48,482-byte diff reached the model byte-intact with no marker; the hook only ever rewrites `output.output` for string outputs; `title`/`metadata` are never touched |
+| No unbounded subprocess/storage/output risk | **yes** — one operator-started bridge process (SUTRA in-process, no per-call subprocesses), 2 s hook timeout, 2 MiB request cap, loopback bind + token, isolated store with SUTRA's own 128 MiB/32 MiB/2,000-entry/TTL bounds; a 3.6 MB raw output arrived at the model as a bounded 915-byte copy (OpenCode's own truncation + SUTRA collapse) |
 
 Also observed: OpenCode's bash tool passed the full 48,436-byte output through
 untruncated on this version, so SUTRA's default 24,576-byte threshold engaged
-without any configuration.
+without any configuration; giant (multi-MB) outputs are truncated by OpenCode
+itself before the hook, so the model-facing copy stays bounded at every layer.
 
 ## 4. Verdict
 

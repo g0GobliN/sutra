@@ -26,6 +26,7 @@ ID_RE = re.compile(r"su_[0-9a-f]{32}")
 def _start_bridge(tmp_path):
     """Import the bridge module with an isolated home and serve on an ephemeral port."""
     os.environ["HERMES_HOME"] = str(tmp_path / "oc-home")
+    os.environ["SUTRA_OC_BRIDGE_TOKEN"] = "test-token-" + str(abs(hash(tmp_path)) % 10**8)
     spec = importlib.util.spec_from_file_location(
         "sutra_oc_bridge", HERE / "bridge.py")
     module = importlib.util.module_from_spec(spec)
@@ -45,11 +46,13 @@ def bridge(tmp_path):
     server.shutdown()
 
 
-def _post(url, path, body):
+def _post(url, path, body, token=None):
     """POST and return (status, body); expected 4xx responses are returned, not raised."""
+    token = os.environ.get("SUTRA_OC_BRIDGE_TOKEN", "") if token is None else token
     request = urllib.request.Request(
         f"{url}{path}", data=json.dumps(body).encode(),
-        headers={"content-type": "application/json"}, method="POST")
+        headers={"content-type": "application/json", "X-Sutra-Token": token},
+        method="POST")
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
             return response.status, response.read().decode()
@@ -57,12 +60,23 @@ def _post(url, path, body):
         return exc.code, exc.read().decode()
 
 
-def test_health_reports_sutra_version_and_isolated_home(bridge, tmp_path):
+def test_health_reports_version_and_never_storage_paths(bridge, tmp_path):
     with urllib.request.urlopen(f"{bridge}/health", timeout=10) as response:
         health = json.load(response)
     assert health["ok"] is True
     assert health["version"]
-    assert str(tmp_path) in health["hermes_home"]
+    assert "hermes_home" not in health
+    assert str(tmp_path) not in json.dumps(health)
+
+
+def test_post_without_or_with_wrong_token_is_rejected(bridge):
+    status, body = _post(bridge, "/compress", {"tool": "bash", "output": "tiny"}, token="")
+    assert status == 401
+    status, body = _post(bridge, "/compress", {"tool": "bash", "output": "tiny"}, token="wrong")
+    assert status == 401
+    # And a valid token still works (the fixture's token is read by _post).
+    status, _ = _post(bridge, "/compress", {"tool": "bash", "output": "tiny"})
+    assert status == 200
 
 
 def test_oversized_output_is_replaced_with_marker_and_retained(bridge):
