@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="public/logo/sutra.png" alt="SUTRA" width="180">
+</p>
+
 # SUTRA
 
 **Less output. More signal.**
