@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="public/logo/sutra1.png" alt="SUTRA" width="180">
+  <img src="public/logo/sutraThumb.png" alt="SUTRA" width="520">
 </p>
 
 # SUTRA
