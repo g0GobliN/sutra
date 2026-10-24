@@ -1,0 +1,6 @@
+{
+  "pass": true,
+  "status": "not_found",
+  "note": "sweep-first host: pruned entries surface as not_found",
+  "scenario": "expired-swept"
+}

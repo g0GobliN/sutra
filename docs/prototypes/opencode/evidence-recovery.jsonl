@@ -1,0 +1,9 @@
+{"event": "request", "scenario": "storage-failure", "tools": [], "tool_result_names": [], "restore_offered": false, "t": "23:51:05"}
+{"event": "request", "scenario": "storage-failure", "tools": ["bash", "edit", "glob", "grep", "read", "skill", "sutra_restore", "task", "todowrite", "webfetch", "write"], "tool_result_names": [], "restore_offered": true, "t": "23:51:09"}
+{"driver":"compress","status":0,"stderr":"sutra: could not retain an original (store path is not a plain directory: /tmp/sutra-oc-proto/home/cache/sutra-store)\n"}
+{"hook":"replaced","bytes_in":29701,"bytes_out":18573,"rule":"head-tail","stored":false,"id":null}
+{"event": "request", "scenario": "storage-failure", "tools": ["bash", "edit", "glob", "grep", "read", "skill", "sutra_restore", "task", "todowrite", "webfetch", "write"], "tool_result_names": ["call_p1"], "restore_offered": true, "t": "23:51:12"}
+{"event":"restore_execute","args":{"id":"su_cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd","mode":"search","query":"x"}}
+{"driver":"restore","status":0,"stderr":""}
+{"event": "request", "scenario": "storage-failure", "tools": ["bash", "edit", "glob", "grep", "read", "skill", "sutra_restore", "task", "todowrite", "webfetch", "write"], "tool_result_names": ["call_p1", "call_p2"], "restore_offered": true, "t": "23:51:13"}
+{"event": "verdict", "pass": true, "marker_says_not_retained": true, "restore_status": "not_found", "scenario": "storage-failure", "t": "23:51:13"}

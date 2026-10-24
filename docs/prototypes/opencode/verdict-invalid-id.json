@@ -1,0 +1,6 @@
+{
+  "pass": true,
+  "status": "error",
+  "error": "invalid id: expected 'su_' followed by 32 hex characters",
+  "scenario": "invalid-id"
+}

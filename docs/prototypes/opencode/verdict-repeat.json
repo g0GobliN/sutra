@@ -1,0 +1,10 @@
+{
+  "pass": true,
+  "calls": 2,
+  "statuses": [
+    "ok",
+    "ok"
+  ],
+  "identical": true,
+  "scenario": "repeat"
+}

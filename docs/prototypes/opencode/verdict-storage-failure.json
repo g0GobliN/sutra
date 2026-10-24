@@ -1,0 +1,6 @@
+{
+  "pass": true,
+  "marker_says_not_retained": true,
+  "restore_status": "not_found",
+  "scenario": "storage-failure"
+}
