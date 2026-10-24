@@ -36,18 +36,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: NousResearch/hermes-agent
-          # The revision used for validation in development:
-          # Hermes Agent v0.22.2+3030.g4d04303.
-          ref: 4d04303818b61bf3aa09278af48356315515965b
-          path: .hermes-agent
       - uses: actions/setup-python@v5
         with:
           python-version: "3.14"
+      - name: Check out Hermes at the pinned revision
+        # Keep the checkout outside the plugin root: the security scan reads
+        # every file under the plugin and would flag Hermes' own sources.
+        run: |
+          git init "$RUNNER_TEMP/hermes-agent"
+          git -C "$RUNNER_TEMP/hermes-agent" remote add origin https://github.com/NousResearch/hermes-agent.git
+          git -C "$RUNNER_TEMP/hermes-agent" fetch --depth 1 origin 4d04303818b61bf3aa09278af48356315515965b
+          git -C "$RUNNER_TEMP/hermes-agent" checkout --detach FETCH_HEAD
       - name: Install Hermes at the pinned revision
-        run: pip install -e .hermes-agent
+        run: pip install -e "$RUNNER_TEMP/hermes-agent"
       - run: hermes plugins validate .
 
   version:
