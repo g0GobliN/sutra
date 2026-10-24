@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import re
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -67,6 +68,40 @@ def test_health_reports_version_and_never_storage_paths(bridge, tmp_path):
     assert health["version"]
     assert "hermes_home" not in health
     assert str(tmp_path) not in json.dumps(health)
+
+
+def test_token_file_lifecycle(tmp_path):
+    """The bridge's token file: fresh create is 0600, a well-formed stale file is
+    reused, and symlinks or loose modes refuse to start — never a silent
+    insecure fallback."""
+    module = importlib.import_module("sutra_oc_bridge") if "sutra_oc_bridge" in sys.modules \
+        else None
+    if module is None:  # load once for direct access to secure_token_write
+        spec = importlib.util.spec_from_file_location("sutra_oc_bridge_l", HERE / "bridge.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["sutra_oc_bridge_l"] = module
+        spec.loader.exec_module(module)
+    fresh = tmp_path / "fresh" / "sutra-oc-bridge-token"
+    fresh.parent.mkdir(parents=True)
+    module.secure_token_write(fresh, "tok-1")
+    import stat
+    assert stat.S_IMODE(fresh.stat().st_mode) == 0o600
+    assert fresh.read_text().strip() == "tok-1"
+    module.secure_token_write(fresh, "tok-2")  # reuse: content unchanged
+    assert fresh.read_text().strip() == "tok-1"
+
+    symlink = tmp_path / "link" / "sutra-oc-bridge-token"
+    symlink.parent.mkdir(parents=True)
+    symlink.symlink_to(fresh)
+    with pytest.raises(SystemExit, match="not a regular file"):
+        module.secure_token_write(symlink, "tok-3")
+
+    loose = tmp_path / "loose" / "sutra-oc-bridge-token"
+    loose.parent.mkdir(parents=True)
+    loose.write_text("tok-4\n")
+    loose.chmod(0o644)
+    with pytest.raises(SystemExit, match="mode 0o644"):
+        module.secure_token_write(loose, "tok-5")
 
 
 def test_post_without_or_with_wrong_token_is_rejected(bridge):

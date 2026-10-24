@@ -19,7 +19,7 @@
 // Install (project-scoped): copy this file to <project>/.opencode/plugins/ and
 // start the bridge (see ../README.md). SUTRA_OC_BRIDGE_URL overrides the URL.
 
-import { readFileSync } from "node:fs"
+import { lstatSync, readFileSync } from "node:fs"
 
 const BRIDGE = process.env.SUTRA_OC_BRIDGE_URL || "http://127.0.0.1:8765"
 const TIMEOUT_MS = 2000
@@ -31,7 +31,14 @@ function bridgeToken() {
   if (process.env.SUTRA_OC_BRIDGE_TOKEN) return process.env.SUTRA_OC_BRIDGE_TOKEN
   if (tokenCache !== undefined) return tokenCache
   try {
-    tokenCache = readFileSync(TOKEN_FILE, "utf8").trim()
+    // Symlinks are never followed: the bridge writes a regular 0600 file and
+    // anything else is treated as "no token yet", which the bridge refuses.
+    const info = lstatSync(TOKEN_FILE)
+    if (info.isFile() && !info.isSymbolicLink()) {
+      tokenCache = readFileSync(TOKEN_FILE, "utf8").trim()
+    } else {
+      tokenCache = ""
+    }
   } catch {
     tokenCache = "" // the bridge has not started yet; retry on the next call
   }

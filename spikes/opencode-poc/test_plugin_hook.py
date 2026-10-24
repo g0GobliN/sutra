@@ -25,4 +25,4 @@ def test_plugin_hook_semantics():
                             capture_output=True, text=True, timeout=60, cwd=str(HERE),
                             env=env)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "8/8 OK" in result.stdout
+    assert "10/10 OK" in result.stdout

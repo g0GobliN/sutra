@@ -75,10 +75,16 @@ await after({ tool: "bash" }, o7)
 assert.deepEqual(o7.output, { structured: true })
 assert.equal(called, 0)
 
+// 7b. a null/degenerate output object must not throw the hook (fail open).
+const o7b = null
+await after({ tool: "bash" }, o7b) // must not raise
+const o7c = {}
+await after({ tool: "bash" }, o7c) // same: no output field, nothing to do
+
 // 8. sutra_restore on an unreachable bridge: a JSON error envelope, never a throw.
 const restore = hooks.tool.sutra_restore
 const envelope = JSON.parse(await restore.execute({ id: "su_" + "b".repeat(32) }))
 assert.equal(envelope.status, "error")
 assert.match(envelope.error, /bridge unreachable/)
 
-console.log("plugin hook tests: 8/8 OK")
+console.log("plugin hook tests: 10/10 OK")

@@ -14,11 +14,16 @@ Endpoints (all JSON, loopback only, bodies capped at 2 MiB):
     POST /restore  {"id", ...}        -> the verbatim sutra_restore JSON response
 
 Every POST requires the X-Sutra-Token header matching the token the bridge
-generated at startup (written 0600 to HERMES_HOME/sutra-oc-bridge-token, whose
-PATH — not value — is printed on stdout). Loopback binding plus the token keep
-another local process from using the bridge as a compression oracle or from
-polluting the store; retained-output reads additionally need an unguessable
-128-bit id.
+generated at startup. The token lives in a 0600 file inside a 0700 directory
+(HERMES_HOME/sutra-oc-bridge-token; only its PATH is printed). The file is
+created with O_EXCL|O_NOFOLLOW, a pre-existing file must be a regular 0600
+file or the bridge refuses to start, and a symlink is never followed — the
+bridge cannot silently fall back to an insecure token. Setting
+SUTRA_OC_BRIDGE_TOKEN is the operator-managed alternative: it overrides the
+file on both sides and no file is written. Loopback binding plus the token
+keep another local process from using the bridge as a compression oracle or
+from polluting the store; retained-output reads additionally need an
+unguessable 128-bit id.
 
 The bridge is proof-of-concept code, not the production adapter: no TLS, no
 persistence beyond SUTRA's own store.
@@ -32,6 +37,7 @@ import os
 import pathlib
 import re
 import secrets
+import stat as stat_module
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -131,21 +137,52 @@ class Handler(BaseHTTPRequestHandler):
             self._send(500, json.dumps({"error": f"{type(exc).__name__}: {exc}"}))
 
 
+def secure_token_write(path: pathlib.Path, token: str) -> None:
+    """Create the 0600 token file without following symlinks, or refuse loudly.
+
+    A pre-existing file must be a regular 0600 file and is then reused (a
+    restart keeps serving the token the plugin already read). Anything else —
+    a symlink, a directory, a loose mode — stops the bridge instead of
+    silently degrading to an insecure token.
+    """
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    except FileExistsError:
+        info = os.lstat(path)
+        if stat_module.S_ISLNK(info.st_mode) or not stat_module.S_ISREG(info.st_mode):
+            raise SystemExit(f"refusing insecure token file (not a regular file): {path}")
+        mode = stat_module.S_IMODE(info.st_mode)
+        if mode != 0o600:
+            raise SystemExit(f"refusing insecure token file (mode {oct(mode)}, "
+                             f"expected 0o600): {path}")
+        return  # well-formed file from a previous run; reuse it
+    with os.fdopen(fd, "w") as fh:
+        fh.write(token + "\n")
+
+
 def main() -> int:
     port = int(os.environ.get("SUTRA_OC_BRIDGE_PORT") or DEFAULT_PORT)
     # Isolation is the point: a spike must never write to a live SUTRA store.
     os.environ.setdefault("HERMES_HOME", "/tmp/sutra-opencode-home")
     home = pathlib.Path(os.environ["HERMES_HOME"])
-    home.mkdir(parents=True, exist_ok=True)
-    token = os.environ.get("SUTRA_OC_BRIDGE_TOKEN") or secrets.token_hex(32)
-    os.environ["SUTRA_OC_BRIDGE_TOKEN"] = token
+    home.mkdir(parents=True, exist_ok=True, mode=0o700)
+    if stat_module.S_IMODE(home.stat().st_mode) & 0o077:
+        os.chmod(home, 0o700)  # tighten a pre-existing loose directory
     token_path = home / "sutra-oc-bridge-token"
-    token_path.write_text(token + "\n", encoding="utf-8")
-    token_path.chmod(0o600)
+    operator_token = os.environ.get("SUTRA_OC_BRIDGE_TOKEN")
+    if operator_token:
+        # Operator-managed token: no file is written; the plugin must be given
+        # SUTRA_OC_BRIDGE_TOKEN too (it prefers the env over the file).
+        os.environ["SUTRA_OC_BRIDGE_TOKEN"] = operator_token
+        print(f"sutra-opencode bridge on 127.0.0.1:{port}, HERMES_HOME={home}, "
+              f"sutra {sutra.__version__}, token source: environment", flush=True)
+    else:
+        secure_token_write(token_path, secrets.token_hex(32))
+        os.environ["SUTRA_OC_BRIDGE_TOKEN"] = token_path.read_text(encoding="utf-8").strip()
+        # The token value is never printed; the plugin reads the 0600 file.
+        print(f"sutra-opencode bridge on 127.0.0.1:{port}, HERMES_HOME={home}, "
+              f"sutra {sutra.__version__}, token file {token_path}", flush=True)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    # The token value is never printed; the plugin reads the 0600 file.
-    print(f"sutra-opencode bridge on 127.0.0.1:{port}, HERMES_HOME={home}, "
-          f"sutra {sutra.__version__}, token file {token_path}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
