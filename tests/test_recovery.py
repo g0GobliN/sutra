@@ -961,3 +961,56 @@ def test_oversized_json_document_is_compressed_and_round_trips(sutra, monkeypatc
     assert full["status"] == "ok"
     assert full["sha256_verified"] is True
     assert full["content"] == payload
+
+
+# --- failure-matrix rows verified end to end (2026-10-24 audit) --------------
+
+def test_a_write_that_pushes_the_store_over_quota_is_pruned_and_reports_not_retained(
+        sutra, tmp_path, monkeypatch):
+    """Failure matrix: quota exceeded after write. An entry that fits the per-entry
+    cap but not the total quota is written, immediately swept, and `put` returns
+    None — so the adapter deletes it again and the marker claims no id."""
+    store = make_store(sutra, directory=tmp_path / "store", max_bytes=500,
+                       max_entry_bytes=1_000, max_entries=100)
+    assert store.put("x" * 600) is None
+    assert store.usage() == (0, 0)
+    # Through the adapter: no id may be promised for bytes that were not kept.
+    monkeypatch.setattr(sutra._config, "resolve", lambda: sutra._config.Config(
+        enabled=True, max_bytes=1_200, head_bytes=500, tail_bytes=200, json_items=0,
+        stats_path=str(tmp_path / "stats.jsonl"), stats_max_bytes=0,
+        store_dir=str(tmp_path / "store"), store_enabled=True, store_ttl_hours=1,
+        store_max_bytes=500, store_max_entry_bytes=1_000, store_max_entries=100,
+        recovery_max_bytes=8_192, recovery_max_matches=5))
+    out = sutra.compress_result("y" * 2_000, tool_name="terminal")
+    assert "original not retained" in out
+    assert "id=" not in out
+
+
+def test_restore_max_bytes_argument_is_clamped_both_ways(sutra, store):
+    """Failure matrix: oversized restore requests. A caller-supplied max_bytes is
+    clamped to the 64 KiB hard cap above and the 512 B floor below — no argument
+    can buy an unbounded response or starve one."""
+    entry = store.put("z" * 8_000)
+    huge = json.loads(sutra.recovery.restore(
+        {"id": entry.id, "mode": "bytes", "start": 0, "end": 8_000,
+         "max_bytes": 10_000_000}, store=store))
+    assert huge["status"] == "ok"
+    assert huge["returned_bytes"] <= 65_536
+    tiny = json.loads(sutra.recovery.restore(
+        {"id": entry.id, "mode": "bytes", "start": 0, "end": 8_000,
+         "max_bytes": 1}, store=store))
+    assert tiny["status"] == "ok"
+    assert 0 < tiny["returned_bytes"] <= 512
+    assert tiny["more"] is True and tiny["next"] is not None
+
+
+def test_disabled_store_reports_unavailable_for_a_known_id_shape(sutra, tmp_path,
+                                                                 monkeypatch):
+    """Failure matrix: store disabled. A syntactically valid id against a disabled
+    store answers `unavailable` — the agent is told retention is off, not that the
+    id was wrong."""
+    monkeypatch.setenv("SUTRA_STORE", "0")
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "home"))
+    response = json.loads(sutra.recovery.restore({"id": "su_" + "ab" * 16}))
+    assert response["status"] == "unavailable"
+    assert "SUTRA_STORE" in response["note"]
