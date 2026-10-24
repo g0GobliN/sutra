@@ -347,6 +347,10 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
+The live-model A/B benchmark is specified (and its scorers CI-held) in
+[docs/ab-benchmark.md](docs/ab-benchmark.md) with `scripts/ab/run.py`; it runs
+when provider credentials are available.
+
 The tokenizer table adds one optional dependency:
 
 ```bash
