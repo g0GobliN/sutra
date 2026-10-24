@@ -44,6 +44,9 @@ breaks the payload's schema.
 - Peak allocation uses `tracemalloc` around one rewrite and excludes the input
   string, which was allocated before measurement started. It is *additional*
   heap during processing, not total process memory.
+- Token counts are a separate, optional measurement in `bench/tokens.py`, using
+  `tiktoken==0.14.0` and `o200k_base` on the same payload text. They do not
+  affect the byte benchmark or the release gate.
 
 ## Results
 
@@ -54,16 +57,26 @@ charts are written by one command:
 python3 bench/benchmark.py
 ```
 
+`bench/tokens.py` writes `bench/tokens.json` for the tokenizer table:
+
+```bash
+python3 -m pip install -r bench/requirements.txt
+python3 bench/tokens.py
+```
+
 The tables are reproduced in the README. Summary at the time of writing:
 
 - Compression: **1,626,501 → 742,727 bytes (54.3%)** across all eight fixtures;
   60–97% on the compressible ones; **0%** on the patch and the array by design.
-- Recovery: every planted clue was retrieved. Seven of eight cases needed at
-  most one call; the two untouched protected payloads needed none. The median
-  retrieval response was **~710 bytes**; the worst was **8.9 kB** (a single-line
-  JSON payload, where the search returns a clipped window).
-- Overhead: **0.5–105 ms** per result on the development machine, including
-  retention; 0.5 ms for a protected patch (classification only).
+- Tokens: **585,977 → 262,517 (55.2%)** under `o200k_base`; 60.1–97.1% on the
+  compressible fixtures, **0%** on the patch and the array. This is a direct
+  count of the payload text, not a byte-to-token estimate, and not a model bill.
+- Recovery: every planted clue was retrieved. All eight cases needed at most
+  one call: five needed one and three were already visible. The median
+  retrieval response was **~710 bytes**; the worst was **8.9 kB** (a
+  single-line JSON payload, where the search returns a clipped window).
+- Overhead: **0.3–45 ms** per result on the development machine, including
+  retention; 0.3 ms for a protected patch (classification only).
   Retaining an original roughly doubles the cost of a rewrite because the
   marker needs a real id, which means a second pass. Timings vary by machine
   and load; they are not a portability claim.
@@ -88,23 +101,26 @@ development machine. These are wall-clock timings, not a portability claim.
 
 | Quantity | Why not | What would be needed |
 |---|---|---|
-| Input/output/cache tokens | no model call is made | a live provider and session-level usage records |
-| Provider cost | follows from tokens | the same, plus pricing |
+| Live-model input/output/cache tokens | no model call is made | a live provider and session-level usage records |
+| Provider cost | follows from live-model tokens | the same, plus pricing |
 | Task completion / correctness | no task harness | a set of repository tasks, an agent loop, and a scoring rubric |
 | Regression rate | same | repeated runs per condition, with and without the plugin |
 | End-to-end latency | only the plugin's own work is timed | full turn timing from the host |
 
-**No token number in this repository is derived from a byte count.** A byte
-removed from a tool result is *usually* a token not re-sent on the next turn,
-but prompt caching, tool-result truncation by the host, and the model's own
-choices all change the arithmetic. The honest comparison is a before/after on a
-real workload: same task, plugin disabled vs enabled, compare `input_tokens` in
-the session row.
+**No live-model token number in this repository is derived from a byte count.**
+A byte removed from a tool result is *usually* a token not re-sent on the next
+turn, but prompt caching, tool-result truncation by the host, and the model's
+own choices all change the arithmetic. The honest comparison is a before/after
+on a real workload: same task, plugin disabled vs enabled, compare
+`input_tokens` in the session row.
 
-The benchmark deliberately does not use `tiktoken` or any tokenizer to produce
-an "estimated tokens" column: a tokenizer estimate for one model is not a
-measurement of another model's bill, and putting the two in the same table
-invites exactly the confusion this project is trying to avoid.
+The tokenizer table is a different measurement, and it is labelled as such.
+`bench/tokens.py` counts the same payload text with one encoding (`o200k_base`)
+and reports the count. That is a direct tokenizer measurement of the text, not
+an estimate of another model's bill: a different tokenizer produces different
+counts, and only a live session can show what was actually re-sent. Keeping the
+two separate is the point. The byte benchmark does not use a tokenizer, and the
+README does not turn bytes into tokens.
 
 ## Release gate
 
@@ -122,7 +138,7 @@ A release must satisfy all of these, checked by `tests/test_benchmark.py`:
 
 The following are quality indicators, reported but not gated on a fixed number:
 
-- bytes saved per fixture class;
+- bytes and o200k tokens saved per fixture class;
 - retrieval response size;
 - processing overhead;
 - peak additional allocation.
@@ -135,6 +151,9 @@ trajectories, not chosen to make the table look good.
 
 - Fixtures are synthetic. They are representative in shape, not in distribution
   of real tool output.
+- The token counts use one encoding and version (`tiktoken 0.14.0`,
+  `o200k_base`). Another tokenizer will produce different counts, and a
+  tokenizer count is not a provider bill.
 - The clue test proves *retrievability*, not that an agent will think to ask.
   That is the end-to-end question the missing task harness would answer.
 - Timings include filesystem effects and vary by machine and by page cache.
