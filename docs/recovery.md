@@ -107,6 +107,17 @@ that cannot quote a resolvable line range deliberately quotes no call.
 the session's platform, and its output passes back through the model context
 like any other tool result.
 
+**Tool Search deferral.** When Hermes' Tool Search (progressive disclosure) is
+active, plugin tools — including this one — may be deferred behind the
+`tool_search` / `tool_describe` / `tool_call` bridge instead of appearing in the
+model's direct tool list. The tool still exists, is still registered, and still
+dispatches; a model that reports "no such tool" while the toolset is enabled is
+hitting deferral, and its recovery path is `tool_search` for the tool, then
+`tool_call` with the marker's arguments. Operators who want the tool always
+eager can name it in Hermes' `tools.tool_search` configuration (defer list /
+threshold). The marker's suggested call is unchanged and works through either
+surface.
+
 | Argument | Type | Default | Meaning |
 |---|---|---|---|
 | `id` | string | required | the id from a marker |

@@ -127,7 +127,7 @@ Five cases needed one call; three were already visible. The JSON envelope pays t
 | 8,000-line build log | 41.3 ms | 43.2 ms |
 | 8,000-item JSON array | 39.1 ms | not rewritten |
 
-One warm run on the development machine; a busy machine can double these, so read them as scale, not a portable performance claim. Peak *additional* heap while rewriting the 359 kB traceback: 701 KiB (tracemalloc, excluding the input string itself). A retained rewrite costs a second compression pass — that is the main cost of keeping the original, and it is still a small fraction of a model turn.
+One warm run, best of three repeats, on the development machine; a busy machine can double these, so read them as scale, not a portable performance claim. Peak *additional* heap while rewriting the 359 kB traceback: 701 KiB (tracemalloc, excluding the input string itself). A retained rewrite costs a second compression pass — that is the main cost of keeping the original, and it is still a small fraction of a model turn.
 
 **No live model was called to produce the compression or retrieval numbers in this repository.** See [docs/benchmark.md](docs/benchmark.md) for the method and the release gate.
 
@@ -195,7 +195,7 @@ Inside a JSON field the same marker carries `field="/log"` and its line numbers 
 
 ## Recovery
 
-`sutra_restore` is a normal Hermes tool registered by this plugin (toolset `sutra`):
+`sutra_restore` is a normal Hermes tool registered by this plugin (toolset `sutra`). It is visible when the toolset is enabled for the platform; where Hermes' Tool Search defers plugin tools, the model reaches it through the `tool_search`/`tool_call` bridge, and the marker's call remains verbatim-executable either way. See [docs/contract.md](docs/contract.md) §6 for this and the other host dependencies:
 
 | Argument | Meaning |
 |---|---|
@@ -312,7 +312,7 @@ Tool output can contain secrets. The store is local, per-profile and expiring, b
 | `status: not_found` | wrong, expired or pruned id, or a corrupt entry deleted on lookup | re-run the tool; do not invent ids |
 | `status: error` | malformed field pointer, range, or query | read `error`; fix the argument |
 | marker has no id | not retained: store off, over quota, entry too large, or write failed | re-run narrower; check `SUTRA_STORE*` |
-| `sutra_restore` unknown / no tool | toolset `sutra` is disabled for the platform | enable the toolset in Hermes |
+| `sutra_restore` unknown / no tool | toolset `sutra` is disabled for the platform — or Hermes' Tool Search deferred it with the other plugin tools | enable the toolset in Hermes; with Tool Search active the model must `tool_search` for the tool first (the marker's advice stays actionable through the bridge), or pin `sutra_restore` eager via `tools.tool_search` |
 | plugin not loaded, or old code runs | disabled, not installed, or a stale copy shadows the checkout | `hermes plugins list`, `hermes plugins show sutra`, `hermes plugins validate .`; remove the stale `plugins/sutra` copy |
 | store keeps growing | TTL/quota are larger than expected | inspect `sutra.metrics_snapshot()`; lower `SUTRA_STORE_TTL_HOURS`, `SUTRA_STORE_MAX_BYTES`, `SUTRA_STORE_MAX_ENTRIES` |
 
