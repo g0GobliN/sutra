@@ -19,7 +19,7 @@
 // Install (project-scoped): copy this file to <project>/.opencode/plugins/ and
 // start the bridge (see ../README.md). SUTRA_OC_BRIDGE_URL overrides the URL.
 
-import { lstatSync, readFileSync } from "node:fs"
+import { closeSync, fstatSync, openSync, readSync, constants } from "node:fs"
 
 const BRIDGE = process.env.SUTRA_OC_BRIDGE_URL || "http://127.0.0.1:8765"
 const TIMEOUT_MS = 2000
@@ -31,13 +31,25 @@ function bridgeToken() {
   if (process.env.SUTRA_OC_BRIDGE_TOKEN) return process.env.SUTRA_OC_BRIDGE_TOKEN
   if (tokenCache !== undefined) return tokenCache
   try {
-    // Symlinks are never followed: the bridge writes a regular 0600 file and
-    // anything else is treated as "no token yet", which the bridge refuses.
-    const info = lstatSync(TOKEN_FILE)
-    if (info.isFile() && !info.isSymbolicLink()) {
-      tokenCache = readFileSync(TOKEN_FILE, "utf8").trim()
-    } else {
-      tokenCache = ""
+    // No check-then-read race: open with O_NOFOLLOW (a symlinked path fails
+    // here, never resolves) and validate the OPENED descriptor with fstat, so
+    // the bytes read are the inode that was validated. Anything unexpected —
+    // a symlink, a non-regular file, a loose mode, a missing file — reads as
+    // "no token", which the bridge refuses and the hook fails open.
+    const fd = openSync(TOKEN_FILE, constants.O_RDONLY | constants.O_NOFOLLOW)
+    try {
+      const info = fstatSync(fd)
+      const regular = info.isFile()
+      const privateMode = (info.mode & 0o077) === 0
+      if (regular && privateMode) {
+        const buffer = Buffer.alloc(info.size)
+        const read = readSync(fd, buffer, 0, info.size, 0)
+        tokenCache = buffer.toString("utf8", 0, read).trim()
+      } else {
+        tokenCache = ""
+      }
+    } finally {
+      closeSync(fd)
     }
   } catch {
     tokenCache = "" // the bridge has not started yet; retry on the next call

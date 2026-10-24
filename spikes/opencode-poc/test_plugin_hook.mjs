@@ -2,7 +2,7 @@
 // global fetch is stubbed per case; the plugin module itself is imported
 // unmodified, so what is exercised is exactly what OpenCode loads.
 import assert from "node:assert/strict"
-import { writeFileSync, mkdtempSync } from "node:fs"
+import { symlinkSync, writeFileSync, mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import process from "node:process"
@@ -81,10 +81,37 @@ await after({ tool: "bash" }, o7b) // must not raise
 const o7c = {}
 await after({ tool: "bash" }, o7c) // same: no output field, nothing to do
 
+// 7d. the token read has no check-then-read race: a symlinked token path
+// fails the O_NOFOLLOW open and reads as "no token" — the header is empty,
+// the bridge would 401, and the hook still fails open.
+const linkedHome = mkdtempSync(join(tmpdir(), "sutra-oc-tokenlink-"))
+const realToken = join(linkedHome, "real-token")
+const linkedToken = join(linkedHome, "sutra-oc-bridge-token")
+writeFileSync(realToken, "attacker-token\n")
+symlinkSync(realToken, linkedToken)
+delete process.env.SUTRA_OC_BRIDGE_TOKEN // exercise the file path, not the env
+process.env.SUTRA_OC_BRIDGE_TOKEN_FILE = linkedToken
+{
+  const pluginLinked = await import(`./plugin/sutra-spike.js?linked=${Date.now()}`)
+  const afterLinked = (await pluginLinked.SutraSpike({}))["tool.execute.after"]
+  const captured = []
+  globalThis.fetch = async (url, options) => {
+    captured.push(options)
+    return { ok: true, json: async () => ({ changed: false }) }
+  }
+  const oLinked = output("precious")
+  await afterLinked({ tool: "bash" }, oLinked)
+  assert.equal(captured[0].headers["x-sutra-token"], "",
+    "a symlinked token file must never be followed")
+  assert.equal(oLinked.output, "precious")
+}
+// restore the harness' own token file for the remaining cases
+process.env.SUTRA_OC_BRIDGE_TOKEN_FILE = join(home, "token")
+
 // 8. sutra_restore on an unreachable bridge: a JSON error envelope, never a throw.
 const restore = hooks.tool.sutra_restore
 const envelope = JSON.parse(await restore.execute({ id: "su_" + "b".repeat(32) }))
 assert.equal(envelope.status, "error")
 assert.match(envelope.error, /bridge unreachable/)
 
-console.log("plugin hook tests: 10/10 OK")
+console.log("plugin hook tests: 11/11 OK")

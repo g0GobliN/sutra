@@ -102,6 +102,26 @@ itself before the hook, so the model-facing copy stays bounded at every layer.
 exactly what SUTRA needs, the recovery tool registers as a normal OpenCode
 tool, and the failure semantics (fail-open, bounded work) carry over.
 
+## 4b. Review record (2026-10-25)
+
+- **Security**: bridge home directory `0700`; token file `0600`, created with
+  `O_EXCL|O_NOFOLLOW`; symlinks rejected on both sides; a pre-existing token
+  file must be a regular 0600 file or the bridge refuses to start (no insecure
+  fallback); the plugin's read opens with `O_NOFOLLOW` and validates the
+  **opened descriptor** with `fstat` — no check-then-read race. Stated threat
+  model: local processes are untrusted; the token gates write access to the
+  bridge, and retained-output reads additionally require an unguessable
+  128-bit id.
+- **Recovery**: malformed or unavailable bridge responses preserve the original
+  tool output (hook assigns the replacement atomically after full parse); the
+  real OpenCode dispatch path verified the negative-first recovery sequence —
+  malformed id → `error`, well-formed unknown id → `not_found`, real id → `ok`
+  — plus fail-open with the bridge down.
+- **Evidence boundaries**: the 915-byte oversized-output result describes
+  OpenCode **plus** SUTRA together (OpenCode truncates before the hook);
+  SUTRA's independent limits are established by its own tests (2 MiB 413 at
+  the bridge; 64 MiB `too-large-kept` in the engine).
+
 ## 5. What a production adapter would still need (out of scope here)
 
 1. **Packaging and lifecycle**: ship the plugin (npm package or committed
