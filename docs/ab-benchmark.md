@@ -56,17 +56,26 @@ delta is the headline result, read with the sample size in mind.
 ## Measurements (per session, written to `results/*.json`)
 
 - arm, task, seed, pass index, session id, start/end timestamps;
-- provider-reported usage from `session_model_usage` in the Hermes state DB
-  (`input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`,
-  `api_call_count`, cost fields when the provider supplies them). Usage is
-  recorded exactly as reported or marked `null` — never estimated from bytes;
+- provider-reported usage from `session_model_usage` in the Hermes state DB:
+  the **sum of every row recorded for the session** (that is what the provider
+  billed), kept alongside the main-task row alone so Hermes' own auxiliary
+  calls (title generation) remain visible instead of silently mixed in.
+  Usage is recorded exactly as reported or marked `null` — never estimated
+  from bytes;
 - the final assistant answer;
 - the objective score (pass/fail + the detail the scorer matched);
 - treatment arm only: whether a SUTRA marker appeared in any tool result, how
   many `sutra_restore` calls the session made and their statuses (from the
   transcript in the Hermes session store and `sutra-stats.jsonl`);
 - wall-clock duration and any timeout/error, with the deviation recorded in the
-  results file (never silently dropped).
+  results file (never silently dropped). A session that overruns its budget is
+  a **recorded failed session**, not a skipped one; a repeated identical
+  recovery call that the host deduplicates is recorded as
+  `deduplicated-by-host`, not as a failure.
+- arm-state verification is part of the record: the runner parses the plugin's
+  status cell from `hermes plugins list` and aborts on a mismatch with `--arm`.
+  Validated live on 2026-10-24: disabled → oversized results reach the model
+  with no marker; enabled → the full compress/recover loop passes.
 
 ## Reporting rules
 
@@ -79,6 +88,19 @@ delta is the headline result, read with the sample size in mind.
   token counts suggest.
 - If the provider reports no usage, the experiment reports task success and
   recovery behavior only, and says so.
+
+## Amendment record
+
+Changes after freezing are listed here; the scorers, fixtures, task set and
+order are frozen and may only change with a new protocol version (and fresh
+arms) once results exist.
+
+- 2026-10-24, pre-first-run (execution/reporting audit): per-arm/pass record
+  files; usage summed across the session's rows with the main-task row kept
+  separate; host-deduplicated restore calls classified; timeouts recorded as
+  failed sessions; arm-state parsing made exact and live-validated; report
+  generator added (`scripts/ab/report.py`). No scorer, fixture, task or order
+  changed.
 
 ## What this protocol deliberately does not do
 

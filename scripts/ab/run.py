@@ -176,58 +176,96 @@ def plugin_state() -> dict:
         return {"sutra_installed": None, "sutra_enabled": None}
     row = next((line for line in out.splitlines()
                 if line.strip().startswith("│ sutra")), "")
-    enabled = "enabled" in row
-    return {"sutra_installed": bool(row), "sutra_enabled": enabled if row else None}
+    cells = [c.strip() for c in row.split("│")]
+    status = cells[2] if len(cells) > 2 else ""
+    if status not in ("enabled", "disabled"):
+        return {"sutra_installed": bool(row), "sutra_enabled": None}
+    return {"sutra_installed": True, "sutra_enabled": status == "enabled"}
 
 
 def session_usage(session_id: str) -> dict | None:
+    """Provider-reported usage for the session: the total over every recorded
+    row (that is what the provider billed) plus the main-task row on its own,
+    so auxiliary calls (title generation) are visible rather than hidden."""
     if not HERMES_STATE.exists() or not session_id:
         return None
     try:
         db = sqlite3.connect(f"file:{HERMES_STATE}?mode=ro", uri=True)
-        row = db.execute(
-            "SELECT model, input_tokens, output_tokens, cache_read_tokens, "
+        rows = db.execute(
+            "SELECT task, model, input_tokens, output_tokens, cache_read_tokens, "
             "cache_write_tokens, api_call_count, estimated_cost_usd, "
             "actual_cost_usd, cost_status FROM session_model_usage "
-            "WHERE session_id = ? ORDER BY input_tokens DESC LIMIT 1",
-            (session_id,)).fetchone()
+            "WHERE session_id = ?", (session_id,)).fetchall()
         db.close()
     except sqlite3.Error:
         return None
-    if not row:
+    if not rows:
         return None
-    keys = ("model", "input_tokens", "output_tokens", "cache_read_tokens",
+    keys = ("task", "model", "input_tokens", "output_tokens", "cache_read_tokens",
             "cache_write_tokens", "api_call_count", "estimated_cost_usd",
             "actual_cost_usd", "cost_status")
-    return dict(zip(keys, row))
+
+    def total(selected):
+        out = {"model": selected[0][1] if selected else None,
+               "input_tokens": 0, "output_tokens": 0, "cache_read_tokens": 0,
+               "cache_write_tokens": 0, "api_call_count": 0,
+               "estimated_cost_usd": 0.0, "actual_cost_usd": 0.0}
+        for row in selected:
+            for key in out:
+                if key == "model":
+                    continue
+                if isinstance(out[key], float):
+                    out[key] += float(row[keys.index(key)] or 0)
+                else:
+                    out[key] += int(row[keys.index(key)] or 0)
+        return out
+
+    main = [row for row in rows if not row[0]] or rows
+    return {"total": total(rows), "main_task": total(main),
+            "rows": [dict(zip(keys, row)) for row in rows]}
+
+
+def _restore_status(content: str) -> str:
+    """The status of one sutra_restore tool result; the Tool Search bridge may
+    deliver it bare or wrapped in a batch array."""
+    if content.lstrip().startswith("[hermes note:"):
+        return "deduplicated-by-host"
+    try:
+        parsed = json.loads(content)
+    except ValueError:
+        return "unparseable"
+    if isinstance(parsed, list):
+        parsed = next((entry.get("result", entry) for entry in parsed
+                       if isinstance(entry, dict)
+                       and entry.get("name") in ("sutra_restore", "tool_call")),
+                      None)
+    if isinstance(parsed, dict):
+        return str(parsed.get("status") or "no-status")
+    return "unparseable"
 
 
 def session_sutra_evidence(session_id: str) -> dict:
-    """Markers seen by the model and sutra_restore calls, from the session store."""
+    """Markers seen by the model and sutra_restore calls, from the session store.
+
+    The messages table records the serving tool in ``tool_name``; assistant
+    ``content`` does not carry the tool call, so the tool rows are the source.
+    """
     evidence = {"tool_results_with_marker": 0, "restore_calls": 0,
                 "restore_statuses": []}
     if not HERMES_STATE.exists() or not session_id:
         return evidence
     try:
         db = sqlite3.connect(f"file:{HERMES_STATE}?mode=ro", uri=True)
-        for (content,) in db.execute(
-                "SELECT content FROM messages WHERE session_id = ? AND role = 'tool'",
-                (session_id,)):
-            if isinstance(content, str) and "[sutra:" in content:
+        for tool_name, content in db.execute(
+                "SELECT tool_name, content FROM messages "
+                "WHERE session_id = ? AND role = 'tool'", (session_id,)):
+            if not isinstance(content, str):
+                continue
+            if tool_name == "sutra_restore":
+                evidence["restore_calls"] += 1
+                evidence["restore_statuses"].append(_restore_status(content))
+            elif "[sutra:" in content:
                 evidence["tool_results_with_marker"] += 1
-        for (args, content) in db.execute(
-                "SELECT m1.arguments, m2.content FROM messages m1 "
-                "JOIN messages m2 ON m2.session_id = m1.session_id "
-                "AND m2.role = 'tool' WHERE m1.session_id = ? "
-                "AND m1.role = 'assistant' AND m1.content LIKE '%sutra_restore%'",
-                (session_id,)):
-            evidence["restore_calls"] += 1
-            if isinstance(content, str):
-                try:
-                    evidence["restore_statuses"].append(
-                        json.loads(content).get("status"))
-                except ValueError:
-                    pass
         db.close()
     except sqlite3.Error:
         pass
@@ -238,15 +276,29 @@ def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
                 timeout: int) -> dict:
     """One real `hermes chat` session in the workspace; returns its record."""
     started = time.time()
-    proc = subprocess.run(
-        ["hermes", "chat", "-q", prompt, "--oneshot", "-Q", "--yolo",
-         "--max-turns", "12", "--in", str(workspace)],
-        capture_output=True, text=True, timeout=timeout, cwd=str(workspace))
+    try:
+        proc = subprocess.run(
+            ["hermes", "chat", "-q", prompt, "--oneshot", "-Q", "--yolo",
+             "--max-turns", "12", "--in", str(workspace)],
+            capture_output=True, text=True, timeout=timeout, cwd=str(workspace))
+    except subprocess.TimeoutExpired as exc:
+        # The protocol requires every started session to be recorded; a timeout
+        # is a failed session with the partial output kept, never a crashed run.
+        stdout = (exc.stdout or "")
+        if isinstance(stdout, bytes):
+            stdout = stdout.decode("utf-8", "replace")
+        match = SESSION_RE.search(stdout)
+        return {"final_answer": stdout.strip()[-4_000:],
+                "session_id": match.group(1) if match else None,
+                "exit_code": None, "timed_out": True,
+                "duration_s": round(time.time() - started, 1),
+                "stderr_tail": "timed out after %ss" % timeout}
     duration = time.time() - started
     match = SESSION_RE.search(proc.stdout or "")
     return {"final_answer": (proc.stdout or "").strip()[-4_000:],
             "session_id": match.group(1) if match else None,
-            "exit_code": proc.returncode, "duration_s": round(duration, 1),
+            "exit_code": proc.returncode, "timed_out": False,
+            "duration_s": round(duration, 1),
             "stderr_tail": (proc.stderr or "")[-500:]}
 
 
@@ -265,7 +317,7 @@ def execute(args: argparse.Namespace) -> int:
 
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    results_path = out_dir / "results.jsonl"
+    results_path = out_dir / f"results-{args.arm}-pass{args.pass_index}.jsonl"
     seed_base = args.seed
     failures = 0
     for index, (name, prompt, setup, scorer) in enumerate(TASKS):
