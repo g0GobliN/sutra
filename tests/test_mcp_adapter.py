@@ -149,3 +149,26 @@ def test_eof_shuts_down_cleanly_after_work():
     session.request("initialize", request_id=1)
     tool_text(session.call_tool("sutra_compress", {"output": "small"}))
     assert session.close() == 0
+
+
+def test_malformed_params_and_arguments_do_not_kill_the_server():
+    """Regression: a truthy non-dict `params` or `arguments` used to raise
+    AttributeError inside the request loop and terminate the process — one bad
+    message from a client lost the whole server. Now: -32602, server lives."""
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        bad_params = session.request(
+            "tools/call", ["not", "a", "dict"], request_id="bp")
+        assert bad_params["error"]["code"] == -32602
+        bad_args = session.request(
+            "tools/call", {"name": "sutra_compress", "arguments": ["x"]},
+            request_id="ba")
+        assert bad_args["error"]["code"] == -32602
+        # The server must still serve after both.
+        pong = session.request("ping", request_id="after")
+        assert pong["result"] == {}
+        compressed = tool_text(session.call_tool("sutra_compress", {"output": "fine"}))
+        assert compressed["changed"] is False
+    finally:
+        assert session.close() == 0
