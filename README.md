@@ -195,6 +195,8 @@ hermes plugins validate .                     # loads the plugin the way Hermes 
 
 The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the benchmark's own claims, the A/B protocol's scorers, and the OpenCode spike's bridge and hook. CI runs the suite on Python 3.10–3.13, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags.
 
+**SUTRA in other agents**: the same deterministic core is exposed through a generic CLI and an MCP stdio server (Claude Code, Cursor, Codex-style agents, OpenCode) — verified statuses in [docs/integrations.md](docs/integrations.md).
+
 Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery protocol](docs/recovery.md) · [the correctness contract](docs/contract.md) · [security model](SECURITY.md) · [troubleshooting](docs/troubleshooting.md) · [the frozen A/B protocol](docs/ab-benchmark.md) · [the OpenCode feasibility spike](spikes/opencode-poc/README.md)
 
 ## Compatibility

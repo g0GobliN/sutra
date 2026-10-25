@@ -472,3 +472,74 @@ def test_two_tracebacks_keep_the_last_error_end(sutra):
     out, stats = sutra.compress(text, max_bytes=2000)
     assert stats["rule"] == "traceback"
     assert "ValueError: second boom" in out
+
+
+# --- correctness gaps identified in the 2026-10-25 audit ---------------------
+
+def test_threshold_boundary_is_exact(sutra):
+    """The size gate is inclusive: exactly max_bytes is untouched, one byte
+    over is rewritten. The boundary itself is the contract."""
+    line = "x" * 100 + "\n"
+    repeats = 24_576 // len(line.encode())
+    pad = 24_576 - repeats * len(line.encode())
+    at_threshold = (line * repeats + "y" * pad).encode()
+    assert len(at_threshold) == 24_576
+    out, stats = sutra.compress(at_threshold.decode())
+    assert out.encode() == at_threshold and stats["changed"] is False
+
+    over = at_threshold + b"z"
+    out, stats = sutra.compress(over.decode())
+    assert stats["changed"] is True
+    assert len(out.encode()) <= 24_576
+
+
+def test_identical_input_is_byte_identical_across_calls(sutra, monkeypatch):
+    """Determinism, both with retention off (no id variance at all) and with
+    it on (ids differ per entry; everything else must not)."""
+    monkeypatch.setenv("SUTRA_STORE", "0")
+    text = "\n".join(f"determinism line {i}" for i in range(2000)) + "\n"
+    first, _ = sutra.compress(text)
+    second, _ = sutra.compress(text)
+    assert first == second
+
+    monkeypatch.setenv("SUTRA_STORE", "1")
+    third, _ = sutra.compress(text)
+    fourth, _ = sutra.compress(text)
+    id_re = re.compile(r"su_[0-9a-f]{32}")
+    assert id_re.sub("su_<id>", third) == id_re.sub("su_<id>", fourth)
+
+
+def test_chained_traceback_keeps_the_final_exception(sutra):
+    """A chained traceback ('During handling of the above exception, another
+    exception occurred') ends with the exception the programmer needs; the
+    traceback rule must keep that end, not the first cause."""
+    frames = "\n".join(f'  File "/app/m{i}.py", line {i}, in f{i}' for i in range(400))
+    text = ("Traceback (most recent call last):\n" + frames +
+            "\nValueError: first cause\n\n"
+            "During handling of the above exception, another exception occurred:\n\n"
+            "Traceback (most recent call last):\n" + frames +
+            "\nRuntimeError: the real failure TOKEN-CHAIN-5\n")
+    out, stats = sutra.compress(text, max_bytes=3000)
+    assert stats["rule"] == "traceback"
+    assert "RuntimeError: the real failure TOKEN-CHAIN-5" in out
+    assert "first cause" not in out  # elided with the middle; recoverable by id
+
+
+def test_multiple_distinct_errors_keep_the_last_visible(sutra):
+    """A log with two distinct errors: the tail (last error) stays visible,
+    the earlier error is elided but must remain recoverable through the
+    marker's reference."""
+    head = "\n".join(f"context {i} service worker heartbeat" for i in range(1400))
+    text = (head + "\nERROR: disk full on device sda1 EARLIER-ERR\n"
+            + "\n".join(f"context {i} service worker heartbeat" for i in range(1400, 2800))
+            + "\nERROR: connection timeout FINAL-ERR\n")
+    assert len(text.encode()) > 24_576
+    out = sutra.compress_result(text)  # the full path: retention included
+    assert "FINAL-ERR" in out
+    assert "EARLIER-ERR" not in out
+    entry = ID_RE.search(out)
+    assert entry, "the elided earlier error must be recoverable"
+    restored = json.loads(sutra.recovery.restore(
+        {"id": entry.group(1), "mode": "search", "query": "EARLIER-ERR", "context": 1}))
+    assert restored["status"] == "ok"
+    assert "EARLIER-ERR" in restored["content"]
