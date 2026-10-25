@@ -8,8 +8,8 @@ import time
 
 import pytest
 
-from .test_recovery import make_store
-from .test_sutra import big
+from test_recovery import make_store
+from test_sutra import big
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
