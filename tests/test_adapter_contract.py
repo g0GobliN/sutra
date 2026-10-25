@@ -12,14 +12,8 @@ import json
 import re
 from pathlib import Path
 
-# Tolerant of both layouts while PR #17 (de-packaged tests) is pending:
-# before it merges tests/ is a package (relative import); after, plain.
-try:
-    from .test_cli_adapter import SHARED_PAYLOAD, run_cli  # type: ignore
-    from .test_mcp_adapter import McpSession, tool_text  # type: ignore
-except ImportError:
-    from test_cli_adapter import SHARED_PAYLOAD, run_cli
-    from test_mcp_adapter import McpSession, tool_text
+from test_cli_adapter import SHARED_PAYLOAD, run_cli
+from test_mcp_adapter import McpSession, tool_text
 
 ROOT = Path(__file__).resolve().parents[1]
 ID_RE = re.compile(r"su_[0-9a-f]{32}")
