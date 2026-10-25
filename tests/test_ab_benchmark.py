@@ -46,3 +46,23 @@ def test_buried_clue_is_elided_and_boundary_token_survives(sutra):
         out, stats = sutra.compress(payload_file.read_text(encoding="utf-8"))
         assert stats["rule"] == "head-tail", (name, stats["rule"])
         assert (evidence["planted"] in out) is expected_visible, name
+
+
+def test_rerunning_into_existing_records_aborts(tmp_path):
+    """A stale results file must never mix with a fresh run: the second
+    invocation into the same arm/pass file aborts with a clear error."""
+    import subprocess
+    import sys as _sys
+    out = tmp_path / "v5"
+    first = subprocess.run(
+        [_sys.executable, str(ROOT / "scripts" / "ab" / "run.py"),
+         "--dry-run", "--arm", "on", "--out", str(out)],
+        capture_output=True, text=True, timeout=120, cwd=str(ROOT))
+    assert first.returncode == 0
+    assert (out / "results-on-pass1.jsonl").stat().st_size > 0
+    second = subprocess.run(
+        [_sys.executable, str(ROOT / "scripts" / "ab" / "run.py"),
+         "--dry-run", "--arm", "on", "--out", str(out)],
+        capture_output=True, text=True, timeout=120, cwd=str(ROOT))
+    assert second.returncode == 2
+    assert "ABORT" in second.stdout and "mix" in second.stdout

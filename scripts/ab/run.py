@@ -318,6 +318,13 @@ def execute(args: argparse.Namespace) -> int:
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
     results_path = out_dir / f"results-{args.arm}-pass{args.pass_index}.jsonl"
+    if results_path.exists() and results_path.stat().st_size > 0:
+        # A stale file must never mix with a fresh run: records carry
+        # started_at/plugin_state, but file-level freshness would be lost.
+        print(f"ABORT: {results_path} already has records; a re-run would mix "
+              f"arms/passes in one file. Use a fresh --out directory, or remove "
+              f"the file if it is truly disposable.")
+        return 2
     seed_base = args.seed
     failures = 0
     for index, (name, prompt, setup, scorer) in enumerate(TASKS):
