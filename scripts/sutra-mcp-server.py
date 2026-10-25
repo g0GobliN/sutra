@@ -147,8 +147,12 @@ def handle(sutra, line: str) -> str | None:
                            "result": {"tools": _tool_definitions(sutra)}})
     if method == "tools/call":
         params = message.get("params") or {}
+        if not isinstance(params, dict):
+            return _error(request_id, -32602, "invalid params: expected an object")
         name = params.get("name")
         arguments = params.get("arguments") or {}
+        if not isinstance(arguments, dict):
+            return _error(request_id, -32602, "invalid arguments: expected an object")
         if name == "sutra_compress":
             if not isinstance(arguments.get("output"), str):
                 return _result(request_id, json.dumps(
@@ -174,7 +178,10 @@ def main() -> int:
             print(_error(None, -32600,
                          f"request exceeds {MAX_LINE_BYTES:,} bytes"), flush=True)
             continue
-        response = handle(sutra, line)
+        try:
+            response = handle(sutra, line)
+        except Exception as exc:  # one malformed message must never kill the loop
+            response = _error(None, -32603, f"internal error: {type(exc).__name__}")
         if response is not None:
             print(response, flush=True)
     return 0  # EOF: clean shutdown
