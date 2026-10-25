@@ -64,7 +64,53 @@ python3 -m pip install -r bench/requirements.txt
 python3 bench/tokens.py
 ```
 
-The tables are reproduced in the README. Summary at the time of writing:
+### Detailed per-fixture results
+
+Recovery: each fixture has a clue planted in the elided middle; the retrieval
+column is a real `sutra_restore` call against the real store.
+
+![Bar chart: original bytes, visible bytes, and bytes to reach a buried clue after a targeted retrieval, per payload](../bench/recovery.svg)
+
+| payload | visible | calls | response | total to the clue | clue recovered |
+|---|---|---:|---:|---:|---|
+| 12,000-line command output | 18.7 kB | 1 | 554 B | 19.2 kB | yes |
+| JSON tool envelope | 19.3 kB | 1 | 8.9 kB | 28.2 kB | yes |
+| test run, 2,000 cases | 18.6 kB | 1 | 711 B | 19.4 kB | yes |
+| 3,000-frame traceback | 10.4 kB | 0 | — | 10.4 kB | yes (error end kept) |
+| 600 KB patch | 432.1 kB | 0 | — | 432.1 kB | yes (untouched) |
+| 900-row SQL result | 18.6 kB | 1 | 716 B | 19.3 kB | yes |
+| 8,000-line build log | 18.7 kB | 1 | 712 B | 19.4 kB | yes |
+| 8,000-item JSON array | 206.9 kB | 0 | — | 206.9 kB | yes (untouched) |
+
+Five cases needed one call; three were already visible. The JSON envelope pays
+the most (8.9 kB) because its whole payload is one 86 kB line and the search
+has to return a clipped window around the match; everything with normal line
+breaks costs about 700 bytes.
+
+Processing cost (one warm run, best of three repeats, on the development
+machine; a busy machine can double these, so read them as scale, not a
+portable performance claim). Peak *additional* heap while rewriting the
+359 kB traceback: 701 KiB (tracemalloc, excluding the input string itself). A
+retained rewrite costs a second compression pass — that is the main cost of
+keeping the original, and it is still a small fraction of a model turn.
+
+| payload | compress | compress + store |
+|---|---:|---:|
+| 12,000-line command output | 11.4 ms | 24.0 ms |
+| JSON tool envelope | 13.4 ms | 27.6 ms |
+| test run, 2,000 cases | 6.6 ms | 15.3 ms |
+| 3,000-frame traceback | 21.3 ms | 44.5 ms |
+| 600 KB patch | 0.3 ms | not rewritten |
+| 900-row SQL result | 3.5 ms | 9.1 ms |
+| 8,000-line build log | 41.3 ms | 43.2 ms |
+| 8,000-item JSON array | 39.1 ms | not rewritten |
+
+**No live model was called to produce the compression or retrieval numbers in
+this repository.** The honest test is a before/after on your own workload: run
+the same task with the plugin disabled and enabled and compare `input_tokens`
+in the session row.
+
+Summary at the time of writing:
 
 - Compression: **1,626,501 → 742,727 bytes (54.3%)** across all eight fixtures;
   60–97% on the compressible ones; **0%** on the patch and the array by design.

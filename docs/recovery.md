@@ -100,6 +100,8 @@ contract is the id plus the optional field and either the two byte offsets (a
 partial elision) or the line range (a repeat-collapse marker). A repeat marker
 that cannot quote a resolvable line range deliberately quotes no call.
 
+![The evidence loop: the tool result enters the middleware, which retains the original bytes under an id and hands the model a smaller result whose marker carries that id; the agent can then call sutra_restore to get an exact slice of the original, bounded to 8 KiB per response](recovery-flow.svg)
+
 ## 3. The tool
 
 `sutra_restore` is registered with Hermes' `ctx.register_tool()` in toolset
@@ -291,13 +293,44 @@ it. Readers see a complete entry or a missing one.
 
 ### Snapshot and log scope
 
-`sutra.metrics_snapshot()` is deliberately **process-scoped**. Its top-level
-`scope` is `"process"` and `scope_note` says the counters reset when the Hermes
-plugin host restarts; the JSONL stats log is durable and records rewritten
-results only. After a restart, `compression`, `restores` and `cleanup` start at
-zero while older rewrite rows remain in `sutra-stats.jsonl`. That is the
-contract, not a loss of the counters; the response says so without requiring
-the caller to read the log first.
+`sutra.metrics_snapshot()` is the one read surface for runtime state —
+compression decisions, restore outcomes, cleanup, and the store's current
+size:
+
+```python
+>>> sutra.metrics_snapshot()
+{"scope": "process",
+ "scope_note": "Counters cover this Hermes plugin-host process only; they reset on restart. The JSONL stats log is durable and retains rewritten results only.",
+ "restores": {"total": 6, "ok": 1, "bad_id": 1, "expired": 1, "not_found": 1,
+              "range": 1, "unavailable": 1},
+ "cleanup": {"runs": 3, "entries": 3, "bytes": 1_211, "expired": 2, "quota": 1,
+             "orphans": 0, "temp": 0},
+ "compression": {"total": 8, "changed": 5, "unchanged": 3,
+                 "rules": {"head-tail": 2, "json-fields": 2, "none": 3, "fail-open": 1},
+                 "original_bytes": 31_940, "compressed_bytes": 12_480,
+                 "saved_bytes": 19_460, "omitted_bytes": 20_001, "partial": 5,
+                 "stored": 5, "fail_open": 1, "duration_ms_total": 41.7},
+ "store": {"entries": 1, "bytes": 1_300, "enabled": True}}
+```
+
+It is deliberately **process-scoped**: the top-level `scope` is `"process"` and
+`scope_note` says the counters reset when the Hermes plugin host restarts;
+the JSONL stats log is durable and records rewritten results only.
+
+`compression` counts every decision, changed or not: `total`, `changed`,
+`unchanged`, per-rule `rules`, bytes before (`original_bytes`) and after
+(`compressed_bytes`), `saved_bytes`, `omitted_bytes`, `partial`, `stored`
+(retained), `fail_open`, and the summed processing time. Only rewrites append
+to the stats log; its `changed` flag is true for every new row, and older rows
+lack the field. Unchanged decisions stay in the counters. The log is rotated
+at `SUTRA_STATS_MAX_BYTES`. `restores` counts every outcome by reason;
+`cleanup.runs` is one entry per cleanup that removed something, split into
+`expired`, `quota`, `orphans` and `temp`, with the bytes those removals
+reclaimed. Cleanup also logs one line per run (`sutra: cleanup removed …`).
+The counters are in-memory and per process; recording one is best-effort and
+can never fail a restore or a compression. After a restart,
+`compression.total` is zero even though the log has older rewrite rows — that
+difference is the contract, stated in the snapshot itself.
 
 ## 8. Security rules
 
