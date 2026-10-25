@@ -95,6 +95,10 @@ Changes after freezing are listed here; the scorers, fixtures, task set and
 order are frozen and may only change with a new protocol version (and fresh
 arms) once results exist.
 
+- 2026-10-25, pre-first-run (mechanics): the runner aborts when the target
+  results file already contains records, so a re-run can never silently mix
+  stale and fresh observations in one file. No scorer, fixture, task or order
+  changed. (No results existed when this landed.)
 - 2026-10-24, pre-first-run (execution/reporting audit): per-arm/pass record
   files; usage summed across the session's rows with the main-task row kept
   separate; host-deduplicated restore calls classified; timeouts recorded as
