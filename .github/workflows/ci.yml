@@ -32,6 +32,24 @@ jobs:
       - run: pip install ruff==0.17.2
       - run: ruff check .
 
+  # Guards the fix for pytest >= 9 importing the root package's __init__.py:
+  # the suite must pass in a checkout whose directory name is not a valid
+  # Python module name (GitHub tarballs and zip archives extract to
+  # "sutra-main").
+  hyphen-checkout:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Run the suite from a hyphen-named clone (tarball-style)
+        run: |
+          git clone . sutra-main
+          cd sutra-main
+          pip install pytest
+          python -m pytest -q
+
   validate:
     runs-on: ubuntu-latest
     steps:
