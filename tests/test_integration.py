@@ -13,7 +13,7 @@ import re
 
 import pytest
 
-from .test_sutra import big
+from test_sutra import big
 
 ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 

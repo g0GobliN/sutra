@@ -48,6 +48,38 @@ def load_plugin():
     return module
 
 
+def _alias_root_package_for_pytest() -> None:
+    """Make the repository root's package importable under the name pytest derives.
+
+    pytest >= 9 imports every ancestor package's ``__init__.py`` when setting
+    up a test, and derives that import's module name from the directory names
+    on disk. The repository root *is* the plugin package (the Hermes loader
+    requires it), so a checkout whose directory name is not a valid module
+    name — GitHub tarballs and zip archives extract to ``sutra-main`` — fails
+    that import and errors every test in the suite. Registering the
+    already-loaded plugin under the derived name makes the import resolve to
+    the real module instead. In identifier-named checkouts this registers a
+    harmless alias.
+    """
+    parts = []
+    current = ROOT
+    while (current / "__init__.py").is_file():
+        parts.append(current.name)
+        current = current.parent
+    if not parts:
+        return
+    module = load_plugin()
+    # Identifier-named checkouts: pytest resolves the root package to its
+    # dotted directory name ("tooltrim"). Non-identifier checkouts: resolution
+    # fails and pytest's fallback imports the file under the literal name
+    # "__init__". Register both so either path finds the real module.
+    sys.modules.setdefault(".".join(reversed(parts)), module)
+    sys.modules.setdefault("__init__", module)
+
+
+_alias_root_package_for_pytest()
+
+
 @pytest.fixture(scope="session")
 def sutra():
     return load_plugin()

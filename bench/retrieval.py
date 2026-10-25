@@ -26,9 +26,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location(
-    "sutra_plugin", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
+    "sutra_bench_pkg", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
 sutra = importlib.util.module_from_spec(spec)
-sys.modules["sutra_plugin"] = sutra
+sys.modules["sutra_bench_pkg"] = sutra
 spec.loader.exec_module(sutra)
 
 CAP = 32 * 1024 * 1024
