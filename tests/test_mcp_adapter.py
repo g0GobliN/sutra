@@ -172,3 +172,41 @@ def test_malformed_params_and_arguments_do_not_kill_the_server():
         assert compressed["changed"] is False
     finally:
         assert session.close() == 0
+
+
+def test_stdout_carries_only_protocol_lines():
+    """The protocol stream is sacred: a compression that stores an entry, a
+    failed restore, and a malformed request must not leak anything but
+    JSON-RPC responses onto stdout (diagnostics belong on stderr)."""
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        big = "\n".join(f"purity line {i}" for i in range(2000)) + "\n"
+        tool_text(session.call_tool("sutra_compress", {"output": big}))
+        missing = tool_text(session.call_tool("sutra_restore",
+                                              {"id": "su_" + "ff" * 16}))
+        assert missing["status"] == "not_found"
+        session.proc.stdin.write("{{broken\n")
+        session.proc.stdin.flush()
+        session.receive()  # parse error response
+    finally:
+        assert session.close() == 0  # also asserts stderr stayed empty
+
+
+def test_partial_line_at_eof_is_handled_not_lost():
+    """A client killed mid-write leaves a final line without a newline; the
+    server must process it (or reject it) and still exit cleanly."""
+    proc = subprocess.Popen(
+        [sys.executable, str(SERVER)], stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=str(ROOT))
+    try:
+        proc.stdin.write('{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}')
+        # no trailing newline; communicate() closes stdin (EOF) itself
+        out, err = proc.communicate(timeout=30)
+        assert proc.returncode == 0, err
+        response = json.loads(out.strip().splitlines()[-1])
+        assert response["id"] == 1 and response["result"] == {}
+        assert not err
+    finally:
+        if proc.poll() is None:
+            proc.kill()

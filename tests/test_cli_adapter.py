@@ -88,3 +88,22 @@ def test_diff_payload_comes_back_untouched():
     payload = json.loads(result.stdout)
     assert payload["changed"] is False
     assert payload["output"] == patch
+
+
+def test_missing_file_is_a_clean_error():
+    result = run_cli(["compress", "--file", "/nonexistent/path"])
+    assert result.returncode == 1
+    assert "could not read input" in json.loads(result.stdout)["error"]
+
+
+def test_non_integer_range_argument_is_a_usage_error():
+    result = run_cli(["restore", "--id", "su_" + "ab" * 16, "--start", "ten"])
+    assert result.returncode == 2
+    assert json.loads(result.stdout)["error"]
+
+
+def test_empty_input_is_an_unchanged_empty_result():
+    result = run_cli(["compress"], stdin_text="")
+    assert result.returncode == 0
+    payload = json.loads(result.stdout)
+    assert payload["changed"] is False and payload["output"] == ""
