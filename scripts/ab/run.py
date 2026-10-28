@@ -174,6 +174,13 @@ def fixture_bytes(workspace: pathlib.Path, name: str) -> int:
 HOST_PROBE_TIMEOUT_S = 120.0
 
 
+def _positive_seconds(value: str) -> float:
+    seconds = float(value)
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return seconds
+
+
 def plugin_state(timeout: float = HOST_PROBE_TIMEOUT_S) -> dict:
     """The operator-set arm, read from Hermes itself, within `timeout`."""
     try:
@@ -319,7 +326,7 @@ def execute(args: argparse.Namespace) -> int:
         state = {"sutra_installed": None, "sutra_enabled": None}
         print(f"arm={args.arm}: dry run, host state not probed")
     else:
-        state = plugin_state(HOST_PROBE_TIMEOUT_S)
+        state = plugin_state(getattr(args, "probe_timeout", HOST_PROBE_TIMEOUT_S))
         print(f"arm={args.arm}: hermes reports sutra_installed="
               f"{state['sutra_installed']} sutra_enabled={state['sutra_enabled']}")
         if state["sutra_enabled"] is None:
@@ -424,6 +431,10 @@ def main() -> int:
                         help="1 for the first pass, 2 for the reversed-order pass")
     parser.add_argument("--timeout", type=int, default=900,
                         help="per-task wall-clock budget in seconds")
+    parser.add_argument("--probe-timeout", type=_positive_seconds,
+                        default=HOST_PROBE_TIMEOUT_S,
+                        help="seconds allowed for `hermes plugins list` "
+                             f"(default: {HOST_PROBE_TIMEOUT_S:g})")
     parser.add_argument("--dry-run", action="store_true",
                         help="generate fixtures and records; run no sessions")
     parser.add_argument("--selfcheck", action="store_true",
