@@ -217,7 +217,7 @@ For copied/symlinked installs, retained output, and the stats log, see [docs/tro
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest tests -q           # 199 tests, no Hermes runtime needed
+.venv/bin/python -m pytest tests -q           # 214 tests, no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore at the 32 MiB cap
 hermes plugins validate .                     # loads the plugin the way Hermes does
