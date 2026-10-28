@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# `sutra` on PyPI is an unrelated water-microbiology package (0.2.2); the
+# distribution is `sutra-agent`, the import package and commands stay `sutra`.
+name = "sutra-agent"
+dynamic = ["version"]
+description = "Deterministic tool-output reduction for AI agents, preserving the evidence that matters."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Vishal Gurung" }]
+keywords = ["ai-agents", "context-compression", "tool-output", "mcp"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://sutra-alive.vercel.app/"
+Repository = "https://github.com/g0GobliN/sutra"
+
+[project.scripts]
+sutra = "sutra.cli:main"
+sutra-mcp = "sutra.mcp:main"
+
+[tool.setuptools]
+packages = ["sutra"]
+include-package-data = true
+
+[tool.setuptools.package-dir]
+sutra = "."
+
+[tool.setuptools.dynamic]
+version = { attr = "sutra.__version__" }
+
+[tool.setuptools.package-data]
+sutra = ["scripts/*.py", "plugin.yaml"]
