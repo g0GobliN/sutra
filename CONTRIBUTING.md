@@ -63,8 +63,11 @@ A report that says "it broke my output" cannot be acted on; a report with a 4 KB
 ## Scope
 
 In scope: compression rules, safety rules, the original-output store, the
-retrieval protocol, configuration, measurement, Hermes plugin wiring.
+retrieval protocol, configuration, measurement, Hermes plugin wiring, and the
+stdio MCP server that exposes the same two tools to any MCP client.
 
 Out of scope: summarising with a model, rewriting content, network calls,
-telemetry, adapters for other agent frameworks before the Hermes adapter is
-stable. SUTRA is deterministic and offline on purpose.
+telemetry, and adapters that reimplement SUTRA for another agent framework. A
+new MCP client is a config entry against the existing server, not a second
+implementation; anything that copies the rules into a framework-specific path
+needs its own discussion first. SUTRA is deterministic and offline on purpose.
