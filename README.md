@@ -45,7 +45,7 @@ python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/sutra install
 ```
 
-`sutra install` edits the config as text, so comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode so it re-reads the config.
+`sutra install` edits the config as text, so comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode; `opencode mcp list` reports `sutra` connected (verified with OpenCode 1.19.0), and Claude Code 2.1.268 reports `✔ Connected` for the same server command.
 
 Today the installer targets OpenCode; other MCP clients register the server themselves. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
 
