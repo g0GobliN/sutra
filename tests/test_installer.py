@@ -7,6 +7,7 @@ removed, and every other byte of the file survives.
 
 import json
 import pathlib
+import types
 
 import pytest
 
@@ -141,6 +142,74 @@ def test_a_real_install_writes_a_backup_and_is_idempotent(tmp_path, capsys):
     assert installer.main(["install", "--config", str(path)]) == 0
     assert "nothing to do" in capsys.readouterr().out
     assert len(list(tmp_path.glob("opencode.json.bak-*"))) == 1
+
+
+COMMENTED_TAIL_CONFIG = """{
+  "mcp": {
+    "other": { "type": "local", "command": ["x"] } // keep this note
+  }
+}
+"""
+
+TRAILING_COMMA_CONFIG = """{
+  "mcp": {
+    "other": { "type": "local", "command": ["x"] },
+  }
+}
+"""
+
+PLAIN_TAIL_CONFIG = """{
+  "mcp": {
+    "other": { "type": "local", "command": ["x"] }
+  }
+}
+"""
+
+
+def test_a_comment_after_the_last_member_stays_with_that_member():
+    updated, changed = installer.with_entry(COMMENTED_TAIL_CONFIG, "/usr/bin/python3")
+    assert changed
+    # The note belongs to `other`; it must not migrate onto the new entry's brace.
+    assert ('"other": { "type": "local", "command": ["x"] }, // keep this note'
+            in updated)
+    assert "} // keep this note" not in updated
+    restored, changed = installer.without_entry(updated)
+    assert changed
+    assert restored == COMMENTED_TAIL_CONFIG
+
+
+def test_a_trailing_comma_is_preserved_only_where_it_existed():
+    # The comma shape was JSONC before the install and stays JSONC after it:
+    # the comma is carried past the new entry, not dropped and not duplicated.
+    updated, changed = installer.with_entry(TRAILING_COMMA_CONFIG, "/usr/bin/python3")
+    assert changed
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(updated)
+    restored, changed = installer.without_entry(updated)
+    assert changed
+    assert restored == TRAILING_COMMA_CONFIG
+
+    # The plain shape was strict JSON before the install and stays strict after;
+    # no comma is invented, and uninstall restores it byte for byte too.
+    plain, changed = installer.with_entry(PLAIN_TAIL_CONFIG, "/usr/bin/python3")
+    assert changed
+    assert set(json.loads(plain)["mcp"]) == {"other", "sutra"}
+    restored_plain, changed = installer.without_entry(plain)
+    assert changed
+    assert restored_plain == PLAIN_TAIL_CONFIG
+
+
+def test_two_writes_in_one_second_do_not_overwrite_the_earlier_backup(tmp_path, monkeypatch):
+    path = tmp_path / "opencode.json"
+    path.write_text(JSON_CONFIG, encoding="utf-8")
+    frozen = types.SimpleNamespace(strftime=lambda _format: "20260101T000000")
+    monkeypatch.setattr(installer, "time", frozen)
+    assert installer.main(["install", "--config", str(path)]) == 0
+    assert installer.main(["uninstall", "--config", str(path)]) == 0
+    backups = sorted(tmp_path.glob("opencode.json.bak-*"))
+    assert len(backups) == 2
+    assert backups[0].read_text(encoding="utf-8") == JSON_CONFIG
+    assert '"sutra"' in backups[1].read_text(encoding="utf-8")
 
 
 def test_config_discovery_prefers_jsonc_and_honours_the_override(tmp_path, monkeypatch):
