@@ -49,7 +49,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] and argv[0] in ("compress", "restore", "config"):
         return runner.run_script(
             "sutra-cli.py", argv,
-            missing=f"sutra: sutra-cli.py is missing from this installation")
+            missing="sutra: sutra-cli.py is missing from this installation")
     if argv[:1] in (["--version"], ["-V"], ["version"]):
         print(f"sutra {__version__}")
         return 0
