@@ -8,7 +8,7 @@
 
 SUTRA reduces the tool output your agent carries through a session. It keeps the original locally and gives the agent a way to retrieve omitted evidence when needed.
 
-It is a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin that cuts tool output before the model reads it — your agent does not need the whole 2 MB log, it needs the failing line, the stack frame, the row that matters, and a way back to everything else. A tool result is read once and re-sent on every following turn, so a 2 MB log is 2 MB times the rest of the session (on one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context). SUTRA attacks that, deterministically, with no model calls — and keeps every original, because a compressor that cannot be questioned is a compressor you cannot trust.
+It runs as a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin, or as a package whose MCP server any MCP client can register, and cuts tool output before the model reads it — your agent does not need the whole 2 MB log, it needs the failing line, the stack frame, the row that matters, and a way back to everything else. A tool result is read once and re-sent on every following turn, so a 2 MB log is 2 MB times the rest of the session (on one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context). SUTRA attacks that, deterministically, with no model calls — and keeps every original, because a compressor that cannot be questioned is a compressor you cannot trust.
 
 > **54.3%** fewer bytes · **55.2%** fewer o200k tokens · **8/8** planted clues recovered · **0** diffs touched
 >
@@ -45,7 +45,9 @@ python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/sutra install
 ```
 
-`sutra install` edits the text of `~/.config/opencode/opencode.jsonc` to add one `mcp` entry, so comments and every other server survive untouched; `sutra uninstall` removes exactly that entry and nothing else. Restart OpenCode and its MCP list shows `sutra` with `sutra_compress` and `sutra_restore`.
+`sutra install` edits the config as text, so comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode so it re-reads the config.
+
+Today the installer targets OpenCode; other MCP clients register the server themselves. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
 
 For any other MCP client, register the same server yourself:
 
@@ -54,7 +56,7 @@ For any other MCP client, register the same server yourself:
                           "args": ["-m", "sutra.mcp"]}}}
 ```
 
-### Verify your installation
+### Verify the Hermes plugin
 
 Three states, three checks:
 
