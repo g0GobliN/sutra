@@ -167,10 +167,11 @@ def fixture_bytes(workspace: pathlib.Path, name: str) -> int:
 
 # --- session execution ------------------------------------------------------
 
-# The host probe is a full CLI start: `hermes plugins list` measured 26.6 s on a
-# loaded machine, and an unbounded one made a dry run depend on the operator's
-# host for longer than the run itself. Bound it well under any caller's budget.
-HOST_PROBE_TIMEOUT_S = 10.0
+# The host probe is a full CLI start. `hermes plugins list` measured 26.6 s on
+# one run and 44.5 s on a later loaded one, so 120 s leaves over 2x headroom over
+# the slowest observed while still bounding a hung CLI. A dry run never probes;
+# `plugin_state()` accepts a tighter timeout for callers that need one.
+HOST_PROBE_TIMEOUT_S = 120.0
 
 
 def plugin_state(timeout: float = HOST_PROBE_TIMEOUT_S) -> dict:
