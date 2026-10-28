@@ -23,4 +23,3 @@ def run_script(name: str, argv: list[str], *, missing: str) -> int:
         return 1
     sys.argv = [str(script), *argv]
     runpy.run_path(str(script), run_name="__main__")
-    return 0
