@@ -1,0 +1,12 @@
+# Mission log
+
+Required by the project's delivery workflow: every step is listed with the
+branch, commits, checks, PR, merge state, and the evidence that backs it. A step
+is complete only when its PR is merged; the "Next step" column says what that
+unblocks.
+
+| Step | Branch | Changes | Tests | Commit | PR | CI | Merge | Evidence | Next step |
+|---|---|---|---|---|---|---|---|---|---|
+| A/B dry run and live probe budget | `fix/ab-probe-hardening` | `scripts/ab/run.py`: dry run never probes the host; live probe gets a 120 s default; `--probe-timeout` configurable and validated; parser-level regression test | `pytest tests -q` 199 passed; `pytest spikes -q` 13 passed; `pytest -q` 212 passed; `ruff check .` clean; `hermes plugins validate .` passed | `2334ad4`, `ecdda3a`, `cb82649`, `a3bdefd` | [#24](https://github.com/g0GobliN/sutra/pull/24) | all required checks passed (`test` 3.10–3.13, `lint`, `validate`, `hyphen-checkout`) | merged to `main` by rebase at `a3bdefd` | The old 10 s bound was below the observed `hermes plugins list` time; the dry-run regression test hung until the probe was removed | none |
+| External MCP install | `feat/standalone-mcp-install` | `installer.py`, `jsonc.py`, `mcp.py`, `pyproject.toml`: reversible `sutra install`/`uninstall` for external MCP clients, stdio `sutra-mcp`, `sutra-agent` packaging; docs and CI matrix | `pytest tests -q` 214 passed; `pytest spikes -q` 13 passed; `ruff check .` clean; `hermes plugins validate .` passed; clean build, sdist installed into a fresh venv and answered `initialize` + `tools/list` | 11 commits, merged as `b53be92` | [#25](https://github.com/g0GobliN/sutra/pull/25) | all required checks passed (`test` 3.11–3.13, `lint`, `validate`, `hyphen-checkout`) | merged to `main` by rebase at `b53be92` | Installer round trips four config shapes byte-identically; wheel carries 21 files; sdist serves `sutra_compress` and `sutra_restore` | release `0.3.0` to TestPyPI, then PyPI |
+| Release | not started | version bump, tag, TestPyPI, PyPI | to be recorded | none yet | none yet | not run | not merged | both `sutra-agent` names were free on 2026-10-28; a first upload of a version is irreversible | decide the version and credentials before the first upload |
