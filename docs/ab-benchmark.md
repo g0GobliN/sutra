@@ -53,6 +53,22 @@ delta is the headline result, read with the sample size in mind.
   second attempt, recorded as such.
 - Sessions run sequentially; nothing else may use the gateway during a pass.
 
+## Running the runner
+
+From the repository root, with the live plugin already in the arm you are
+measuring:
+
+```bash
+python scripts/ab/run.py --arm on --out results/ab-pass1
+```
+
+`--dry-run` builds the fixtures and records without starting a session and
+without probing the host; it is the safe mechanics check before an arm is set.
+A live run probes `hermes plugins list` once, before any fixture work, with a
+default budget of 120 s. `--probe-timeout SECONDS` overrides that budget and
+must be greater than zero. It bounds only the arm-state probe; the per-task
+session budget is separately set by `--timeout` (default 900 s).
+
 ## Measurements (per session, written to `results/*.json`)
 
 - arm, task, seed, pass index, session id, start/end timestamps;
