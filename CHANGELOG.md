@@ -11,9 +11,10 @@
     and `sutra_restore` to any MCP client. Verified end to end with two real
     clients — OpenCode 1.19.0 and the official
     `@modelcontextprotocol/inspector` reference client — plus protocol tests
-    over real pipes in CI. Claude Code verified to configuration level
-    (registration recognized by `claude mcp get`; end-to-end pending an
-    authenticated session).
+    over real pipes in CI. Claude Code 2.1.268 reports the server as
+    `✔ Connected` in `claude mcp list` (a health check needs no signed-in
+    session); model-backed tool invocation is untested because the local CLI
+    is not authenticated (`authMethod: none`).
   - **CLI** (`scripts/sutra-cli.py`): compress / restore / config as JSON on
     stdout; exit codes 0/1/2; every failure carries a machine-readable error.
 - Cross-adapter equivalence tests: the engine, the CLI, and the MCP server
