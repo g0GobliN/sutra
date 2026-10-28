@@ -123,7 +123,7 @@ Full model: [SECURITY.md](SECURITY.md). The guarantees:
 ## Verification status
 
 Every table row above cites the test or probe that fails if the guarantee
-breaks. The suite runs on Python 3.10–3.13 in CI; the plugin manifest is
+breaks. The suite runs on Python 3.11–3.13 in CI; the plugin manifest is
 validated against the pinned Hermes revision. The end-to-end loop (real Hermes
 gateway, real terminal tool, real middleware, real store, recovery through the
 host's Tool Search bridge) was verified manually on 2026-10-24 against Hermes
