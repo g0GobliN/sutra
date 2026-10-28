@@ -1,19 +1,16 @@
-"""The `sutra` console command.
+"""The `sutra` console command: the one owner of the command surface.
 
-`install`/`uninstall` are implemented here (installer.py); compress, restore
-and config stay in scripts/sutra-cli.py, which ships with the package and is
-the single implementation the checkout and the wheel share.
+It parses the arguments, then hands each command to its owner: `install` and
+`uninstall` to `installer`, and the tool contract (compress, restore, config)
+to the bundled `scripts/sutra-cli.py` through `runner`.
 """
 
 from __future__ import annotations
 
-import pathlib
-import runpy
+import argparse
 import sys
 
-from . import __version__, installer
-
-HERE = pathlib.Path(__file__).resolve().parent
+from . import __version__, installer, runner
 
 USAGE = """sutra {version}
 
@@ -30,22 +27,29 @@ The first two commands edit a client config. The rest are the tool contract
 """
 
 
-def _run_script(name: str, argv: list[str]) -> int:
-    script = HERE / "scripts" / name
-    if not script.is_file():
-        print(f"sutra: {name} is missing from this installation", file=sys.stderr)
-        return 1
-    sys.argv = [str(script), *argv]
-    runpy.run_path(str(script), run_name="__main__")
-    return 0
+def _parser(action: str) -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=f"sutra {action}",
+        description="Register SUTRA's MCP server for a client.")
+    parser.add_argument("--client", default="opencode", choices=["opencode"],
+                        help="the client whose config to edit (opencode is the verified one)")
+    parser.add_argument("--config", default=None, help="override the config path")
+    parser.add_argument("--dry-run", action="store_true", help="print the change; write nothing")
+    return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] in (["install"], ["uninstall"]):
-        return installer.main(argv)
+        action = argv[0]
+        args = _parser(action).parse_args(argv[1:])
+        path = installer.opencode_config(args.config)
+        operation = installer.install if action == "install" else installer.uninstall
+        return operation(path, dry_run=args.dry_run)
     if argv[:1] and argv[0] in ("compress", "restore", "config"):
-        return _run_script("sutra-cli.py", argv)
+        return runner.run_script(
+            "sutra-cli.py", argv,
+            missing=f"sutra: sutra-cli.py is missing from this installation")
     if argv[:1] in (["--version"], ["-V"], ["version"]):
         print(f"sutra {__version__}")
         return 0

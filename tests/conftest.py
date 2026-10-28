@@ -48,6 +48,11 @@ def load_plugin():
     return module
 
 
+def plugin_module(name: str):
+    """A submodule of the plugin package, imported the way the package imports it."""
+    return importlib.import_module(f"{load_plugin().__name__}.{name}")
+
+
 def _alias_root_package_for_pytest() -> None:
     """Make the repository root's package importable under the name pytest derives.
 

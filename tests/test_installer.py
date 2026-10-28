@@ -11,7 +11,10 @@ import types
 
 import pytest
 
-import installer
+from conftest import plugin_module
+
+installer = plugin_module("installer")
+cli = plugin_module("cli")
 
 
 JSON_CONFIG = """{
@@ -127,7 +130,7 @@ def test_a_dry_run_writes_nothing(tmp_path, capsys):
     path = tmp_path / "opencode.jsonc"
     path.write_text(JSONC_CONFIG, encoding="utf-8")
     before = path.read_bytes()
-    code = installer.main(["install", "--config", str(path), "--dry-run"])
+    code = cli.main(["install", "--config", str(path), "--dry-run"])
     assert code == 0
     assert path.read_bytes() == before
     assert "dry run" in capsys.readouterr().out
@@ -137,9 +140,9 @@ def test_a_dry_run_writes_nothing(tmp_path, capsys):
 def test_a_real_install_writes_a_backup_and_is_idempotent(tmp_path, capsys):
     path = tmp_path / "opencode.json"
     path.write_text(JSON_CONFIG, encoding="utf-8")
-    assert installer.main(["install", "--config", str(path)]) == 0
+    assert cli.main(["install", "--config", str(path)]) == 0
     assert list(tmp_path.glob("opencode.json.bak-*"))
-    assert installer.main(["install", "--config", str(path)]) == 0
+    assert cli.main(["install", "--config", str(path)]) == 0
     assert "nothing to do" in capsys.readouterr().out
     assert len(list(tmp_path.glob("opencode.json.bak-*"))) == 1
 
@@ -204,8 +207,8 @@ def test_two_writes_in_one_second_do_not_overwrite_the_earlier_backup(tmp_path, 
     path.write_text(JSON_CONFIG, encoding="utf-8")
     frozen = types.SimpleNamespace(strftime=lambda _format: "20260101T000000")
     monkeypatch.setattr(installer, "time", frozen)
-    assert installer.main(["install", "--config", str(path)]) == 0
-    assert installer.main(["uninstall", "--config", str(path)]) == 0
+    assert cli.main(["install", "--config", str(path)]) == 0
+    assert cli.main(["uninstall", "--config", str(path)]) == 0
     backups = sorted(tmp_path.glob("opencode.json.bak-*"))
     assert len(backups) == 2
     assert backups[0].read_text(encoding="utf-8") == JSON_CONFIG
