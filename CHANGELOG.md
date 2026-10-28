@@ -19,9 +19,22 @@
 - Cross-adapter equivalence tests: the engine, the CLI, and the MCP server
     produce identical compression on the same fixture, and each restores the
     exact original (`sha256_verified`).
+- **Installable package** (`pyproject.toml`, distribution `sutra-agent`;
+  PyPI's `sutra` is an unrelated package): `pip install <checkout>` provides
+  the `sutra` and `sutra-mcp` commands, the `sutra` import package, and the
+  bundled CLI/MCP scripts, with no dependency outside the standard library.
+  A clean-venv install was verified end to end: `sutra_compress` took a
+  78,134-byte output to 18,639 bytes, `sutra_restore --mode search` recovered
+  the buried clue, and the bounded full restore refused `too_large` as
+  designed.
+- `sutra install` / `sutra uninstall` (`installer.py`): registers the MCP
+  server in OpenCode's config by editing its text — JSONC comments and every
+  other server survive, a timestamped backup is written first, `--dry-run`
+  writes nothing, a second install is a no-op, and uninstall restores the
+  file byte for byte (verified against a copy of a real commented config).
 - `docs/integrations.md`: the shared tool contract, per-adapter install and
-    usage, and a compatibility matrix that states each client's actual
-    verification level.
+  usage, and a compatibility matrix that states each client's actual
+  verification level.
 - CI: a `hyphen-checkout` job that runs the suite from a `sutra-main`
     directory (the GitHub tarball name).
 - Correctness regression tests: the exact 24,576-byte threshold boundary,

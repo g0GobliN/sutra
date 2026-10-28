@@ -18,6 +18,10 @@ It is a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin that cuts t
 
 ## Install
 
+Two ways in: as a Hermes plugin, or as a Python package whose MCP server any MCP client can call. Both run the same deterministic core.
+
+### Hermes Agent
+
 ```bash
 git clone https://github.com/g0GobliN/sutra ~/.hermes/plugins/sutra
 hermes plugins enable sutra
@@ -25,6 +29,30 @@ hermes tools        # enable the SUTRA plugin toolset
 ```
 
 Compression does not depend on the toolset. The recovery tool is gated by toolset like any other Hermes tool: if you skip `hermes tools`, the marker's `sutra_restore` call fails and the model falls back to re-running the tool. The marker says so.
+
+### Any MCP client
+
+SUTRA is not on PyPI yet (the `sutra` name there belongs to an unrelated package; the distribution is `sutra-agent`), so install from a checkout:
+
+```bash
+git clone https://github.com/g0GobliN/sutra
+python3 -m venv ~/.sutra-venv
+~/.sutra-venv/bin/pip install ./sutra
+~/.sutra-venv/bin/sutra --version    # sutra 0.2.0
+
+# show the config edit, then make it; a .bak is written beside the file
+~/.sutra-venv/bin/sutra install --dry-run
+~/.sutra-venv/bin/sutra install
+```
+
+`sutra install` edits the text of `~/.config/opencode/opencode.jsonc` to add one `mcp` entry, so comments and every other server survive untouched; `sutra uninstall` removes exactly that entry and nothing else. Restart OpenCode and its MCP list shows `sutra` with `sutra_compress` and `sutra_restore`.
+
+For any other MCP client, register the same server yourself:
+
+```json
+{"mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
+                          "args": ["-m", "sutra.mcp"]}}}
+```
 
 ### Verify your installation
 
