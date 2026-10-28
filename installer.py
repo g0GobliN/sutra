@@ -13,9 +13,9 @@ import shutil
 import sys
 import time
 
-from .jsonc import without_entry, with_entry
+from . import jsonc
 
-__all__ = ["install", "uninstall", "opencode_config", "with_entry", "without_entry"]
+__all__ = ["install", "uninstall", "opencode_config"]
 
 
 def opencode_config(explicit: str | None = None) -> pathlib.Path:
@@ -77,7 +77,8 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
         return 0
     text = path.read_text(encoding="utf-8")
     try:
-        updated, changed = with_entry(text, _python()) if installing else without_entry(text)
+        updated, changed = (jsonc.with_entry(text, _python()) if installing
+                           else jsonc.without_entry(text))
     except ValueError as exc:
         print(f"sutra: {path} could not be edited safely: {exc}", file=sys.stderr)
         return 1

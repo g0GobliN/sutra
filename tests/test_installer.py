@@ -14,6 +14,7 @@ import pytest
 from conftest import plugin_module
 
 installer = plugin_module("installer")
+jsonc = plugin_module("jsonc")
 cli = plugin_module("cli")
 
 
@@ -54,7 +55,7 @@ JSONC_CONFIG = """{
 def test_install_adds_one_entry_and_keeps_the_rest_parseable(tmp_path):
     path = tmp_path / "opencode.json"
     path.write_text(JSON_CONFIG, encoding="utf-8")
-    updated, changed = installer.with_entry(JSON_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.with_entry(JSON_CONFIG, "/usr/bin/python3")
     assert changed
     path.write_text(updated, encoding="utf-8")
 
@@ -69,7 +70,7 @@ def test_install_adds_one_entry_and_keeps_the_rest_parseable(tmp_path):
 
 
 def test_install_preserves_jsonc_comments_and_neighbours():
-    updated, changed = installer.with_entry(JSONC_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.with_entry(JSONC_CONFIG, "/usr/bin/python3")
     assert changed
     assert "// OpenCode reads JSONC; this comment must survive an install." in updated
     assert "/* another server, with a comment of its own */" in updated
@@ -80,16 +81,16 @@ def test_install_preserves_jsonc_comments_and_neighbours():
 
 
 def test_installing_twice_changes_nothing():
-    once, changed = installer.with_entry(JSON_CONFIG, "/usr/bin/python3")
+    once, changed = jsonc.with_entry(JSON_CONFIG, "/usr/bin/python3")
     assert changed
-    twice, changed_again = installer.with_entry(once, "/usr/bin/python3")
+    twice, changed_again = jsonc.with_entry(once, "/usr/bin/python3")
     assert not changed_again
     assert twice == once
 
 
 def test_install_creates_the_mcp_block_when_absent():
     source = '{\n  "theme": "dark"\n}\n'
-    updated, changed = installer.with_entry(source, "/usr/bin/python3")
+    updated, changed = jsonc.with_entry(source, "/usr/bin/python3")
     assert changed
     document = json.loads(updated)
     assert document["theme"] == "dark"
@@ -100,12 +101,12 @@ def test_a_different_existing_entry_is_refused_not_overwritten():
     source = json.dumps({"mcp": {"sutra": {"type": "local",
                                           "command": ["other"], "enabled": True}}})
     with pytest.raises(ValueError, match="uninstall"):
-        installer.with_entry(source, "/usr/bin/python3")
+        jsonc.with_entry(source, "/usr/bin/python3")
 
 
 def test_uninstall_removes_only_sutra_and_leaves_valid_json():
-    installed, _ = installer.with_entry(JSON_CONFIG, "/usr/bin/python3")
-    updated, changed = installer.without_entry(installed)
+    installed, _ = jsonc.with_entry(JSON_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.without_entry(installed)
     assert changed
     document = json.loads(updated)
     assert "sutra" not in document["mcp"]
@@ -113,8 +114,8 @@ def test_uninstall_removes_only_sutra_and_leaves_valid_json():
 
 
 def test_uninstall_keeps_a_jsonc_comment_intact():
-    installed, _ = installer.with_entry(JSONC_CONFIG, "/usr/bin/python3")
-    updated, changed = installer.without_entry(installed)
+    installed, _ = jsonc.with_entry(JSONC_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.without_entry(installed)
     assert changed
     assert "// OpenCode reads JSONC; this comment must survive an install." in updated
     assert '"sutra"' not in updated
@@ -122,7 +123,7 @@ def test_uninstall_keeps_a_jsonc_comment_intact():
 
 
 def test_uninstall_when_absent_is_a_no_op():
-    _, changed = installer.without_entry(JSON_CONFIG)
+    _, changed = jsonc.without_entry(JSON_CONFIG)
     assert not changed
 
 
@@ -170,13 +171,13 @@ PLAIN_TAIL_CONFIG = """{
 
 
 def test_a_comment_after_the_last_member_stays_with_that_member():
-    updated, changed = installer.with_entry(COMMENTED_TAIL_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.with_entry(COMMENTED_TAIL_CONFIG, "/usr/bin/python3")
     assert changed
     # The note belongs to `other`; it must not migrate onto the new entry's brace.
     assert ('"other": { "type": "local", "command": ["x"] }, // keep this note'
             in updated)
     assert "} // keep this note" not in updated
-    restored, changed = installer.without_entry(updated)
+    restored, changed = jsonc.without_entry(updated)
     assert changed
     assert restored == COMMENTED_TAIL_CONFIG
 
@@ -184,20 +185,20 @@ def test_a_comment_after_the_last_member_stays_with_that_member():
 def test_a_trailing_comma_is_preserved_only_where_it_existed():
     # The comma shape was JSONC before the install and stays JSONC after it:
     # the comma is carried past the new entry, not dropped and not duplicated.
-    updated, changed = installer.with_entry(TRAILING_COMMA_CONFIG, "/usr/bin/python3")
+    updated, changed = jsonc.with_entry(TRAILING_COMMA_CONFIG, "/usr/bin/python3")
     assert changed
     with pytest.raises(json.JSONDecodeError):
         json.loads(updated)
-    restored, changed = installer.without_entry(updated)
+    restored, changed = jsonc.without_entry(updated)
     assert changed
     assert restored == TRAILING_COMMA_CONFIG
 
     # The plain shape was strict JSON before the install and stays strict after;
     # no comma is invented, and uninstall restores it byte for byte too.
-    plain, changed = installer.with_entry(PLAIN_TAIL_CONFIG, "/usr/bin/python3")
+    plain, changed = jsonc.with_entry(PLAIN_TAIL_CONFIG, "/usr/bin/python3")
     assert changed
     assert set(json.loads(plain)["mcp"]) == {"other", "sutra"}
-    restored_plain, changed = installer.without_entry(plain)
+    restored_plain, changed = jsonc.without_entry(plain)
     assert changed
     assert restored_plain == PLAIN_TAIL_CONFIG
 
