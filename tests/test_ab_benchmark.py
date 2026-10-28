@@ -7,10 +7,18 @@ pipeline — big enough that SUTRA rewrites it (over the 24,576 B threshold),
 small enough to survive Hermes' own 50,000-byte terminal cap.
 """
 
+import argparse
 import importlib.util
+import os
 import pathlib
 import random
+import stat
+import subprocess
+import sys
 import tempfile
+import time
+
+import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 spec = importlib.util.spec_from_file_location("sutra_ab", ROOT / "scripts" / "ab" / "run.py")
@@ -48,6 +56,20 @@ def test_buried_clue_is_elided_and_boundary_token_survives(sutra):
         assert (evidence["planted"] in out) is expected_visible, name
 
 
+def _hanging_hermes(tmp_path):
+    """A `hermes` on PATH that never answers, to prove the runner never waits on it."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "hermes"
+    stub.write_text("#!/bin/sh\nexec sleep 300\n")
+    stub.chmod(stub.stat().st_mode | stat.S_IEXEC)
+    return bin_dir
+
+
+needs_posix_stub = pytest.mark.skipif(
+    os.name == "nt", reason="a POSIX shell stub is needed to fake a hanging host")
+
+
 def test_rerunning_into_existing_records_aborts(tmp_path):
     """A stale results file must never mix with a fresh run: the second
     invocation into the same arm/pass file aborts with a clear error."""
@@ -66,3 +88,52 @@ def test_rerunning_into_existing_records_aborts(tmp_path):
         capture_output=True, text=True, timeout=120, cwd=str(ROOT))
     assert second.returncode == 2
     assert "ABORT" in second.stdout and "mix" in second.stdout
+
+
+@needs_posix_stub
+def test_a_dry_run_never_probes_the_host(tmp_path):
+    """A dry run exercises the mechanics only. It must not call `hermes`, which
+    is a full CLI start (26.6 s on the box where this was found): with a host
+    that never answers, the run still finishes promptly and writes its records."""
+    bin_dir = _hanging_hermes(tmp_path)
+    out = tmp_path / "v5"
+    env = dict(os.environ,
+               PATH=f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    started = time.monotonic()
+    done = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "ab" / "run.py"),
+         "--dry-run", "--arm", "on", "--out", str(out)],
+        capture_output=True, text=True, timeout=60, cwd=str(ROOT), env=env)
+    elapsed = time.monotonic() - started
+    assert done.returncode == 0, done.stderr
+    assert elapsed < 30, f"the dry run waited {elapsed:.0f}s on the host"
+    assert "host state not probed" in done.stdout
+    assert (out / "results-on-pass1.jsonl").stat().st_size > 0
+
+
+@needs_posix_stub
+def test_the_host_probe_is_bounded(tmp_path, monkeypatch):
+    """The live probe keeps its own short budget: an unresponsive `hermes` becomes
+    an unknown state, not a benchmark that hangs."""
+    bin_dir = _hanging_hermes(tmp_path)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    started = time.monotonic()
+    state = ab.plugin_state(timeout=1.0)
+    elapsed = time.monotonic() - started
+    assert elapsed < 5, f"the probe took {elapsed:.1f}s"
+    assert state == {"sutra_installed": None, "sutra_enabled": None}
+
+
+@needs_posix_stub
+def test_a_live_run_aborts_when_the_host_state_cannot_be_read(tmp_path, monkeypatch, capsys):
+    """Unknown state is not a guess: the run stops before any fixture work, with a
+    message that names the probe rather than claiming a plugin mismatch."""
+    bin_dir = _hanging_hermes(tmp_path)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setattr(ab, "HOST_PROBE_TIMEOUT_S", 1.0)
+    args = argparse.Namespace(arm="on", dry_run=False, out=str(tmp_path / "v5"),
+                              pass_index=1, seed=1, timeout=1)
+    assert ab.execute(args) == 2
+    out = capsys.readouterr().out
+    assert "could not read the live plugin state" in out
+    assert not (tmp_path / "v5" / "results-on-pass1.jsonl").exists()

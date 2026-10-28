@@ -40,6 +40,12 @@
 - Malformed MCP `tools/call` params (truthy non-dict `params` or
   `arguments`) terminated the server process; they now answer `-32602`, and
   a last-resort guard ensures no single message can kill the request loop.
+- The A/B dry run probed the operator's host before doing any mechanics
+  (`hermes plugins list`, measured 26.6 s on a loaded machine), so a dry-run
+  test with a 120 s budget could spend it waiting instead of exercising the
+  run. A dry run is now hermetic and records an unknown state; the live probe
+  is bounded at 10 s and reports "could not read the live plugin state"
+  instead of a misleading plugin-mismatch abort.
 
 ### Documentation
 
