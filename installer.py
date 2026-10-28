@@ -181,10 +181,24 @@ def with_entry(text: str, python: str) -> tuple[str, bool]:
         raise ValueError("a different sutra entry already exists; run `sutra uninstall` first")
     key_indent = _line_indent(text, mcp[0])
     block = _entry_block(key_indent + "  ", python)
-    if members:
-        last_end = members[-1][3]
-        return text[:last_end] + ",\n" + block + text[last_end:], True
-    return text[:value_start + 1] + "\n" + block + "\n" + key_indent + text[close:], True
+    if not members:
+        return text[:value_start + 1] + "\n" + block + "\n" + key_indent + text[close:], True
+    last_end = members[-1][3]
+    tail = text[last_end:close]
+    # An existing separator after the last member becomes the separator for the
+    # new entry, and is re-emitted after it. A file that was JSONC because it
+    # ended in a comma keeps that property; one that was strict JSON gets no
+    # comma it did not have. Both stay reversible.
+    comma = _skip_trivia(tail, 0)
+    re_emit = comma < len(tail) and tail[comma] == ","
+    if re_emit:
+        tail = tail[:comma] + tail[comma + 1:]
+    # Whatever follows that separator — a comment on the member's line, say —
+    # stays where it is and keeps its owner; the new entry goes after it.
+    kept = tail.rstrip(" \t")
+    lead = "" if kept.endswith("\n") else "\n"
+    return (text[:last_end] + "," + kept + lead + block
+            + ("," if re_emit else "") + "\n" + key_indent + text[close:]), True
 
 
 def without_entry(text: str) -> tuple[str, bool]:
@@ -194,7 +208,7 @@ def without_entry(text: str) -> tuple[str, bool]:
     mcp = _find(text, root_members, "mcp")
     if mcp is None or text[mcp[2]] != "{":
         return text, False
-    members, _ = _members(text, mcp[2])
+    members, close = _members(text, mcp[2])
     target = _find(text, members, "sutra")
     if target is None:
         return text, False
@@ -205,8 +219,24 @@ def without_entry(text: str) -> tuple[str, bool]:
         if end < len(text) and text[end] == ",":
             end += 1
         end = _skip_trivia(text, end)
-    elif position > 0:                       # last: drop the comma before it too
-        start = members[position - 1][3]
+    elif position > 0:                       # last: drop the separator before it too
+        previous_end = members[position - 1][3]
+        after = _skip_ws(text, target[3])
+        if after < close and text[after] == ",":          # a re-emitted trailing comma
+            gap = text[previous_end:start].rstrip(" \t")
+            return (text[:previous_end] + gap + _line_indent(text, close)
+                    + text[close:]), True
+        gap = text[previous_end:start]
+        if "//" in gap or "/*" in gap:
+            # A comment sits between the previous member and this one. It is
+            # not ours to delete: take the separator and the new entry's
+            # indentation, and give the closing brace its own indentation back.
+            comma = _skip_ws(gap, 0)
+            if comma < len(gap) and gap[comma] == ",":
+                gap = gap[:comma] + gap[comma + 1:]
+            return (text[:previous_end] + gap.rstrip(" \t")
+                    + _line_indent(text, close) + text[close:]), True
+        start = previous_end
         comma = _skip_trivia(text, start)
         if comma < len(text) and text[comma] == ",":
             start = comma
@@ -230,9 +260,18 @@ def opencode_config(explicit: str | None = None) -> pathlib.Path:
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:
-    """Atomic write with a timestamped backup beside the original."""
+    """Atomic write with a timestamped backup beside the original.
+
+    The stamp has one-second resolution, so a second write inside the same
+    second would otherwise overwrite the first backup — and the first backup
+    is the only copy of the bytes before the first edit.
+    """
     stamp = time.strftime("%Y%m%dT%H%M%S")
     backup = path.with_name(path.name + ".bak-" + stamp)
+    suffix = 1
+    while backup.exists():
+        suffix += 1
+        backup = path.with_name(f"{path.name}.bak-{stamp}-{suffix}")
     shutil.copy2(path, backup)
     temp = path.with_name(path.name + ".sutra-tmp")
     temp.write_text(text, encoding="utf-8")
