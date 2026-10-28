@@ -44,8 +44,9 @@
   (`hermes plugins list`, measured 26.6 s on a loaded machine), so a dry-run
   test with a 120 s budget could spend it waiting instead of exercising the
   run. A dry run is now hermetic and records an unknown state; the live probe
-  is bounded at 10 s and reports "could not read the live plugin state"
-  instead of a misleading plugin-mismatch abort.
+  is bounded at 120 s (over 2× the slowest 44.5 s observed here) and reports
+  "could not read the live plugin state" instead of a misleading
+  plugin-mismatch abort.
 
 ### Documentation
 
