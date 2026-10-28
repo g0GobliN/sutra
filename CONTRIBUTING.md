@@ -21,7 +21,7 @@ git clone https://github.com/<you>/sutra
 cd sutra
 python3 -m venv .venv
 .venv/bin/pip install pytest
-.venv/bin/python -m pytest -q
+.venv/bin/python -m pytest tests -q
 .venv/bin/python bench/benchmark.py      # optional: refreshes every number in the README
 ```
 
