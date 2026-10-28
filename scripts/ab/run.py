@@ -167,11 +167,17 @@ def fixture_bytes(workspace: pathlib.Path, name: str) -> int:
 
 # --- session execution ------------------------------------------------------
 
-def plugin_state() -> dict:
-    """The operator-set arm, read from Hermes itself."""
+# The host probe is a full CLI start: `hermes plugins list` measured 26.6 s on a
+# loaded machine, and an unbounded one made a dry run depend on the operator's
+# host for longer than the run itself. Bound it well under any caller's budget.
+HOST_PROBE_TIMEOUT_S = 10.0
+
+
+def plugin_state(timeout: float = HOST_PROBE_TIMEOUT_S) -> dict:
+    """The operator-set arm, read from Hermes itself, within `timeout`."""
     try:
         out = subprocess.run(["hermes", "plugins", "list"], capture_output=True,
-                             text=True, timeout=120).stdout
+                             text=True, timeout=timeout).stdout
     except (OSError, subprocess.SubprocessError):
         return {"sutra_installed": None, "sutra_enabled": None}
     row = next((line for line in out.splitlines()
@@ -305,15 +311,31 @@ def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
 # --- the runner -------------------------------------------------------------
 
 def execute(args: argparse.Namespace) -> int:
-    state = plugin_state()
     expected_enabled = args.arm == "on"
-    print(f"arm={args.arm}: hermes reports sutra_installed="
-          f"{state['sutra_installed']} sutra_enabled={state['sutra_enabled']}")
-    if not args.dry_run and state["sutra_enabled"] is not expected_enabled:
-        print("ABORT: the live plugin state does not match --arm. Set it with "
-              "'hermes plugins disable/enable sutra' and restart the gateway "
-              "first; this runner records the state, it does not guess it.")
-        return 2
+    if args.dry_run:
+        # Mechanics only: a dry run must not depend on the operator's host (the
+        # probe is a full CLI start), so it records an unknown state instead.
+        state = {"sutra_installed": None, "sutra_enabled": None}
+        print(f"arm={args.arm}: dry run, host state not probed")
+    else:
+        state = plugin_state(HOST_PROBE_TIMEOUT_S)
+        print(f"arm={args.arm}: hermes reports sutra_installed="
+              f"{state['sutra_installed']} sutra_enabled={state['sutra_enabled']}")
+        if state["sutra_enabled"] is None:
+            if state["sutra_installed"] is None:
+                print("ABORT: could not read the live plugin state: the `hermes "
+                      "plugins list` probe failed or timed out. Set the arm "
+                      "explicitly and re-run.")
+            else:
+                print("ABORT: `hermes plugins list` does not report sutra as enabled "
+                      "or disabled (not installed, or a status this runner does not "
+                      "know). Install and enable it, then re-run.")
+            return 2
+        if state["sutra_enabled"] is not expected_enabled:
+            print("ABORT: the live plugin state does not match --arm. Set it with "
+                  "'hermes plugins disable/enable sutra' and restart the gateway "
+                  "first; this runner records the state, it does not guess it.")
+            return 2
 
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
