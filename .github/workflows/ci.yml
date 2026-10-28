@@ -13,14 +13,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.10", "3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest
-      - run: python -m pytest -q
+      - name: Product suite
+        run: python -m pytest tests -q
+      - name: OpenCode feasibility spike
+        run: python -m pytest spikes -q
 
   lint:
     runs-on: ubuntu-latest
@@ -48,7 +51,7 @@ jobs:
           git clone . sutra-main
           cd sutra-main
           pip install pytest
-          python -m pytest -q
+          python -m pytest tests -q
 
   validate:
     runs-on: ubuntu-latest
