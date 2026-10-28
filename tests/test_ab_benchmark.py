@@ -7,7 +7,6 @@ pipeline — big enough that SUTRA rewrites it (over the 24,576 B threshold),
 small enough to survive Hermes' own 50,000-byte terminal cap.
 """
 
-import argparse
 import importlib.util
 import os
 import pathlib
@@ -125,15 +124,47 @@ def test_the_host_probe_is_bounded(tmp_path, monkeypatch):
 
 
 @needs_posix_stub
-def test_a_live_run_aborts_when_the_host_state_cannot_be_read(tmp_path, monkeypatch, capsys):
-    """Unknown state is not a guess: the run stops before any fixture work, with a
-    message that names the probe rather than claiming a plugin mismatch."""
+def test_probe_timeout_flag_is_parsed_and_forwarded(tmp_path, monkeypatch, capsys):
+    """`--probe-timeout` must reach the host probe through the real parser: with a
+    `hermes` that never answers, 0.5 s aborts the whole run in well under the old
+    120 s default. Unknown state is not a guess, so the run stops before any
+    fixture work with a message that names the probe, not a plugin mismatch."""
     bin_dir = _hanging_hermes(tmp_path)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setattr(ab, "HOST_PROBE_TIMEOUT_S", 1.0)
-    args = argparse.Namespace(arm="on", dry_run=False, out=str(tmp_path / "v5"),
-                              pass_index=1, seed=1, timeout=1)
-    assert ab.execute(args) == 2
+    seen = []
+    real_probe = ab.plugin_state
+
+    def capture(timeout=ab.HOST_PROBE_TIMEOUT_S):
+        seen.append(timeout)
+        return real_probe(timeout)
+
+    monkeypatch.setattr(ab, "plugin_state", capture)
+    monkeypatch.setattr(sys, "argv", [
+        "run.py", "--arm", "on", "--out", str(tmp_path / "v5"),
+        "--pass-index", "1", "--seed", "1", "--timeout", "1",
+        "--probe-timeout", "0.5",
+    ])
+    started = time.monotonic()
+    assert ab.main() == 2
+    elapsed = time.monotonic() - started
+    assert elapsed < 5, f"the configured probe took {elapsed:.1f}s"
+    assert seen == [0.5]
     out = capsys.readouterr().out
     assert "could not read the live plugin state" in out
     assert not (tmp_path / "v5" / "results-on-pass1.jsonl").exists()
+
+
+def test_probe_timeout_rejects_nonpositive_values(tmp_path, monkeypatch, capsys):
+    """A zero or negative budget would make the probe useless; argparse rejects
+    both before the runner can read any host state or write any record."""
+    for value in ("0", "-1"):
+        monkeypatch.setattr(sys, "argv", [
+            "run.py", "--dry-run", "--out", str(tmp_path / "v5"),
+            "--probe-timeout", value,
+        ])
+        with pytest.raises(SystemExit) as excinfo:
+            ab.main()
+        assert excinfo.value.code == 2
+    assert capsys.readouterr().err.count("must be greater than zero") == 2
+    assert not (tmp_path / "v5").exists()
