@@ -1,0 +1,444 @@
+{
+  "status": "measured",
+  "representative": false,
+  "reason": "forced with --timing force: not representative",
+  "environment": {
+    "timestamp_utc": "2026-10-29T03:37:12+00:00",
+    "python": "3.13.5",
+    "implementation": "CPython",
+    "platform": "Linux-6.12.101+deb13-amd64-x86_64-with-glibc2.41",
+    "machine": "x86_64",
+    "processor": "",
+    "cpu_count": 4,
+    "load_1min": 19.04,
+    "total_memory_bytes": 20665458688,
+    "git_sha": "bee213c8d3f88a45c7b66b1df0b07f90c083bc12",
+    "git_dirty": true
+  },
+  "method": {
+    "warmups": 1,
+    "repeats": 5,
+    "statistic": "median",
+    "clock": "time.perf_counter",
+    "load_limit_per_cpu": 1.0
+  },
+  "cases": [
+    {
+      "case": "12,000-line command output",
+      "input_bytes": 60893,
+      "ops": {
+        "compress": {
+          "median_ms": 27.456,
+          "min_ms": 19.985,
+          "max_ms": 76.389,
+          "trials_ms": [
+            76.389,
+            43.089,
+            27.456,
+            23.001,
+            19.985
+          ]
+        },
+        "store_put": {
+          "median_ms": 0.972,
+          "min_ms": 0.8,
+          "max_ms": 1.963,
+          "trials_ms": [
+            1.963,
+            0.8,
+            0.972,
+            1.4,
+            0.877
+          ]
+        },
+        "rewrite": {
+          "median_ms": 41.004,
+          "min_ms": 38.135,
+          "max_ms": 45.737,
+          "trials_ms": [
+            38.135,
+            43.381,
+            39.612,
+            45.737,
+            41.004
+          ]
+        }
+      },
+      "restore": {
+        "median_ms": 5.148,
+        "min_ms": 3.131,
+        "max_ms": 8.542,
+        "trials_ms": [
+          3.131,
+          5.148,
+          8.542,
+          6.603,
+          4.057
+        ],
+        "status": "ok",
+        "recovered": true
+      }
+    },
+    {
+      "case": "JSON tool envelope",
+      "input_bytes": 85921,
+      "ops": {
+        "compress": {
+          "median_ms": 19.781,
+          "min_ms": 19.669,
+          "max_ms": 21.867,
+          "trials_ms": [
+            19.781,
+            20.414,
+            19.767,
+            21.867,
+            19.669
+          ]
+        },
+        "store_put": {
+          "median_ms": 1.329,
+          "min_ms": 1.151,
+          "max_ms": 2.705,
+          "trials_ms": [
+            1.179,
+            1.329,
+            1.151,
+            2.679,
+            2.705
+          ]
+        },
+        "rewrite": {
+          "median_ms": 39.846,
+          "min_ms": 34.051,
+          "max_ms": 40.515,
+          "trials_ms": [
+            40.515,
+            39.846,
+            39.993,
+            37.203,
+            34.051
+          ]
+        }
+      },
+      "restore": {
+        "median_ms": 0.975,
+        "min_ms": 0.782,
+        "max_ms": 1.809,
+        "trials_ms": [
+          0.782,
+          0.877,
+          0.975,
+          0.994,
+          1.809
+        ],
+        "status": "ok",
+        "recovered": true
+      }
+    },
+    {
+      "case": "test run, 2,000 cases",
+      "input_bytes": 99776,
+      "ops": {
+        "compress": {
+          "median_ms": 11.376,
+          "min_ms": 7.977,
+          "max_ms": 14.02,
+          "trials_ms": [
+            11.376,
+            12.362,
+            14.02,
+            8.674,
+            7.977
+          ]
+        },
+        "store_put": {
+          "median_ms": 2.131,
+          "min_ms": 1.269,
+          "max_ms": 2.568,
+          "trials_ms": [
+            2.568,
+            2.304,
+            2.131,
+            1.442,
+            1.269
+          ]
+        },
+        "rewrite": {
+          "median_ms": 31.469,
+          "min_ms": 28.339,
+          "max_ms": 53.096,
+          "trials_ms": [
+            31.469,
+            28.339,
+            29.603,
+            32.386,
+            53.096
+          ]
+        }
+      },
+      "restore": {
+        "median_ms": 3.808,
+        "min_ms": 2.671,
+        "max_ms": 7.886,
+        "trials_ms": [
+          4.008,
+          2.761,
+          7.886,
+          2.671,
+          3.808
+        ],
+        "status": "ok",
+        "recovered": true
+      }
+    },
+    {
+      "case": "3,000-frame traceback",
+      "input_bytes": 359403,
+      "ops": {
+        "compress": {
+          "median_ms": 67.734,
+          "min_ms": 45.655,
+          "max_ms": 86.445,
+          "trials_ms": [
+            61.058,
+            70.219,
+            86.445,
+            67.734,
+            45.655
+          ]
+        },
+        "store_put": {
+          "median_ms": 7.382,
+          "min_ms": 2.983,
+          "max_ms": 9.272,
+          "trials_ms": [
+            2.983,
+            3.403,
+            7.511,
+            7.382,
+            9.272
+          ]
+        },
+        "rewrite": {
+          "median_ms": 80.051,
+          "min_ms": 73.101,
+          "max_ms": 85.032,
+          "trials_ms": [
+            80.051,
+            80.117,
+            79.877,
+            73.101,
+            85.032
+          ]
+        }
+      },
+      "restore": null
+    },
+    {
+      "case": "600 KB patch",
+      "input_bytes": 432087,
+      "ops": {
+        "compress": {
+          "median_ms": 0.605,
+          "min_ms": 0.57,
+          "max_ms": 0.663,
+          "trials_ms": [
+            0.637,
+            0.593,
+            0.57,
+            0.605,
+            0.663
+          ]
+        },
+        "store_put": {
+          "median_ms": 4.738,
+          "min_ms": 3.482,
+          "max_ms": 6.406,
+          "trials_ms": [
+            3.482,
+            3.8,
+            4.738,
+            5.25,
+            6.406
+          ]
+        },
+        "rewrite": {
+          "median_ms": 1.469,
+          "min_ms": 1.403,
+          "max_ms": 1.599,
+          "trials_ms": [
+            1.469,
+            1.429,
+            1.403,
+            1.599,
+            1.47
+          ]
+        }
+      },
+      "restore": null
+    },
+    {
+      "case": "900-row SQL result",
+      "input_bytes": 46610,
+      "ops": {
+        "compress": {
+          "median_ms": 6.595,
+          "min_ms": 6.231,
+          "max_ms": 7.819,
+          "trials_ms": [
+            7.819,
+            6.479,
+            6.595,
+            6.872,
+            6.231
+          ]
+        },
+        "store_put": {
+          "median_ms": 0.751,
+          "min_ms": 0.691,
+          "max_ms": 0.769,
+          "trials_ms": [
+            0.691,
+            0.751,
+            0.746,
+            0.753,
+            0.769
+          ]
+        },
+        "rewrite": {
+          "median_ms": 17.696,
+          "min_ms": 14.194,
+          "max_ms": 19.335,
+          "trials_ms": [
+            19.335,
+            17.696,
+            14.194,
+            18.376,
+            16.553
+          ]
+        }
+      },
+      "restore": {
+        "median_ms": 1.252,
+        "min_ms": 1.084,
+        "max_ms": 2.554,
+        "trials_ms": [
+          2.554,
+          1.084,
+          1.175,
+          2.552,
+          1.252
+        ],
+        "status": "ok",
+        "recovered": true
+      }
+    },
+    {
+      "case": "8,000-line build log",
+      "input_bytes": 334921,
+      "ops": {
+        "compress": {
+          "median_ms": 40.279,
+          "min_ms": 35.33,
+          "max_ms": 41.419,
+          "trials_ms": [
+            41.419,
+            38.99,
+            40.878,
+            35.33,
+            40.279
+          ]
+        },
+        "store_put": {
+          "median_ms": 6.014,
+          "min_ms": 4.089,
+          "max_ms": 6.725,
+          "trials_ms": [
+            6.725,
+            4.089,
+            5.34,
+            6.637,
+            6.014
+          ]
+        },
+        "rewrite": {
+          "median_ms": 84.157,
+          "min_ms": 78.125,
+          "max_ms": 103.532,
+          "trials_ms": [
+            78.125,
+            83.044,
+            84.157,
+            103.532,
+            94.72
+          ]
+        }
+      },
+      "restore": {
+        "median_ms": 7.434,
+        "min_ms": 3.993,
+        "max_ms": 9.686,
+        "trials_ms": [
+          7.026,
+          7.464,
+          7.434,
+          3.993,
+          9.686
+        ],
+        "status": "ok",
+        "recovered": true
+      }
+    },
+    {
+      "case": "8,000-item JSON array",
+      "input_bytes": 206890,
+      "ops": {
+        "compress": {
+          "median_ms": 174.691,
+          "min_ms": 133.88,
+          "max_ms": 234.233,
+          "trials_ms": [
+            205.948,
+            234.233,
+            133.88,
+            156.815,
+            174.691
+          ]
+        },
+        "store_put": {
+          "median_ms": 2.004,
+          "min_ms": 1.923,
+          "max_ms": 2.132,
+          "trials_ms": [
+            2.093,
+            1.937,
+            1.923,
+            2.132,
+            2.004
+          ]
+        },
+        "rewrite": {
+          "median_ms": 154.937,
+          "min_ms": 150.777,
+          "max_ms": 253.144,
+          "trials_ms": [
+            180.642,
+            154.937,
+            153.697,
+            150.777,
+            253.144
+          ]
+        }
+      },
+      "restore": null
+    }
+  ],
+  "memory": {
+    "case": "3,000-frame traceback",
+    "input_bytes": 359403,
+    "peak_heap_kib": 701.5,
+    "rss_before_kib": 29876,
+    "rss_after_kib": 29928,
+    "rss_delta_kib": 52
+  }
+}

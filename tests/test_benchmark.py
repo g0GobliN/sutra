@@ -66,6 +66,54 @@ def test_the_patch_clue_is_visible_without_recovery():
     assert rows["600 KB patch"]["recovery_calls"] == 0
 
 
+def test_the_timing_policy_defers_instead_of_publishing_a_loaded_run():
+    """One runnable task per CPU is the line; above it the harness defers."""
+    quiet = {"load_1min": 0.4, "cpu_count": 4}
+    busy = {"load_1min": 20.8, "cpu_count": 4}
+    assert bench.load_policy(quiet)[0] is True
+    run, reason = bench.load_policy(busy)
+    assert run is False
+    assert "per CPU" in reason
+    assert bench.load_policy({"load_1min": None, "cpu_count": 4})[0] is False
+    assert bench.load_policy({"load_1min": 0.1, "cpu_count": None})[0] is False
+
+
+def test_environment_records_what_a_timing_needs_to_be_judged():
+    info = bench.environment()
+    for key in ("timestamp_utc", "python", "implementation", "platform",
+                "cpu_count", "load_1min", "git_sha", "git_dirty"):
+        assert key in info
+    assert info["timestamp_utc"].endswith("+00:00")
+
+
+def test_timed_keeps_every_trial_and_reports_the_spread():
+    stats = bench.timed(lambda: None, warmups=1, repeats=4)
+    assert len(stats["trials_ms"]) == 4
+    assert stats["min_ms"] <= stats["median_ms"] <= stats["max_ms"]
+    assert stats["median_ms"] >= 0
+
+
+def test_memory_reports_the_peak_heap_not_the_live_total():
+    """(current, peak) is easy to swap; that mistake under-reports by 1000x."""
+    payload = next(c for c in bench.build_payloads()
+                   if c["case"] == "3,000-frame traceback")
+    memory = bench.measure_memory(payload["text"], payload["case"])
+    assert memory["peak_heap_kib"] > 100, memory
+    assert memory["input_bytes"] == len(payload["text"].encode("utf-8"))
+
+
+def test_artifacts_are_consistent_and_tampering_is_detected(tmp_path):
+    assert bench.main(["--timing", "off", "--out", str(tmp_path)]) == 0
+    assert bench.verify_artifacts(tmp_path) == []
+
+    svg_path = tmp_path / "savings.svg"
+    original = svg_path.read_text(encoding="utf-8")
+    svg_path.write_text(original.replace("\u2192", "->"), encoding="utf-8")
+    problems = bench.verify_artifacts(tmp_path)
+    assert any("savings.svg" in problem for problem in problems), problems
+    assert bench.main(["--check", "--out", str(tmp_path)]) == 1
+
+
 def test_charts_are_well_formed_svg():
     rows = bench.measure()
     svg = bench.render_svg(rows)
