@@ -1,0 +1,100 @@
+{
+  "measured_on": "the machine that wrote this file",
+  "python": "3.13.5",
+  "entry_cap_bytes": 33554432,
+  "runs_per_case": 3,
+  "plain_entry_bytes": 32000001,
+  "json_entry_bytes": 32400015,
+  "cases": [
+    {
+      "operation": "full, 32 MB entry",
+      "median_ms": 19.2,
+      "worst_ms": 25.3,
+      "status": "too_large",
+      "content_bytes": 0,
+      "matches_found": null,
+      "returned_bytes": null,
+      "complete": false
+    },
+    {
+      "operation": "bytes page, 32 MB entry",
+      "median_ms": 25.0,
+      "worst_ms": 26.5,
+      "status": "ok",
+      "content_bytes": 8192,
+      "matches_found": null,
+      "returned_bytes": 8192,
+      "complete": false
+    },
+    {
+      "operation": "lines page, 32 MB entry",
+      "median_ms": 218.4,
+      "worst_ms": 251.9,
+      "status": "ok",
+      "content_bytes": 8100,
+      "matches_found": null,
+      "returned_bytes": 8100,
+      "complete": true
+    },
+    {
+      "operation": "search, token absent, 32 MB",
+      "median_ms": 353.5,
+      "worst_ms": 370.5,
+      "status": "ok",
+      "content_bytes": 0,
+      "matches_found": 0,
+      "returned_bytes": null,
+      "complete": true
+    },
+    {
+      "operation": "search, token in last line, 32 MB",
+      "median_ms": 380.3,
+      "worst_ms": 387.4,
+      "status": "ok",
+      "content_bytes": 349,
+      "matches_found": 1,
+      "returned_bytes": 349,
+      "complete": true
+    },
+    {
+      "operation": "full field, 32 MB JSON",
+      "median_ms": 228.5,
+      "worst_ms": 243.5,
+      "status": "too_large",
+      "content_bytes": 0,
+      "matches_found": null,
+      "returned_bytes": null,
+      "complete": false
+    },
+    {
+      "operation": "bytes field page, 32 MB JSON",
+      "median_ms": 226.2,
+      "worst_ms": 281.6,
+      "status": "ok",
+      "content_bytes": 8192,
+      "matches_found": null,
+      "returned_bytes": 8192,
+      "complete": false
+    },
+    {
+      "operation": "search absent, 32 MB JSON field",
+      "median_ms": 480.7,
+      "worst_ms": 496.6,
+      "status": "ok",
+      "content_bytes": 0,
+      "matches_found": 0,
+      "returned_bytes": null,
+      "complete": true
+    },
+    {
+      "operation": "search last line, 32 MB JSON field",
+      "median_ms": 504.4,
+      "worst_ms": 566.4,
+      "status": "ok",
+      "content_bytes": 349,
+      "matches_found": 1,
+      "returned_bytes": 349,
+      "complete": true
+    }
+  ]
+}

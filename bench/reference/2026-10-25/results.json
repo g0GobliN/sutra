@@ -1,0 +1,74 @@
+[
+  {
+    "case": "12,000-line command output",
+    "note": "plain text, head + tail",
+    "rule": "head-tail",
+    "before_bytes": 60893,
+    "after_bytes": 18589,
+    "saved_bytes": 42304,
+    "saved_pct": 69.5
+  },
+  {
+    "case": "JSON tool envelope",
+    "note": "decoded, string fields trimmed",
+    "rule": "json-fields",
+    "before_bytes": 85921,
+    "after_bytes": 19197,
+    "saved_bytes": 66724,
+    "saved_pct": 77.7
+  },
+  {
+    "case": "test run, 2,000 cases",
+    "note": "repeat collapse + head/tail",
+    "rule": "head-tail",
+    "before_bytes": 99776,
+    "after_bytes": 18552,
+    "saved_bytes": 81224,
+    "saved_pct": 81.4
+  },
+  {
+    "case": "3,000-frame traceback",
+    "note": "error end preserved",
+    "rule": "traceback",
+    "before_bytes": 359403,
+    "after_bytes": 10318,
+    "saved_bytes": 349085,
+    "saved_pct": 97.1
+  },
+  {
+    "case": "600 KB patch",
+    "note": "never rewritten (safety case)",
+    "rule": "diff-kept",
+    "before_bytes": 432087,
+    "after_bytes": 432087,
+    "saved_bytes": 0,
+    "saved_pct": 0.0
+  },
+  {
+    "case": "900-row SQL result",
+    "note": "head + tail",
+    "rule": "head-tail",
+    "before_bytes": 46610,
+    "after_bytes": 18532,
+    "saved_bytes": 28078,
+    "saved_pct": 60.2
+  },
+  {
+    "case": "8,000-line build log",
+    "note": "one error buried in the middle",
+    "rule": "head-tail",
+    "before_bytes": 334921,
+    "after_bytes": 18562,
+    "saved_bytes": 316359,
+    "saved_pct": 94.5
+  },
+  {
+    "case": "8,000-item JSON array",
+    "note": "array stays an array (shape kept)",
+    "rule": "json-kept",
+    "before_bytes": 206890,
+    "after_bytes": 206890,
+    "saved_bytes": 0,
+    "saved_pct": 0.0
+  }
+]
