@@ -44,6 +44,54 @@ def test_store_permissions_are_private(sutra, store):
     assert stat.S_IMODE(os.stat(entry.meta_path).st_mode) == 0o600
 
 
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permissions")
+def test_a_preexisting_loose_store_directory_is_tightened(sutra, tmp_path):
+    """Regression: 0700 was only applied when the directory was created.
+
+    A store made by an older version, or pre-created in a shared parent, kept
+    its traversable mode and leaked every entry name to any local user.
+    """
+    directory = tmp_path / "store"
+    directory.mkdir()
+    os.chmod(directory, 0o755)
+    store = make_store(sutra, directory=directory)
+    entry = store.put("payload")
+    assert entry is not None
+    assert stat.S_IMODE(os.stat(directory).st_mode) == 0o700
+    assert store.get(entry.id).status == "ok"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="symlinks")
+def test_symlinked_metadata_is_not_followed(sutra, store, tmp_path):
+    """Regression: data reads used O_NOFOLLOW, but metadata used a plain open."""
+    entry = store.put("payload")
+    elsewhere = tmp_path / "meta-copy.json"
+    elsewhere.write_bytes(open(entry.meta_path, "rb").read())
+    os.unlink(entry.meta_path)
+    os.symlink(elsewhere, entry.meta_path)
+    assert store.get(entry.id).status == "missing"
+
+
+def test_failed_metadata_write_leaves_no_orphan(sutra, store, monkeypatch):
+    """Regression: a failed metadata write left the already-written data file.
+
+    The entry is unreadable without its metadata, so the bytes stayed on disk
+    (and counted against the quota) until the next full sweep.
+    """
+    real_write = store._write_atomic
+
+    def flaky(path, data):
+        if path.endswith(".json"):
+            raise OSError("disk full")
+        return real_write(path, data)
+
+    monkeypatch.setattr(store, "_write_atomic", flaky)
+    assert store.put("payload") is None
+    leftovers = [name for name in os.listdir(store.dir) if name.startswith("su_")]
+    assert leftovers == []
+    assert store.usage() == (0, 0)
+
+
 def test_meta_does_not_contain_the_payload(sutra, store):
     entry = store.put("TOPSECRET-" + "x" * 100)
     assert "TOPSECRET" not in open(entry.meta_path, encoding="utf-8").read()

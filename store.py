@@ -6,17 +6,22 @@ elided" into "45,231 bytes you can still read".
 
 Threat model and limits:
 
-- The directory is created ``0700``; every file is ``0600`` and opened
-  ``O_NOFOLLOW``. A symlinked store directory is refused, not followed.
+- The directory is ``0700``: created that way, and an existing directory is
+  tightened to it. A directory owned by another user, a symlink, or a mode
+  that cannot be restricted makes the store refuse to operate. Every file is
+  ``0600`` and opened ``O_NOFOLLOW`` (data and metadata alike).
 - Identifiers are 128-bit random and validated against ``^su_[0-9a-f]{32}$``
   before they touch the filesystem, so a request cannot name a path.
-- Writes are atomic: a temp file in the same directory is fsynced and renamed
-  into place, so an interrupted write can never be read as a complete entry.
+- Writes are atomic: a temp file in the same directory is renamed into place,
+  so an interrupted write can never be read as a complete entry. There is no
+  fsync — this is a cache, and a lost entry is reported missing rather than
+  served wrong. A failed metadata write removes the data file it belongs to.
 - Storage is bounded by a per-entry cap, a total quota, an entry count and a
   time-to-live. Writes keep an in-process usage total and sweep oldest-first
   only when a budget is exceeded or a sweep is due, so a write costs the same
   whether the store holds ten entries or the full two thousand.
-- Contents are never logged. Only sizes, hashes and timestamps are recorded.
+- Contents are never logged. Only sizes, hashes, timestamps, tool name and a
+  truncated session id are recorded in metadata.
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import logging
 import os
 import re
 import secrets
+import stat
 import threading
 import time
 from dataclasses import dataclass
@@ -143,9 +149,35 @@ class Store:
             os.lstat(self.dir)
         except FileNotFoundError:
             os.makedirs(self.dir, mode=0o700, exist_ok=True)
+        else:
+            if os.path.islink(self.dir) or not os.path.isdir(self.dir):
+                raise StoreUnavailable(
+                    f"store path is not a plain directory: {self.dir}")
+        self._require_private_dir()
+
+    def _require_private_dir(self) -> None:
+        """Enforce 0700 on an existing directory, not only at creation.
+
+        A directory made by an older version, or pre-created by another local
+        user in a shared parent such as ``/tmp``, must not be trusted: a
+        world-traversable store leaks the entry names, and an attacker-owned
+        one can swap files under us. If ownership or mode cannot be made safe,
+        the store refuses to operate rather than writing payloads there.
+        """
+        if os.name != "posix":  # mode bits are not the access control on Windows
             return
-        if os.path.islink(self.dir) or not os.path.isdir(self.dir):
-            raise StoreUnavailable(f"store path is not a plain directory: {self.dir}")
+        info = os.stat(self.dir)
+        if info.st_uid != os.geteuid():
+            raise StoreUnavailable(
+                f"store directory is owned by another user (uid {info.st_uid}): "
+                f"{self.dir}")
+        if stat.S_IMODE(info.st_mode) & 0o077:
+            try:
+                os.chmod(self.dir, 0o700)
+            except OSError as exc:
+                raise StoreUnavailable(
+                    "store directory permissions could not be restricted: "
+                    f"{self.dir} ({exc})") from exc
 
     def available(self) -> bool:
         try:
@@ -208,9 +240,11 @@ class Store:
         if len(data) > self.config.max_entry_bytes:
             return None
         created = time.time() if now is None else now
+        entry_id = "su_" + secrets.token_hex(16)
+        data_path = self.data_path(entry_id)
+        meta_path = self.meta_path(entry_id)
         try:
             self._ensure_dir()
-            entry_id = "su_" + secrets.token_hex(16)
             meta = {
                 "id": entry_id,
                 "created_at": created,
@@ -222,19 +256,27 @@ class Store:
             }
             # Meta last: a data file without meta is invisible to readers.
             self._ensure_accounting(created)
-            self._write_atomic(self.data_path(entry_id), data)
-            self._write_atomic(self.meta_path(entry_id),
+            self._write_atomic(data_path, data)
+            self._write_atomic(meta_path,
                                json.dumps(meta, sort_keys=True).encode("utf-8"))
             # Enforce the budget *after* writing, so the store is never over the
             # limit while a marker claims the original is available. Most writes
             # are under budget and skip the sweep entirely.
             if self._note_write(len(data), created):
                 self.prune(now=created)
-            if not os.path.exists(self.data_path(entry_id)):
+            if not os.path.exists(data_path):
                 return None
         except (OSError, StoreUnavailable) as exc:
+            # Never leave half an entry behind: the data file is useless without
+            # its metadata and would occupy quota until the next sweep.
+            self._unlink(data_path)
+            self._unlink(meta_path)
             logger.warning("sutra: could not retain an original (%s)", exc)
             return None
+        except BaseException:
+            self._unlink(data_path)
+            self._unlink(meta_path)
+            raise
         return Entry(
             id=entry_id,
             original_bytes=len(data),
@@ -295,14 +337,8 @@ class Store:
             return Lookup(None, "unavailable")
         now = time.time() if now is None else now
         meta_path = self.meta_path(entry_id)
-        try:
-            with open(meta_path, "rb") as fh:
-                meta = json.loads(fh.read(65_536).decode("utf-8"))
-        except FileNotFoundError:
-            return Lookup(None, "missing")
-        except (OSError, ValueError, UnicodeDecodeError):
-            return Lookup(None, "missing")
-        if not isinstance(meta, dict):
+        meta = self._read_meta(entry_id)
+        if meta is None:
             return Lookup(None, "missing")
         try:
             created = float(meta.get("created_at") or 0)
@@ -469,8 +505,15 @@ class Store:
         return report
 
     def _read_meta(self, entry_id: str) -> dict[str, Any] | None:
+        """Read metadata without following a symlink.
+
+        Data reads were already ``O_NOFOLLOW``; metadata was not, so a symlink
+        at ``su_…json`` could redirect the lookup. It is treated as missing
+        (and its data file is collected by the next sweep as an orphan).
+        """
         try:
-            with open(self.meta_path(entry_id), "rb") as fh:
+            fd = os.open(self.meta_path(entry_id), os.O_RDONLY | O_NOFOLLOW)
+            with os.fdopen(fd, "rb") as fh:
                 meta = json.loads(fh.read(65_536).decode("utf-8"))
         except (OSError, ValueError, UnicodeDecodeError):
             return None
