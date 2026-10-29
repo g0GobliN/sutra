@@ -3,28 +3,41 @@
 
 Run from the repository root:
 
-    python3 bench/benchmark.py
+    python3 bench/benchmark.py                 # timings only on an idle machine
+    python3 bench/benchmark.py --timing force  # record a contended run anyway
+    python3 bench/benchmark.py --check         # re-verify existing artifacts
 
-Writes ``bench/results.json``, ``bench/recovery.json``, ``bench/savings.svg``
-and ``bench/recovery.svg``, and prints two markdown tables with the same
-numbers. Everything here is deterministic: the payloads are generated, the
-compressor and the store are the real plugin, and nothing touches the network.
+Writes ``bench/results.json``, ``bench/recovery.json``, ``bench/timing.json``,
+``bench/savings.svg`` and ``bench/recovery.svg``, and prints the same numbers
+as markdown. The byte and recovery measurements are deterministic: the payloads
+are generated, the compressor and the store are the real plugin, and nothing
+touches the network.
 
-What is measured: bytes, recovery calls, whether a buried clue is reachable,
-and the disk cost of retention. What is *not* measured here: model input
-tokens, provider cost and task success — those need a live model and a task
-harness; see docs/benchmark.md. No token number in this repository is derived
-from a byte count.
+Timing has a load policy. A representative number needs a machine with roughly
+one runnable task per CPU; above that the harness writes ``"status":
+"deferred"`` with the measured load and no timings, rather than publishing a
+contended figure. Every timing it does record keeps the raw trials, the
+median, the min/max spread, and the environment (Python, platform, CPUs, RAM,
+load, git SHA, timestamp) so the number can be judged.
+
+What is *not* measured here: model input tokens, provider cost and task
+success — those need a live model and a task harness; see docs/benchmark.md.
+No token number in this repository is derived from a byte count.
 """
 
 from __future__ import annotations
 
+import argparse
+import datetime
 import importlib.util
 import json
 import os
 import pathlib
+import platform
 import re
 import shutil
+import statistics
+import subprocess
 import sys
 import tempfile
 import time
@@ -38,6 +51,14 @@ sys.modules["sutra_bench_pkg"] = sutra
 spec.loader.exec_module(sutra)
 
 ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
+
+TIMING_REPEATS = 5
+TIMING_WARMUPS = 1
+# One runnable task per CPU is already contention: on the development host a
+# 20 ms measurement moved to 36 ms at load 19 on 4 CPUs, with individual trials
+# spanning 76-147 ms. A timing run above this line is recorded, never published
+# as representative.
+LOAD_PER_CPU_LIMIT = 1.0
 
 
 def build_payloads() -> "list[dict]":
@@ -172,41 +193,175 @@ def measure_recovery() -> "list[dict]":
         shutil.rmtree(home, ignore_errors=True)
 
 
-def measure_overhead(repeats: int = 3) -> "list[dict]":
-    """Wall-clock cost of one rewrite, without and with retention, and peak memory."""
+def environment() -> "dict":
+    """The conditions a reader needs to decide whether a timing is comparable.
+
+    Collected without network access and without failing the run: a platform
+    that lacks ``/proc`` or ``git`` simply records ``None`` for that field.
+    """
+    info: dict = {
+        "timestamp_utc": datetime.datetime.now(
+            datetime.timezone.utc).replace(microsecond=0).isoformat(),
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "processor": platform.processor(),
+        "cpu_count": os.cpu_count(),
+        "load_1min": None,
+        "total_memory_bytes": None,
+        "git_sha": None,
+        "git_dirty": None,
+    }
+    try:
+        info["load_1min"] = round(os.getloadavg()[0], 2)
+    except (OSError, AttributeError):  # no load average on this platform
+        pass
+    try:
+        info["total_memory_bytes"] = (
+            os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (ValueError, OSError, AttributeError):
+        pass
+    try:
+        info["git_sha"] = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+            text=True, timeout=10).stdout.strip() or None
+        info["git_dirty"] = bool(subprocess.run(
+            ["git", "status", "--porcelain"], cwd=ROOT, capture_output=True,
+            text=True, timeout=10).stdout.strip())
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return info
+
+
+def load_policy(info: "dict", limit: float = LOAD_PER_CPU_LIMIT) -> "tuple[bool, str]":
+    """Can this machine's timings be called representative?
+
+    Deliberately conservative: one runnable task per CPU is the line. The
+    harness never makes a machine idle by stopping other work; it defers.
+    """
+    load = info.get("load_1min")
+    cpus = info.get("cpu_count")
+    if load is None or not cpus:
+        return False, "load average or CPU count is unavailable on this platform"
+    per_cpu = load / cpus
+    if per_cpu > limit:
+        return False, (
+            f"1-min load {load:.2f} on {cpus} CPUs is {per_cpu:.2f} per CPU "
+            f"(limit {limit:.2f}); a representative timing needs an idle machine")
+    return True, (f"1-min load {load:.2f} on {cpus} CPUs is {per_cpu:.2f} per CPU "
+                  f"(limit {limit:.2f})")
+
+
+def timed(call, *, warmups: int = TIMING_WARMUPS,
+          repeats: int = TIMING_REPEATS) -> "dict":
+    """Time one callable, keeping every trial rather than a cherry-picked best."""
+    for _ in range(max(0, warmups)):
+        call()
+    trials = []
+    for _ in range(repeats):
+        started = time.perf_counter()
+        call()
+        trials.append(round((time.perf_counter() - started) * 1000, 3))
+    return {
+        "median_ms": round(statistics.median(trials), 3),
+        "min_ms": min(trials),
+        "max_ms": max(trials),
+        "trials_ms": trials,
+    }
+
+
+def _rss_kib() -> "int | None":
+    """Resident set size of this process, where the platform exposes it."""
+    try:
+        with open("/proc/self/status", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("VmRSS:"):
+                    return int(line.split()[1])
+    except OSError:
+        pass
+    return None
+
+
+def measure_memory(text: str, case: str) -> "dict":
+    """Two different memory numbers, kept apart on purpose.
+
+    ``peak_heap_kib`` is tracemalloc's peak Python allocation during the call
+    (the input string already exists, so it is not included). ``rss_delta_kib``
+    is the process resident set before and after the same call: it includes
+    allocator and page-cache effects, and can be negative. Neither is the size
+    of the payload and neither is total machine memory.
+    """
+    before = _rss_kib()
+    tracemalloc.start()
+    sutra.process_result({"output": text}, tool_name="terminal")
+    _, peak = tracemalloc.get_traced_memory()  # (current, peak), not the reverse
+    tracemalloc.stop()
+    after = _rss_kib()
+    return {
+        "case": case,
+        "input_bytes": len(text.encode("utf-8")),
+        "peak_heap_kib": round(peak / 1024, 1),
+        "rss_before_kib": before,
+        "rss_after_kib": after,
+        "rss_delta_kib": (None if before is None or after is None
+                          else after - before),
+    }
+
+
+def measure_timing(*, repeats: int = TIMING_REPEATS) -> "dict":
+    """Wall clock per phase: compression, retention, the full rewrite, retrieval.
+
+    These are separate numbers because they answer separate questions. The
+    store write is the cost of keeping the original recoverable; ``rewrite`` is
+    what a host actually runs (classify, compress, retain, compress again so
+    the marker can quote a real id); ``restore`` is the price of asking for the
+    evidence back.
+    """
     rows = []
-    for case in build_payloads():
-        text = case["text"]
-        # Warm up: the first call in a fresh process pays for filesystem and
-        # entropy set-up that is not part of steady-state processing.
-        sutra.compress(text)
-        plain = []
-        for _ in range(repeats):
-            started = time.perf_counter()
-            sutra.compress(text)
-            plain.append((time.perf_counter() - started) * 1000)
-        previous_home = os.environ.get("HERMES_HOME")
-        home = tempfile.mkdtemp(prefix="sutra-timing-")
-        os.environ["HERMES_HOME"] = home
-        try:
-            sutra.compress_result({"output": text}, tool_name="terminal")
-            stored = []
-            for _ in range(repeats):
-                started = time.perf_counter()
-                sutra.compress_result({"output": text}, tool_name="terminal")
-                stored.append((time.perf_counter() - started) * 1000)
-        finally:
-            if previous_home is None:
-                os.environ.pop("HERMES_HOME", None)
-            else:
-                os.environ["HERMES_HOME"] = previous_home
-            shutil.rmtree(home, ignore_errors=True)
-        rows.append({
-            "case": case["case"],
-            "input_bytes": len(text.encode("utf-8")),
-            "compress_ms": round(min(plain), 2),
-            "with_store_ms": round(min(stored), 2),
-        })
+    previous_home = os.environ.get("HERMES_HOME")
+    home = tempfile.mkdtemp(prefix="sutra-timing-")
+    os.environ["HERMES_HOME"] = home
+    try:
+        store = sutra.store.Store(
+            sutra.store.StoreConfig.from_config(sutra.configuration()))
+        for case in build_payloads():
+            text = case["text"]
+            clue = case["clue"]
+            ops = {
+                "compress": timed(lambda t=text: sutra.compress(t), repeats=repeats),
+                # A fresh id and two atomic writes per call: this is the real
+                # retention cost, not a cache hit.
+                "store_put": timed(
+                    lambda t=text: store.put(t, tool_name="bench"), repeats=repeats),
+                "rewrite": timed(
+                    lambda t=text: sutra.process_result(
+                        {"output": t}, tool_name="terminal"), repeats=repeats),
+            }
+            result = sutra.process_result({"output": text}, tool_name="terminal")
+            visible = result["output"] if isinstance(result, dict) else result
+            entry = ID_RE.search(visible)
+            restore = None
+            if entry is not None and clue and clue not in visible:
+                request = {"id": entry.group(1), "mode": "search", "query": clue,
+                           "max_matches": 1, "context": 1}
+                payload = json.loads(sutra.restore(request))
+                restore = timed(lambda r=request: sutra.restore(r), repeats=repeats)
+                restore["status"] = payload.get("status")
+                restore["recovered"] = clue in payload.get("content", "")
+            rows.append({
+                "case": case["case"],
+                "input_bytes": len(text.encode("utf-8")),
+                "ops": ops,
+                "restore": restore,
+            })
+    finally:
+        if previous_home is None:
+            os.environ.pop("HERMES_HOME", None)
+        else:
+            os.environ["HERMES_HOME"] = previous_home
+        shutil.rmtree(home, ignore_errors=True)
+
     rewritten = {r["case"] for r in measure() if r["saved_bytes"] > 0}
     biggest = max((c for c in build_payloads() if c["case"] in rewritten),
                   key=lambda c: len(c["text"]))
@@ -214,22 +369,14 @@ def measure_overhead(repeats: int = 3) -> "list[dict]":
     home = tempfile.mkdtemp(prefix="sutra-mem-")
     os.environ["HERMES_HOME"] = home
     try:
-        tracemalloc.start()
-        sutra.compress_result({"output": biggest["text"]}, tool_name="terminal")
-        _, peak = tracemalloc.get_traced_memory()
-        tracemalloc.stop()
+        memory = measure_memory(biggest["text"], biggest["case"])
     finally:
         if previous_home is None:
             os.environ.pop("HERMES_HOME", None)
         else:
             os.environ["HERMES_HOME"] = previous_home
         shutil.rmtree(home, ignore_errors=True)
-    rows.append({
-        "case": f"peak allocation while rewriting {biggest['case']}",
-        "input_bytes": len(biggest["text"].encode("utf-8")),
-        "peak_kib": round(peak / 1024, 1),
-    })
-    return rows
+    return {"cases": rows, "memory": memory}
 
 
 # --- the charts ------------------------------------------------------------
@@ -369,17 +516,98 @@ def render_recovery_svg(rows: "list[dict]") -> str:
     return "\n".join(parts)
 
 
-def main() -> int:
-    rows = measure()
-    recovery = measure_recovery()
-    overhead = measure_overhead()
-    out_dir = ROOT / "bench"
-    (out_dir / "results.json").write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-    (out_dir / "recovery.json").write_text(json.dumps(recovery, indent=2) + "\n", encoding="utf-8")
-    (out_dir / "timing.json").write_text(json.dumps(overhead, indent=2) + "\n", encoding="utf-8")
-    (out_dir / "savings.svg").write_text(render_svg(rows), encoding="utf-8")
-    (out_dir / "recovery.svg").write_text(render_recovery_svg(recovery), encoding="utf-8")
+def verify_artifacts(out_dir: "pathlib.Path | str") -> "list[str]":
+    """Check that artifacts agree with each other and with a fresh measurement.
 
+    The docs tables and the SVG footers are claims. If a regenerated number
+    disagrees with an artifact, either the harness is wrong or an artifact was
+    hand-edited without a re-run; both deserve a non-zero exit.
+    """
+    out = pathlib.Path(out_dir)
+    problems: "list[str]" = []
+
+    def load(name: str):
+        try:
+            return json.loads((out / name).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            problems.append(f"{name}: {exc}")
+            return None
+
+    results = load("results.json")
+    recovery = load("recovery.json")
+    timing = load("timing.json")
+    try:
+        savings = (out / "savings.svg").read_text(encoding="utf-8")
+        recovery_svg = (out / "recovery.svg").read_text(encoding="utf-8")
+    except OSError as exc:
+        problems.append(f"svg: {exc}")
+        savings = recovery_svg = ""
+
+    if results is not None:
+        if results != measure():
+            problems.append(
+                "results.json does not match a fresh deterministic measurement")
+        total_before = sum(r["before_bytes"] for r in results)
+        total_after = sum(r["after_bytes"] for r in results)
+        pct = round(100 * (total_before - total_after) / total_before, 1)
+        footer = f"{human(total_before)} → {human(total_after)}"
+        for row in results:
+            if row["case"] not in savings:
+                problems.append(f"savings.svg is missing {row['case']}")
+            if row["before_bytes"] - row["after_bytes"] != row["saved_bytes"]:
+                problems.append(f"{row['case']}: saved_bytes is not before - after")
+            if not 0.0 <= row["saved_pct"] <= 100.0:
+                problems.append(f"{row['case']}: saved_pct outside 0-100")
+        if footer not in savings or f"({pct}% saved)" not in savings:
+            problems.append("savings.svg footer disagrees with results.json")
+
+    if recovery is not None:
+        by_case = {r["case"]: r for r in results or []}
+        for row in recovery:
+            if row["bytes_to_clue"] != row["visible_bytes"] + row["recovery_response_bytes"]:
+                problems.append(
+                    f"{row['case']}: bytes_to_clue is not visible + response")
+            if row["recovery_calls"] and row["recovery_status"] != "ok":
+                problems.append(
+                    f"{row['case']}: a call was made but status is {row['recovery_status']!r}")
+            if not row["clue_recovered"]:
+                problems.append(f"{row['case']}: planted clue was not recovered")
+            expected = by_case.get(row["case"], {}).get("before_bytes")
+            if expected is not None and row["original_bytes"] != expected:
+                problems.append(
+                    f"{row['case']}: original_bytes disagrees with results.json")
+            if row["case"] not in recovery_svg:
+                problems.append(f"recovery.svg is missing {row['case']}")
+        if all(r["clue_recovered"] for r in recovery) and \
+                "every buried clue was retrieved" not in recovery_svg:
+            problems.append("recovery.svg footer disagrees with recovery.json")
+
+    if timing is None:
+        return problems
+    if timing.get("status") not in ("measured", "deferred"):
+        problems.append("timing.json has no valid status")
+    if timing.get("status") == "measured":
+        repeats = timing.get("method", {}).get("repeats")
+        for row in timing.get("cases", []):
+            for name, op in row.get("ops", {}).items():
+                trials = op.get("trials_ms", [])
+                if repeats is not None and len(trials) != repeats:
+                    problems.append(
+                        f"{row['case']} {name}: {len(trials)} trials, expected {repeats}")
+                if not op["min_ms"] <= op["median_ms"] <= op["max_ms"]:
+                    problems.append(
+                        f"{row['case']} {name}: median outside min/max")
+    elif timing.get("representative"):
+        problems.append("timing.json is deferred but marked representative")
+    return problems
+
+
+def _write(path: pathlib.Path, payload) -> None:
+    text = payload if isinstance(payload, str) else json.dumps(payload, indent=2) + "\n"
+    path.write_text(text, encoding="utf-8")
+
+
+def _print_tables(rows: "list[dict]", recovery: "list[dict]", timing: "dict") -> None:
     print("| payload | rule | before | after | saved |")
     print("|---|---|---|---|---|")
     for r in rows:
@@ -396,18 +624,96 @@ def main() -> int:
         print(f'| {r["case"]} | {human(r["visible_bytes"])} | {r["recovery_calls"]} | '
               f'{human(r["recovery_response_bytes"])} | {human(r["bytes_to_clue"])} | '
               f'{"yes" if r["clue_recovered"] else "NO"} |')
-    print("\n| payload | compress | compress + store |")
-    print("|---|---|---|")
-    for r in overhead:
-        if "compress_ms" in r:
-            print(f'| {r["case"]} | {r["compress_ms"]} ms | {r["with_store_ms"]} ms |')
-    for r in overhead:
-        if "peak_kib" in r:
-            print(f'\n{r["case"]}: {r["peak_kib"]} KiB additional heap for '
-                  f'{human(r["input_bytes"])} of input (tracemalloc, excludes the input)')
-    print(f"\nwrote {out_dir / 'results.json'}, {out_dir / 'recovery.json'}, "
-          f"{out_dir / 'timing.json'}, {out_dir / 'savings.svg'}, {out_dir / 'recovery.svg'}")
-    return 0 if all(r["clue_recovered"] for r in recovery) else 1
+
+    if timing["status"] == "measured":
+        print("\n| payload | compress | store write | full rewrite | restore |")
+        print("|---|---|---|---|---|")
+        for row in timing["cases"]:
+            ops = row["ops"]
+            restore = row.get("restore")
+            restore_cell = f'{restore["median_ms"]} ms' if restore else "n/a"
+            print(f'| {row["case"]} | {ops["compress"]["median_ms"]} ms | '
+                  f'{ops["store_put"]["median_ms"]} ms | '
+                  f'{ops["rewrite"]["median_ms"]} ms | {restore_cell} |')
+        print(f'\nrepresentative: {"yes" if timing["representative"] else "NO"} — '
+              f'{timing["reason"]}')
+        memory = timing.get("memory")
+        if memory:
+            print(f'peak Python heap while rewriting {memory["case"]}: '
+                  f'{memory["peak_heap_kib"]} KiB (tracemalloc, input excluded)')
+            if memory.get("rss_delta_kib") is not None:
+                print(f'process RSS across the same call: '
+                      f'{memory["rss_delta_kib"]} KiB '
+                      f'({memory["rss_before_kib"]} → {memory["rss_after_kib"]} KiB)')
+    else:
+        print(f'\ntiming {timing["status"]}: {timing["reason"]}')
+        print("no timing table is published for this run; re-run on an idle machine, "
+              "or use --timing force to record a contended one")
+
+
+def main(argv: "list[str] | None" = None,
+         out_dir: "pathlib.Path | str | None" = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--timing", choices=("auto", "force", "off"), default="auto",
+                        help="auto defers on a loaded machine; force records a contended run")
+    parser.add_argument("--repeats", type=int, default=TIMING_REPEATS)
+    parser.add_argument("--check", action="store_true",
+                        help="verify the existing artifacts; write nothing")
+    parser.add_argument("--out", default=None,
+                        help="write artifacts here instead of bench/ (isolated runs)")
+    args = parser.parse_args(argv)
+    if args.repeats < 1:
+        parser.error("--repeats must be at least 1")
+    out = pathlib.Path(args.out) if args.out else (
+        pathlib.Path(out_dir) if out_dir is not None else ROOT / "bench")
+
+    if args.check:
+        problems = verify_artifacts(out)
+        for problem in problems:
+            print(f"INCONSISTENT: {problem}")
+        print("artifacts are consistent" if not problems
+              else f"{len(problems)} problem(s) in {out}")
+        return 1 if problems else 0
+
+    rows = measure()
+    recovery = measure_recovery()
+    info = environment()
+    if args.timing == "off":
+        status, reason = "deferred", "timing disabled with --timing off"
+    elif args.timing == "force":
+        status, reason = "measured", "forced with --timing force: not representative"
+    else:
+        run, reason = load_policy(info)
+        status = "measured" if run else "deferred"
+    timing = {
+        "status": status,
+        "representative": status == "measured" and args.timing == "auto",
+        "reason": reason,
+        "environment": info,
+        "method": {
+            "warmups": TIMING_WARMUPS,
+            "repeats": args.repeats,
+            "statistic": "median",
+            "clock": "time.perf_counter",
+            "load_limit_per_cpu": LOAD_PER_CPU_LIMIT,
+        },
+    }
+    if status == "measured":
+        timing.update(measure_timing(repeats=args.repeats))
+
+    out.mkdir(parents=True, exist_ok=True)
+    _write(out / "results.json", rows)
+    _write(out / "recovery.json", recovery)
+    _write(out / "timing.json", timing)
+    _write(out / "savings.svg", render_svg(rows))
+    _write(out / "recovery.svg", render_recovery_svg(recovery))
+
+    _print_tables(rows, recovery, timing)
+    problems = verify_artifacts(out)
+    for problem in problems:
+        print(f"INCONSISTENT: {problem}")
+    print(f"\nwrote {out} ({'consistent' if not problems else 'INCONSISTENT'})")
+    return 0 if not problems and all(r["clue_recovered"] for r in recovery) else 1
 
 
 if __name__ == "__main__":
