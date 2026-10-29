@@ -90,6 +90,46 @@ def test_diff_payload_comes_back_untouched():
     assert payload["output"] == patch
 
 
+def test_json_array_of_small_objects_is_returned_byte_identical():
+    """An array preview would pass the top-level-type check but break item
+    consumers; the CLI must return the array untouched instead."""
+    data = [{"id": i, "tag": "x"} for i in range(8000)]
+    text = json.dumps(data)
+    result = run_cli(["compress"], stdin_text=text)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["changed"] is False
+    assert payload["id"] is None
+    assert payload["output"] == text
+    assert len(json.loads(payload["output"])) == len(data)
+    assert all(isinstance(item, dict) and set(item) == {"id", "tag"}
+               for item in json.loads(payload["output"]))
+
+
+def test_json_array_of_long_strings_keeps_every_element():
+    """Safe array compression rewrites string values in place: length, element
+    types and keys stay, and the original is recoverable."""
+    data = ["\n".join(f"line {j}" for j in range(800)) for _ in range(4)]
+    text = json.dumps(data)
+    result = run_cli(["compress"], stdin_text=text)
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(result.stdout)
+    assert payload["changed"] is True
+    parsed = json.loads(payload["output"])
+    assert isinstance(parsed, list)
+    assert len(parsed) == len(data)
+    assert all(isinstance(item, str) for item in parsed)
+    assert "[sutra:" in parsed[0]
+
+    restored = run_cli(["restore", "--id", payload["id"], "--mode", "full",
+                        "--max-bytes", "65536"])
+    assert restored.returncode == 0, restored.stderr
+    response = json.loads(restored.stdout)
+    assert response["status"] == "ok"
+    assert response["content"] == text
+    assert response["sha256_verified"] is True
+
+
 def test_missing_file_is_a_clean_error():
     result = run_cli(["compress", "--file", "/nonexistent/path"])
     assert result.returncode == 1
