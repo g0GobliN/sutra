@@ -4,6 +4,23 @@
 
 ### Added
 
+- **Host-agnostic adapter seam** (`core.py`): `Outcome`, `process_text`,
+  `process_result`, `restore`, `outcome_json`, and the evidence-tool bypass
+  list. The Hermes middleware, CLI, MCP server and Claude Code hook translate
+  their native result into the seam and write the returned value back;
+  compression, eligibility, size, safety, retention, metrics and recovery stay
+  in the engine/store/recovery modules. The CLI and MCP server serialize the
+  same `Outcome` instead of re-parsing the marker text to reconstruct the id.
+- **Claude Code `PostToolUse` hook** (`scripts/sutra-claude-code-hook.py`):
+  replaces a tool result before the model sees it via
+  `hookSpecificOutput.updatedToolOutput`; recovery stays on the existing MCP
+  `sutra_restore` path. Non-text results pass through; parse, import and
+  internal errors fail open; evidence tools are skipped so a second pass is a
+  no-op. Hook-level tests invoke the real hook process with a `PostToolUse`
+  JSON payload; no live Claude Code session was run (the local CLI is
+  unauthenticated).
+- `docs/integrations.md`: an explicit automatic-vs-manual matrix. MCP tool
+  registration is documented as manual, not interception.
 - Generic adapters over the shared deterministic core — no compression or
   recovery logic duplicated anywhere:
   - **MCP stdio server** (`scripts/sutra-mcp-server.py`, JSON-RPC 2.0,
@@ -61,6 +78,12 @@
   is bounded at 120 s by default (over 2× the slowest 44.5 s observed here;
   set it with `--probe-timeout`) and reports "could not read the live plugin
   state" instead of a misleading plugin-mismatch abort.
+- The bundled scripts share one package loader, and the `sutra` / `sutra-mcp`
+  handover makes it importable: those commands run a script through `runpy`,
+  which — unlike a direct execution — does not put `scripts/` on `sys.path`.
+  Without the fix the installed commands failed with `No module named
+  '_sutra'`; a test now runs the real handover from a directory where only the
+  package root is importable.
 
 ### Documentation
 
