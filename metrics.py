@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import stat
 import threading
 import time
 from typing import Any
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 _SCOPE_NOTE = ("Counters cover this Hermes plugin-host process only; they reset on "
                "restart. The JSONL stats log is durable and retains rewritten "
                "results only.")
+
+# Never follow a symlink planted at the stats path: appending JSON through one
+# writes to whatever it points at.
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
 
 _LOCK = threading.Lock()
 _RESTORES: dict[str, int] = {}
@@ -112,7 +117,8 @@ def _rotate_stats(path: str, limit: int) -> None:
     if limit <= 0:
         return
     try:
-        if os.path.getsize(path) < limit:
+        info = os.stat(path, follow_symlinks=False)
+        if not stat.S_ISREG(info.st_mode) or info.st_size < limit:
             return
         os.replace(path, path + ".1")
     except OSError:
@@ -182,7 +188,7 @@ def record_compression(stats: dict[str, Any], cfg: Any) -> None:
         os.makedirs(os.path.dirname(path), mode=0o700, exist_ok=True)
         _rotate_stats(path, int(cfg.stats_max_bytes))
         payload = (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND | _O_NOFOLLOW, 0o600)
         try:
             os.write(fd, payload)
         finally:
