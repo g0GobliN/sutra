@@ -15,7 +15,13 @@ import time
 
 from . import jsonc
 
-__all__ = ["install", "uninstall", "opencode_config"]
+__all__ = ["detect_clients", "install", "opencode_config", "opencode_configured",
+           "uninstall"]
+
+# Clients with a verified configuration path. ``claude`` is the automatic
+# interceptor (native PostToolUse hook); ``opencode`` registers the MCP server
+# only, because its tool hook is still a spike and is not shipped.
+CLIENTS = ("claude", "opencode")
 
 
 def opencode_config(explicit: str | None = None) -> pathlib.Path:
@@ -30,6 +36,34 @@ def opencode_config(explicit: str | None = None) -> pathlib.Path:
         if candidate.is_file():
             return candidate
     return base / "opencode.json"
+
+
+def detect_clients() -> list[str]:
+    """Clients present on this machine, in a stable order.
+
+    Detection is intentionally narrow: a binary on PATH, or an existing
+    OpenCode config. A client that is not installed is never configured on
+    speculation.
+    """
+    found: list[str] = []
+    try:
+        from . import claude_code
+        if claude_code.binary():
+            found.append("claude")
+    except Exception:  # a detection failure must not make install unusable
+        pass
+    if shutil.which("opencode") or opencode_config().is_file():
+        found.append("opencode")
+    return found
+
+
+def opencode_configured(path: pathlib.Path | None = None) -> bool:
+    """True when the OpenCode config names a sutra MCP entry."""
+    path = path or opencode_config()
+    try:
+        return jsonc.has_entry(path.read_text(encoding="utf-8"))
+    except OSError:
+        return False
 
 
 def _write(path: pathlib.Path, text: str) -> pathlib.Path:
