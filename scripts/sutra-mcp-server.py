@@ -34,12 +34,11 @@ Run (a client normally spawns this itself):
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+from _sutra import load_sutra
+
 PROTOCOL_VERSION = "2024-11-05"
 MAX_LINE_BYTES = 70 * 1024 * 1024  # engine cap (64 MiB) plus envelope room
 
@@ -54,18 +53,6 @@ COMPRESS_SCHEMA = {
     "required": ["output"],
     "additionalProperties": False,
 }
-
-
-def load_sutra():
-    name = "sutra_mcp_pkg"  # unique: never collide with other loaders
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(
-        name, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _tool_definitions(sutra) -> list[dict]:
@@ -101,21 +88,9 @@ def _compress(sutra, arguments: dict) -> str:
     text = arguments.get("output")
     if not isinstance(text, str):
         return json.dumps({"error": "output must be a string"})
-    out = sutra.compress_result(text, tool_name=str(arguments.get("tool") or "")[:64])
-    marker = "[sutra:" in out
-    entry_id = None
-    if marker:
-        import re
-        match = re.search(r"id=(su_[0-9a-f]{32})", out)
-        entry_id = match.group(1) if match else None
-    return json.dumps({
-        "changed": out != text,
-        "output": out,
-        "marker": marker,
-        "id": entry_id,
-        "original_bytes": len(text.encode("utf-8", "replace")),
-        "compressed_bytes": len(out.encode("utf-8")),
-    }, ensure_ascii=False)
+    outcome = sutra.core.process_text(
+        text, tool_name=str(arguments.get("tool") or "")[:64])
+    return json.dumps(sutra.core.outcome_json(outcome), ensure_ascii=False)
 
 
 def handle(sutra, line: str) -> str | None:
@@ -163,7 +138,7 @@ def handle(sutra, line: str) -> str | None:
                 return _result(request_id, json.dumps(
                     {"status": "error",
                      "error": "missing required argument: id"}), isError=True)
-            return _result(request_id, sutra.recovery.restore(arguments))
+            return _result(request_id, sutra.core.restore(arguments))
         return _error(request_id, -32602, f"unknown tool: {name}")
     return _error(request_id, -32601, f"method not found: {method}")
 
