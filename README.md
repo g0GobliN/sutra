@@ -20,6 +20,8 @@ It runs as a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin, or as
 
 Two ways in: as a Hermes plugin, or as a Python package whose MCP server any MCP client can call. Both run the same deterministic core.
 
+Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The matrix and the hook setup are in [docs/integrations.md](docs/integrations.md).
+
 ### Hermes Agent
 
 ```bash
@@ -55,6 +57,30 @@ For any other MCP client, register the same server yourself:
 {"mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
                           "args": ["-m", "sutra.mcp"]}}}
 ```
+
+### Claude Code (automatic)
+
+The hook replaces a tool result before the model reads it. Add it to project or
+user settings with an absolute path, and register the MCP server for recovery:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {"hooks": [{"type": "command",
+                  "command": "python3 /path/to/sutra/scripts/sutra-claude-code-hook.py"}]}
+    ]
+  },
+  "mcpServers": {"sutra": {"command": "python3",
+                          "args": ["/path/to/sutra/scripts/sutra-mcp-server.py"]}}
+}
+```
+
+Both must use the same store: set `SUTRA_STORE_DIR` (or `HERMES_HOME`) in both
+environments, or `sutra_restore` answers `not_found` for a marker the hook
+wrote. The hook is fail-open — a parse, import or internal error prints `{}`
+and leaves the original result untouched. This is hook-protocol tested; no live
+authenticated Claude Code session was run here.
 
 ### Verify the Hermes plugin
 
@@ -217,15 +243,15 @@ For copied/symlinked installs, retained output, and the stats log, see [docs/tro
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest tests -q           # 214 tests, no Hermes runtime needed
+.venv/bin/python -m pytest tests -q           # 239 tests, no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore at the 32 MiB cap
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
-The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags.
+The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags.
 
-**SUTRA in other agents**: the same deterministic core is exposed through a generic CLI and an MCP stdio server (Claude Code, Cursor, Codex-style agents, OpenCode) — verified statuses in [docs/integrations.md](docs/integrations.md).
+**SUTRA in other agents**: the same deterministic core is exposed through a native Claude Code `PostToolUse` hook (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
 
 Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery protocol](docs/recovery.md) · [the correctness contract](docs/contract.md) · [security model](SECURITY.md) · [troubleshooting](docs/troubleshooting.md) · [the frozen A/B protocol](docs/ab-benchmark.md) · [the OpenCode feasibility spike](spikes/opencode-poc/README.md)
 
@@ -235,8 +261,10 @@ Verified against **Hermes Agent v0.22.2+3030.g4d04303 (2026.9.24)** with
 `hermes plugins validate .` (host Python 3.14.7). The test suite and the
 benchmarks run on Python 3.13.5 in `.venv`. Newer Hermes versions are not
 claimed; the middleware contract has its own test so a mismatch should fail
-there before it reaches a model. The OpenCode integration is feasibility-only,
-verified against OpenCode 1.19.0 ([spike report](spikes/opencode-poc/README.md)).
+there before it reaches a model. The Claude Code integration is a `PostToolUse`
+hook tested at the hook-protocol level; no live authenticated Claude Code
+session was run. The OpenCode integration is feasibility-only, verified against
+OpenCode 1.19.0 ([spike report](spikes/opencode-poc/README.md)).
 
 ## Contributing
 
