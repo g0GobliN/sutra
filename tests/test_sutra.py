@@ -143,6 +143,39 @@ def test_unicode_cut_does_not_produce_replacement_characters(sutra):
     out.encode("utf-8").decode("utf-8")
 
 
+def test_a_head_cut_inside_a_character_is_moved_to_its_boundary(sutra, monkeypatch):
+    """The marker's start must be the end of the visible head, in bytes.
+
+    Regression: the cut was decoded with errors="ignore", so a cut inside a
+    multi-byte character silently dropped those bytes. The marker then quoted
+    a start two bytes past the visible head, and the dropped bytes were in
+    neither the visible copy nor the omitted range.
+    """
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "4000")
+    monkeypatch.setenv("SUTRA_HEAD_BYTES", "1001")
+    monkeypatch.setenv("SUTRA_TAIL_BYTES", "300")
+    text = "A" * 999 + "€" * 2000
+    out = sutra.compress_result({"output": text})["output"]
+    start = int(re.search(r"start=(\d+)", out).group(1))
+    head = out.split("[sutra:", 1)[0].rstrip("\r\n")
+    assert start == 999
+    assert head == text[:start]
+
+
+def test_a_tail_cut_inside_a_character_is_moved_to_its_boundary(sutra, monkeypatch):
+    """The marker's end must start the visible tail on a character boundary."""
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "4000")
+    monkeypatch.setenv("SUTRA_HEAD_BYTES", "300")
+    monkeypatch.setenv("SUTRA_TAIL_BYTES", "301")
+    text = "A" * 2000 + "€" * 1000
+    out = sutra.compress_result({"output": text})["output"]
+    end = int(re.search(r"end=(\d+)", out).group(1))
+    raw = text.encode("utf-8")
+    assert end == 4700
+    assert raw[end] & 0xC0 != 0x80
+    assert out.endswith(raw[end:].decode("utf-8"))
+
+
 def test_collapse_repeats_preserves_line_endings(sutra):
     text = "same\r\n" * 10
     out = sutra.collapse_repeats(text)
