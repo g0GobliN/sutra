@@ -25,6 +25,18 @@ jobs:
       - name: OpenCode feasibility spike
         run: python -m pytest spikes -q
 
+  # Portability evidence for the POSIX path (permissions, symlinks, atomic
+  # replace) that the Linux job alone does not provide.
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install pytest
+      - run: python -m pytest tests -q
+
   lint:
     runs-on: ubuntu-latest
     steps:
