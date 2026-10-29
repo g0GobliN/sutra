@@ -59,6 +59,15 @@ then say the original was not retained and compression still works.
   command execution.
 - **Per-profile isolation**: the store lives under the active `HERMES_HOME`, so
   profiles do not read each other's retained output.
+- **Host-persisted output (Claude Code)**: a large Bash/PowerShell result may
+  arrive as a preview plus a `persistedOutputPath`. The hook reads that path only
+  when the tool is Bash/PowerShell, the path is an absolute `.txt` file directly
+  under the session's `tool-results` directory, the file's `lstat` is a regular
+  file (not a symlink), and its size matches `persistedOutputSize`. The read uses
+  `O_NOFOLLOW`, is capped at 64 MiB, and must decode as UTF-8. Any failure
+  returns `{}`; the preview is never compressed as if it were the original. A
+  tool result cannot turn this into an arbitrary file read because the tool name
+  and directory shape are both checked.
 
 ## Prompt injection
 

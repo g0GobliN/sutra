@@ -176,6 +176,98 @@ def test_the_installed_console_command_runs_the_same_hook(sutra, monkeypatch, ca
     assert "CLUE: hook-token-5K" not in output
 
 
+def persisted_payload(tmp_path, *, full=None, declared=None, tool="Bash",
+                     link=False, transcript_root=None):
+    """The event Claude Code sends when it persists a large Bash result.
+
+    ``stdout`` is the host's 30,000-character preview; the complete text is in
+    ``persistedOutputPath``. ``transcript_path`` is the JSONL sibling of the
+    session directory that owns ``tool-results``.
+    """
+    full = big() if full is None else full
+    root = transcript_root or (tmp_path / "projects" / "proj")
+    session = root / "session"
+    results = session / "tool-results"
+    results.mkdir(parents=True, exist_ok=True)
+    transcript = root / "session.jsonl"
+    transcript.write_text("{}\n", encoding="utf-8")
+    path = results / "result.txt"
+    path.write_text(full, encoding="utf-8")
+    if link:
+        target = path.with_suffix(".real")
+        path.rename(target)
+        path.symlink_to(target)
+    return {
+        "hook_event_name": "PostToolUse", "session_id": "sess-persisted",
+        "tool_name": tool, "transcript_path": str(transcript),
+        "tool_response": {
+            "stdout": full[:29_999], "stderr": "", "interrupted": False,
+            "isImage": False, "noOutputExpected": False,
+            "persistedOutputPath": str(path),
+            "persistedOutputSize": len(full.encode()) if declared is None else declared,
+        },
+    }
+
+
+def test_a_persisted_result_is_compressed_from_the_full_file(sutra, tmp_path):
+    payload = persisted_payload(tmp_path)
+    result = run_hook(payload)
+    assert result.returncode == 0, result.stderr
+    output = updated(result)
+    assert isinstance(output, dict)
+    assert "persistedOutputPath" not in output
+    assert "persistedOutputSize" not in output
+    assert output["stdout"].startswith("build line 0 nominal")
+    assert "[sutra:" in output["stdout"]
+    assert "CLUE: hook-token-5K" not in output["stdout"]
+    assert f"original {len(big().encode()):,} B" in output["stdout"]
+    match = ID_RE.search(output["stdout"])
+    assert match, output["stdout"][:500]
+
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        restored = tool_text(session.call_tool(
+            "sutra_restore",
+            {"id": match.group(1), "mode": "search", "query": "hook-token-5K"}))
+        assert restored["status"] == "ok"
+        assert "hook-token-5K" in restored["content"]
+    finally:
+        assert session.close() == 0
+
+
+def test_a_persisted_result_that_disagrees_with_its_size_is_left_alone(tmp_path):
+    payload = persisted_payload(tmp_path, declared=len(big().encode()) + 1)
+    result = run_hook(payload)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "{}"
+
+
+def test_a_symlinked_persisted_result_is_never_followed(tmp_path):
+    payload = persisted_payload(tmp_path, link=True)
+    result = run_hook(payload)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "{}"
+
+
+def test_a_persisted_path_outside_the_transcript_tree_is_refused(tmp_path):
+    outside = tmp_path / "elsewhere" / "tool-results"
+    outside.mkdir(parents=True)
+    (outside / "result.txt").write_text(big(), encoding="utf-8")
+    payload = persisted_payload(tmp_path, transcript_root=tmp_path / "projects" / "other")
+    payload["tool_response"]["persistedOutputPath"] = str(outside / "result.txt")
+    result = run_hook(payload)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "{}"
+
+
+def test_persisted_metadata_from_a_non_bash_tool_is_not_read(tmp_path):
+    payload = persisted_payload(tmp_path, tool="Read")
+    result = run_hook(payload)
+    assert result.returncode == 0
+    assert result.stdout.strip() == "{}"
+
+
 def test_storage_failure_compresses_without_a_false_recovery_id(tmp_path):
     not_a_dir = tmp_path / "store-is-a-file"
     not_a_dir.write_text("occupied", encoding="utf-8")
