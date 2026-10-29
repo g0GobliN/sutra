@@ -19,6 +19,11 @@
   no-op. Hook-level tests invoke the real hook process with a `PostToolUse`
   JSON payload; no live Claude Code session was run (the local CLI is
   unauthenticated).
+- **`sutra-hook` console command** (`hook.py`): the Claude Code `PostToolUse`
+  adapter now has an installed command that runs the same bundled
+  `scripts/sutra-claude-code-hook.py`. Previously the only documented hook
+  command was an absolute path into a checkout, which a pip install does not
+  have. CI also runs the product suite on macOS; Windows is not covered yet.
 - `docs/integrations.md`: an explicit automatic-vs-manual matrix. MCP tool
   registration is documented as manual, not interception.
 - Generic adapters over the shared deterministic core — no compression or

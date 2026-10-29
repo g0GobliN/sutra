@@ -63,7 +63,7 @@ theoretical grounds.
 | Agent / client | Mechanism | Automatic? | Status | Install | Verification | Limitations |
 |---|---|---|---|---|---|---|
 | Hermes Agent | native plugin: `tool_execution` middleware + `sutra_restore` tool | **Yes** | **Tested with the actual host** | `git clone … ~/.hermes/plugins/sutra && hermes plugins enable sutra && hermes tools` | CI runs `hermes plugins validate` against the pinned revision; scripted-provider gateway E2E (`scripts/e2e/run.sh`, 8/8 runs); live-model A/B staged pending quota | Verified against Hermes `v0.22.2+3030.g4d04303` only; Tool Search may defer the recovery tool (documented in troubleshooting) |
-| Claude Code | native `PostToolUse` hook (`updatedToolOutput`) + the MCP server for `sutra_restore` | **Yes, hook installed** | **Hook-level tested** — the real hook process is invoked with a `PostToolUse` JSON payload; no live Claude Code session (the local CLI is unauthenticated) | add the hook to `.claude/settings.json` (snippet below) and register the MCP server for recovery; point both at the same `SUTRA_STORE_DIR` | `tests/test_claude_code_hook.py`: replacement, marker, recovery through MCP, pass-through, second pass, fail-open | Needs Claude Code's documented all-tools `updatedToolOutput` (introduced in 2.1.121); a live model session has not been exercised here |
+| Claude Code | native `PostToolUse` hook (`updatedToolOutput`) + the MCP server for `sutra_restore` | **Yes, hook installed** | **Hook-level tested** — the real hook process is invoked with a `PostToolUse` JSON payload; no live Claude Code session (the local CLI is unauthenticated) | `sutra-hook` (installed) or the checkout's `scripts/sutra-claude-code-hook.py`; add the hook to `.claude/settings.json` (snippet below) and register the MCP server for recovery; point both at the same `SUTRA_STORE_DIR` | `tests/test_claude_code_hook.py`: replacement, marker, recovery through MCP, pass-through, second pass, fail-open, and the installed `sutra-hook` command running the same script | Needs Claude Code's documented all-tools `updatedToolOutput` (introduced in 2.1.121); a live model session has not been exercised here |
 | Any MCP client (Claude Code without the hook, Cursor, Codex-style agents, OpenCode, …) | MCP stdio server (shipped as `sutra-mcp` / `python -m sutra.mcp`, same code as `scripts/sutra-mcp-server.py`), JSON-RPC 2.0, protocol `2024-11-05`, no SDK dependency | **No — manual `sutra_compress`** | **Tested with an actual client** — OpenCode 1.19.0's MCP client discovered the tools, compressed a 48,449-byte output through `sutra_compress`, and recovered the buried clue via `sutra_restore` (`status: ok`; verdict in `spikes/opencode-poc/evidence/verdict-mcp-client.json`); plus the official `@modelcontextprotocol/inspector` reference client: tools/list with schemas, end-to-end compress (marker, id, isError false) and restore (status ok, clue recovered) | `sutra install` (edits the client config in place, backup beside it, `--dry-run` writes nothing), or add the entry by hand: `python3 /path/to/sutra/scripts/sutra-mcp-server.py` | protocol tests: initialize/tools list/compress/restore round-trip, isError semantics, parse and method errors, EOF shutdown; OpenCode 1.19.0 end-to-end; Claude Code 2.1.268 health check, quota-free | MCP cannot intercept another server's result; verified end to end with OpenCode's client; Claude Code 2.1.268 reached `✔ Connected` (connection only); Cursor / Codex not exercised; tools/call only; no resources/prompts; one server process per profile |
 | Any subprocess-capable agent | CLI (`scripts/sutra-cli.py`), JSON on stdout, exit codes 0/1/2 | **No — manual** | **Implemented and locally tested** | call directly; no installation beyond the checkout | `tests/test_cli_adapter.py`: round-trip, statuses-as-results, usage errors, size cap, config | one process per invocation (no daemon); stdin capped at 64 MiB |
 | OpenCode | native plugin hook (`tool.execute.after` + tool registry) | **Spike only** | **Implemented as a verified spike** — real-host proof on OpenCode 1.19.0 (output replacement + recovery + fail-open); production adapter deliberately not built | see [the spike](../spikes/opencode-poc/README.md) | two independent real-host investigations + hardened PoC, full test suite | bridge auth token lifecycle is spike-grade; use the MCP server or the Claude Code hook for a supported path today |
@@ -73,25 +73,30 @@ theoretical grounds.
 
 ### Claude Code (automatic)
 
-Add the hook to project or user settings, with an absolute path:
+Add the hook to project or user settings, with an absolute path. An install
+provides `sutra-hook`; a checkout runs the script it wraps:
 
 ```json
 {
   "hooks": {
     "PostToolUse": [
       {"hooks": [{"type": "command",
-                  "command": "python3 /path/to/sutra/scripts/sutra-claude-code-hook.py"}]}
+                  "command": "/home/you/.sutra-venv/bin/sutra-hook"}]}
     ]
   }
 }
 ```
 
+Checkout alternative: `python3 /path/to/sutra/scripts/sutra-claude-code-hook.py`.
+
 Add the MCP server for recovery:
 
 ```json
-{"mcpServers": {"sutra": {"command": "python3",
-                          "args": ["/path/to/sutra/scripts/sutra-mcp-server.py"]}}}
+{"mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
+                          "args": ["-m", "sutra.mcp"]}}}
 ```
+
+Checkout alternative: `python3 /path/to/sutra/scripts/sutra-mcp-server.py`.
 
 The hook and the MCP server must use the same store. Set `SUTRA_STORE_DIR` in
 both environments (or set `HERMES_HOME` for both); otherwise the marker's id

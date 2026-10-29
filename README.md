@@ -60,21 +60,27 @@ For any other MCP client, register the same server yourself:
 
 ### Claude Code (automatic)
 
-The hook replaces a tool result before the model reads it. Add it to project or
-user settings with an absolute path, and register the MCP server for recovery:
+The hook replaces a tool result before the model reads it. An install ships it
+as the `sutra-hook` command; a checkout can run the script directly. Add one of
+them to project or user settings with an absolute path, and register the MCP
+server for recovery:
 
 ```json
 {
   "hooks": {
     "PostToolUse": [
       {"hooks": [{"type": "command",
-                  "command": "python3 /path/to/sutra/scripts/sutra-claude-code-hook.py"}]}
+                  "command": "/home/you/.sutra-venv/bin/sutra-hook"}]}
     ]
   },
-  "mcpServers": {"sutra": {"command": "python3",
-                          "args": ["/path/to/sutra/scripts/sutra-mcp-server.py"]}}
+  "mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
+                          "args": ["-m", "sutra.mcp"]}}
 }
 ```
+
+From a checkout, use `python3 /path/to/sutra/scripts/sutra-claude-code-hook.py`
+and the script path for the server instead; both commands run the same files.
+The hook command must be absolute.
 
 Both must use the same store: set `SUTRA_STORE_DIR` (or `HERMES_HOME`) in both
 environments, or `sutra_restore` answers `not_found` for a marker the hook
@@ -243,13 +249,13 @@ For copied/symlinked installs, retained output, and the stats log, see [docs/tro
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest tests -q           # 239 tests, no Hermes runtime needed
+.venv/bin/python -m pytest tests -q           # 249 tests, no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore at the 32 MiB cap
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
-The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags.
+The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
 
 **SUTRA in other agents**: the same deterministic core is exposed through a native Claude Code `PostToolUse` hook (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
 
