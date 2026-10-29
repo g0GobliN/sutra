@@ -233,6 +233,7 @@ def test_the_package_declares_its_console_entry_points():
     assert document["project"]["scripts"] == {
         "sutra": "sutra.cli:main",
         "sutra-mcp": "sutra.mcp:main",
+        "sutra-hook": "sutra.hook:main",
     }
     # PyPI's `sutra` is an unrelated 0.2.2 package (KWR-Water/sutra), so the
     # distribution cannot use that name; the import package and commands stay

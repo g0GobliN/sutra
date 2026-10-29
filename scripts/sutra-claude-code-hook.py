@@ -25,6 +25,9 @@ Install (project or user settings; the command must be absolute):
       }
     }
 
+An installed package exposes the same file as the ``sutra-hook`` command, which
+is the path a pip-installed user should give Claude Code.
+
 Recovery is the existing MCP server (``sutra_restore``); point the hook and the
 MCP server at the same ``SUTRA_STORE_DIR`` (or ``HERMES_HOME``).
 """

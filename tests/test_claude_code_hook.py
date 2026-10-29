@@ -10,6 +10,8 @@ Recovery is exercised through the existing MCP server, the path a Claude Code
 user actually has, not by calling the recovery function in-process.
 """
 
+import importlib
+import io
 import json
 import os
 import re
@@ -150,6 +152,28 @@ def test_malformed_and_unexpected_inputs_fail_open():
     missing = run_hook({"tool_name": "Bash"})
     assert missing.returncode == 0
     assert missing.stdout.strip() == "{}"
+
+
+def test_the_installed_console_command_runs_the_same_hook(sutra, monkeypatch, capsys):
+    """`sutra-hook` is the installed user's path to this adapter.
+
+    Without it the only way to wire Claude Code was an absolute path into a
+    clone. The command must run the same bundled script, not a copy of it.
+    """
+    hook = importlib.import_module(f"{sutra.__name__}.hook")
+    payload = json.dumps({"tool_name": "Bash", "tool_response": big()})
+    monkeypatch.setattr(sys, "stdin",
+                        io.TextIOWrapper(io.BytesIO(payload.encode("utf-8"))))
+    monkeypatch.setattr(sys, "argv", sys.argv)
+
+    with pytest.raises(SystemExit) as stopped:
+        hook.main()
+
+    assert stopped.value.code == 0
+    response = json.loads(capsys.readouterr().out)
+    output = response["hookSpecificOutput"]["updatedToolOutput"]
+    assert "[sutra:" in output
+    assert "CLUE: hook-token-5K" not in output
 
 
 def test_storage_failure_compresses_without_a_false_recovery_id(tmp_path):
