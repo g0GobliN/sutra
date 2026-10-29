@@ -318,6 +318,27 @@ def collapse_repeats(text: str, keep: int = 2, ref: Ref | None = None,
     return "".join(out)
 
 
+def _utf8_head_end(raw: bytes, end: int) -> int:
+    """Move a head cut back to the nearest character boundary.
+
+    ``raw`` is valid UTF-8, so only the character containing ``end`` can be
+    split. When ``raw[end]`` is a continuation byte, back up over that
+    character and exclude it: the prefix then decodes exactly.
+    """
+    if end >= len(raw):
+        return len(raw)
+    while end > 0 and (raw[end] & 0xC0) == 0x80:
+        end -= 1
+    return max(0, end)
+
+
+def _utf8_tail_start(raw: bytes, start: int) -> int:
+    """Move a tail cut forward to the nearest character boundary."""
+    while start < len(raw) and (raw[start] & 0xC0) == 0x80:
+        start += 1
+    return start
+
+
 def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
                   ref: Ref | None = None) -> tuple[str, int, bool]:
     """Keep the start and the end, replace the middle with an explicit marker.
@@ -328,18 +349,20 @@ def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
     only, after the offsets are fixed.
 
     Returns ``(new_text, omitted_bytes, deduped)``; ``(text, 0, False)`` when
-    there is nothing to elide. Cuts prefer a line boundary and never split a
-    UTF-8 character.
+    there is nothing to elide. Cuts prefer a line boundary and are moved to the
+    nearest UTF-8 boundary, so the visible head is exactly the bytes before
+    ``start`` and the visible tail is exactly the bytes from ``end`` on.
     """
     raw = text.encode("utf-8", "replace")
     head_bytes = max(0, head_bytes)
     tail_bytes = max(0, tail_bytes)
     if head_bytes + tail_bytes <= 0 or len(raw) <= head_bytes + tail_bytes:
         return text, 0, False
-    head_raw = raw[:head_bytes]
-    tail_raw = raw[-tail_bytes:] if tail_bytes else b""
+    head_raw = raw[:_utf8_head_end(raw, head_bytes)]
+    tail_start = _utf8_tail_start(raw, len(raw) - tail_bytes) if tail_bytes else len(raw)
+    tail_raw = raw[tail_start:]
     cut = head_raw.rfind(b"\n")
-    if cut >= head_bytes // 2:
+    if cut >= len(head_raw) // 2:
         head_raw = head_raw[:cut + 1]
     if tail_raw:
         first_newline = tail_raw.find(b"\n")
@@ -350,8 +373,10 @@ def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
         return text, 0, False
     start = len(head_raw)
     end = len(raw) - len(tail_raw)
-    head = head_raw.decode("utf-8", "ignore")
-    tail = tail_raw.decode("utf-8", "ignore")
+    # Both sides are character-aligned, so this decode drops nothing. It is
+    # strict on purpose: silently ignoring bytes is the bug being prevented.
+    head = head_raw.decode("utf-8")
+    tail = tail_raw.decode("utf-8")
     clean_head_text = strip_ansi(head)
     clean_head = collapse_repeats(clean_head_text, ref=ref, line_base=0)
     # A tail fragment can start inside a line, or between the two bytes of a
