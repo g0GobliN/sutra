@@ -180,28 +180,37 @@ the work would only relabel the cost. The enforced work bounds are structural:
 - at most a 200-character literal query.
 
 Work is linear in the entry size, and an entry above the per-entry cap is never
-retained. Measured at the 32 MiB cap, on the development machine that produced
-`bench/retrieval.json` with the repository's `.venv` (Python 3.13.5). The plugin
-itself is validated against Hermes Agent v0.22.2+3030.g4d04303 (Python 3.14.7):
+retained. Measured at the 32 MiB cap with the repository's `.venv` (Python
+3.13.5). The plugin itself is validated against Hermes Agent
+v0.22.2+3030.g4d04303 (Python 3.14.7).
+
+The latest `bench/retrieval.json` was recorded at **load 22.36 on 4 CPUs (5.59
+per CPU)** and records `"representative": false`. It is a contended sample, not
+an envelope:
 
 | Operation at the 32 MiB cap | Median | Worst of 3 | Status |
 |---|---:|---:|---|
-| `full` (refuses above 8 KiB) | 18.5 ms | 19.0 ms | `too_large` |
-| `bytes` page, 64 KiB | 17.8 ms | 18.6 ms | `ok` |
-| `lines` page, 100 lines | 183.2 ms | 185.1 ms | `ok` |
-| `search`, token absent (full scan) | 240.2 ms | 247.5 ms | `ok` |
-| `search`, token in the last line | 246.4 ms | 323.1 ms | `ok` |
-| `full` JSON field (refuses) | 194.7 ms | 236.6 ms | `too_large` |
-| `bytes` JSON field page | 151.0 ms | 151.9 ms | `ok` |
-| `search`, JSON field, no match | 329.2 ms | 355.1 ms | `ok` |
-| `search`, JSON field, last line | 329.0 ms | 337.6 ms | `ok` |
+| `full` (refuses above 8 KiB) | 18.6 ms | 23.6 ms | `too_large` |
+| `bytes` page, 64 KiB | 20.8 ms | 24.7 ms | `ok` |
+| `lines` page, 100 lines | 486.9 ms | 534.8 ms | `ok` |
+| `search`, token absent (full scan) | 507.1 ms | 1425.1 ms | `ok` |
+| `search`, token in the last line | 486.2 ms | 674.6 ms | `ok` |
+| `full` JSON field (refuses) | 383.6 ms | 820.7 ms | `too_large` |
+| `bytes` JSON field page | 176.6 ms | 259.9 ms | `ok` |
+| `search`, JSON field, no match | 732.8 ms | 2200.5 ms | `ok` |
+| `search`, JSON field, last line | 541.2 ms | 1332.8 ms | `ok` |
 
 The `bytes` rows request a 64 KiB range; the default response cap clips it to
-8 KiB, which is what the benchmark records. An operator can state the budget as:
-**one restore reads at most 32 MiB, returns at most 64 KiB, and costs under
-0.4 s at the cap on this machine; allow 2–3× on a loaded host.** Raising the
-entry cap raises the envelope roughly linearly.
-The numbers are wall-clock timings, not a portability claim.
+8 KiB, which is what the benchmark records. The 2026-10-25 artifact recorded
+329 ms for the JSON-field search, and its load was not captured; the two runs
+differ by roughly 2× for that reason. Do not read either as a portable number.
+
+The operator budget is therefore stated structurally, not as a single figure:
+**one restore reads at most 32 MiB and returns at most 64 KiB; budget a few
+hundred milliseconds at the cap on an idle machine, and allow multi-second
+outliers on a contended host.** Raising the entry cap raises the envelope
+roughly linearly. Every artifact now records its platform, load and git SHA, and
+`bench/retrieval.py` marks a loaded run as not representative.
 
 Reproduce with `.venv/bin/python bench/retrieval.py`; it writes
 `bench/retrieval.json`. The hard shape is held by
