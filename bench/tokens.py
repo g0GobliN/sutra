@@ -16,7 +16,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
-import platform
 
 try:
     import tiktoken
@@ -52,8 +51,7 @@ def main() -> int:
     total_before = sum(row["before_tokens"] for row in rows)
     total_after = sum(row["after_tokens"] for row in rows)
     payload = {
-        "measured_on": "the machine that wrote this file",
-        "python": platform.python_version(),
+        "environment": bench.environment(),
         "tiktoken": tiktoken.__version__,
         "encoding": ENCODING,
         "cases": rows,
