@@ -82,10 +82,10 @@ Full model: [SECURITY.md](SECURITY.md). The guarantees:
 
 | Guarantee | Enforced by |
 |---|---|
-| Originals are written atomically (temp + rename), `0600`, `O_NOFOLLOW`, in a `0700` directory; a symlinked store path is refused; an interrupted or size-mismatched entry is never served. | `test_store_permissions_are_private`, `test_symlinked_store_directory_is_refused`, `test_truncated_write_is_not_served`, `test_data_without_meta_is_not_served`, `test_meta_without_data_is_not_served` |
+| Originals are written atomically (temp + rename), `0600`, `O_NOFOLLOW` for data *and* metadata, in a `0700` directory that is tightened if it pre-exists; a symlinked store path or entry file is refused; a failed metadata write leaves no data orphan; an interrupted or size-mismatched entry is never served. | `test_store_permissions_are_private`, `test_a_preexisting_loose_store_directory_is_tightened`, `test_symlinked_store_directory_is_refused`, `test_symlinked_metadata_is_not_followed`, `test_failed_metadata_write_leaves_no_orphan`, `test_truncated_write_is_not_served`, `test_data_without_meta_is_not_served`, `test_meta_without_data_is_not_served` |
 | Bounds are enforced in code: 32 MiB per entry, 128 MiB total, 2,000 entries, 168 h TTL; quota and count checked on every write; expired entries refused on read. | `test_entry_size_cap_refuses`, `test_quota_prunes_oldest_first`, `test_entry_count_is_bounded`, `test_ttl_expiry_deletes_and_reports`, `test_store_too_small_for_the_entry_returns_none` |
 | Caller input never builds a filesystem path: ids are 128-bit random and validated against `^su_[0-9a-f]{32}$`. | `test_path_traversal_is_rejected`, `test_missing_and_malformed_ids` |
-| Metadata and the stats log never contain tool output; nothing leaves the machine; no network code exists. | `test_meta_does_not_contain_the_payload` |
+| Metadata and the stats log never contain tool output; nothing leaves the machine; no network code exists. The stats log is opened `O_NOFOLLOW`. | `test_meta_does_not_contain_the_payload`, `test_a_symlinked_stats_file_is_not_appended_through` |
 | Concurrent writes/reads and cleanup-during-read are safe: readers see a complete entry or an explicit failure. | `test_concurrent_puts_and_reads`, `test_cleanup_between_lookup_and_read_is_reported` |
 | The store is **not encrypted**; any process running as the same OS user can read it. `SUTRA_STORE=0` disables retention entirely. | documented; per-profile isolation tested in `test_profiles_do_not_share_the_store` |
 

@@ -92,6 +92,16 @@
   reported as a median with min/max and every trial kept, gated by a load
   policy that defers on a busy machine, and memory is reported as Python heap
   peak and process RSS delta separately.
+- The store's `0700` was only applied when it created the directory: a
+  pre-existing world-traversable store kept its mode and exposed every entry
+  name. An existing directory is now tightened, and one owned by another user,
+  a symlink, or a non-directory is refused. A failed metadata write also now
+  removes the data file it wrote, instead of leaving an unreadable orphan
+  occupying quota until the next sweep.
+- Metadata was read with a plain `open` while data reads used `O_NOFOLLOW`, so
+  a symlink at an entry's `.json` path redirected the lookup. Both are now
+  opened `O_NOFOLLOW`; the stats log got the same treatment, where a planted
+  symlink made SUTRA append its JSON records to an unrelated file.
 
 ### Documentation
 
