@@ -8,7 +8,7 @@ API. Hermes users do not need this — the plugin's middleware and
 Tool contract (shared with the MCP adapter; see docs/integrations.md):
 
     compress  stdin (or --file) -> one JSON object on stdout
-              {changed, output, marker, id, original_bytes, compressed_bytes, rule}
+              {changed, output, marker, id, original_bytes, compressed_bytes}
     restore   --id + recovery arguments -> the sutra_restore JSON envelope
               verbatim (status: ok | not_found | expired | too_large |
               unavailable | error)
@@ -35,12 +35,12 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import json
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+from _sutra import load_sutra
+
 MAX_INPUT_BYTES = 64 * 1024 * 1024  # the engine refuses larger inputs anyway
 
 RECOVERY_ARG_MAP = {
@@ -49,18 +49,6 @@ RECOVERY_ARG_MAP = {
     "case-sensitive": "case_sensitive", "max-bytes": "max_bytes",
     "max-matches": "max_matches",
 }
-
-
-def load_sutra():
-    name = "sutra_cli_pkg"  # unique: never collide with other loaders
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(
-        name, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _emit(payload: dict, code: int) -> int:
@@ -88,26 +76,8 @@ def cmd_compress(args: argparse.Namespace) -> int:
             if args.file else _read_input(MAX_INPUT_BYTES)
     except (OSError, ValueError) as exc:
         return _fail(f"could not read input: {exc}", 1)
-    out = sutra.compress_result(text, tool_name=args.tool or "")
-    marker = "[sutra:" in out
-    entry_id = None
-    if marker:
-        import re
-        match = re.search(r"id=(su_[0-9a-f]{32})", out)
-        entry_id = match.group(1) if match else None
-    return _emit_compress(out, text, marker, entry_id)
-
-
-def _emit_compress(out: str, text: str, marker: bool, entry_id) -> int:
-    original = len(text.encode("utf-8", "replace"))
-    return _emit({
-        "changed": out != text,
-        "output": out,
-        "marker": marker,
-        "id": entry_id,
-        "original_bytes": original,
-        "compressed_bytes": len(out.encode("utf-8")),
-    }, 0)
+    outcome = sutra.core.process_text(text, tool_name=args.tool or "")
+    return _emit(sutra.core.outcome_json(outcome), 0)
 
 
 def cmd_restore(args: argparse.Namespace) -> int:
@@ -117,7 +87,7 @@ def cmd_restore(args: argparse.Namespace) -> int:
         value = getattr(args, cli_name.replace("-", "_"), None)
         if value is not None:
             request[protocol_name] = value
-    response = json.loads(sutra.recovery.restore(request))
+    response = json.loads(sutra.core.restore(request))
     print(json.dumps(response, ensure_ascii=False))
     return 0  # an explicit status (not_found, expired, ...) is a result, not a failure
 

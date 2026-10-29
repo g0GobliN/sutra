@@ -22,4 +22,13 @@ def run_script(name: str, argv: list[str], *, missing: str) -> int:
         print(missing, file=sys.stderr)
         return 1
     sys.argv = [str(script), *argv]
-    runpy.run_path(str(script), run_name="__main__")
+    # The scripts share one loader (`scripts/_sutra.py`). Running a file
+    # directly puts its directory on sys.path; runpy does not, so the
+    # installed console commands restore that here for the duration of the
+    # run. Without it `sutra compress` cannot import the shared loader.
+    sys.path.insert(0, str(SCRIPTS))
+    try:
+        runpy.run_path(str(script), run_name="__main__")
+    finally:
+        sys.path.remove(str(SCRIPTS))
+    return 0
