@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="582" viewBox="0 0 900 582" role="img" aria-label="What SUTRA saves on real tool output">
+<rect width="900" height="582" fill="#ffffff"/>
+<text x="28" y="40" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="21" font-weight="600" fill="#0f172a">What SUTRA saves on real tool output</text>
+<text x="28" y="66" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13" fill="#64748b">measured by bench/benchmark.py — before (grey) and after (blue) the middleware, bytes</text>
+<line x1="250" y1="80" x2="780" y2="80" stroke="#e2e8f0" stroke-width="1"/>
+<text x="232" y="110" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">12,000-line command output</text>
+<text x="232" y="127" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">plain text, head + tail</text>
+<rect x="250" y="98" width="74.7" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="118" width="22.8" height="15" rx="2" fill="#2563eb"/>
+<text x="334.7" y="111" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">60.9 kB</text>
+<text x="282.8" y="130" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">18.6 kB · 69.5% saved</text>
+<text x="232" y="164" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">JSON tool envelope</text>
+<text x="232" y="181" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">decoded, string fields trimmed</text>
+<rect x="250" y="152" width="105.4" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="172" width="23.5" height="15" rx="2" fill="#2563eb"/>
+<text x="365.4" y="165" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">85.9 kB</text>
+<text x="283.5" y="184" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">19.2 kB · 77.7% saved</text>
+<text x="232" y="218" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">test run, 2,000 cases</text>
+<text x="232" y="235" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">repeat collapse + head/tail</text>
+<rect x="250" y="206" width="122.4" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="226" width="22.8" height="15" rx="2" fill="#2563eb"/>
+<text x="382.4" y="219" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">99.8 kB</text>
+<text x="282.8" y="238" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">18.6 kB · 81.4% saved</text>
+<text x="232" y="272" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">3,000-frame traceback</text>
+<text x="232" y="289" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">error end preserved</text>
+<rect x="250" y="260" width="440.8" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="280" width="12.7" height="15" rx="2" fill="#2563eb"/>
+<text x="700.8" y="273" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">359.4 kB</text>
+<text x="272.7" y="292" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">10.3 kB · 97.1% saved</text>
+<text x="232" y="326" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">600 KB patch</text>
+<text x="232" y="343" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">never rewritten (safety case)</text>
+<rect x="250" y="314" width="530.0" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="334" width="530.0" height="15" rx="2" fill="#2563eb"/>
+<text x="790.0" y="327" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">432.1 kB</text>
+<text x="790.0" y="346" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#b45309">left intact</text>
+<text x="232" y="380" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">900-row SQL result</text>
+<text x="232" y="397" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">head + tail</text>
+<rect x="250" y="368" width="57.2" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="388" width="22.7" height="15" rx="2" fill="#2563eb"/>
+<text x="317.2" y="381" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">46.6 kB</text>
+<text x="282.7" y="400" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">18.5 kB · 60.2% saved</text>
+<text x="232" y="434" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">8,000-line build log</text>
+<text x="232" y="451" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">one error buried in the middle</text>
+<rect x="250" y="422" width="410.8" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="442" width="22.8" height="15" rx="2" fill="#2563eb"/>
+<text x="670.8" y="435" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">334.9 kB</text>
+<text x="282.8" y="454" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#1d4ed8">18.6 kB · 94.5% saved</text>
+<text x="232" y="488" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">8,000-item JSON array</text>
+<text x="232" y="505" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">array stays an array (shape kept)</text>
+<rect x="250" y="476" width="253.8" height="15" rx="2" fill="#cbd5e1"/>
+<rect x="250" y="496" width="253.8" height="15" rx="2" fill="#2563eb"/>
+<text x="513.8" y="489" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#475569">206.9 kB</text>
+<text x="513.8" y="508" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11.5" fill="#b45309">left intact</text>
+<text x="788" y="560" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="12.5" fill="#0f172a" font-weight="600">1.6 MB → 742.7 kB across all 8 cases (54.3% saved)</text>
+</svg>

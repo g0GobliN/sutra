@@ -1,0 +1,55 @@
+[
+  {
+    "case": "12,000-line command output",
+    "input_bytes": 60893,
+    "compress_ms": 9.57,
+    "with_store_ms": 24.47
+  },
+  {
+    "case": "JSON tool envelope",
+    "input_bytes": 85921,
+    "compress_ms": 7.76,
+    "with_store_ms": 25.3
+  },
+  {
+    "case": "test run, 2,000 cases",
+    "input_bytes": 99776,
+    "compress_ms": 5.83,
+    "with_store_ms": 18.19
+  },
+  {
+    "case": "3,000-frame traceback",
+    "input_bytes": 359403,
+    "compress_ms": 23.76,
+    "with_store_ms": 48.25
+  },
+  {
+    "case": "600 KB patch",
+    "input_bytes": 432087,
+    "compress_ms": 0.34,
+    "with_store_ms": 0.32
+  },
+  {
+    "case": "900-row SQL result",
+    "input_bytes": 46610,
+    "compress_ms": 2.62,
+    "with_store_ms": 7.56
+  },
+  {
+    "case": "8,000-line build log",
+    "input_bytes": 334921,
+    "compress_ms": 22.26,
+    "with_store_ms": 48.9
+  },
+  {
+    "case": "8,000-item JSON array",
+    "input_bytes": 206890,
+    "compress_ms": 79.68,
+    "with_store_ms": 74.44
+  },
+  {
+    "case": "peak allocation while rewriting 3,000-frame traceback",
+    "input_bytes": 359403,
+    "peak_kib": 701.5
+  }
+]
