@@ -97,6 +97,12 @@
   reported as a median with min/max and every trial kept, gated by a load
   policy that defers on a busy machine, and memory is reported as Python heap
   peak and process RSS delta separately.
+- A head or tail cut that landed inside a multi-byte UTF-8 character was
+decoded with `errors="ignore"`, so up to two bytes vanished from the visible
+copy without being counted as omitted, and the marker's `start` or `end`
+could point inside a character. Cuts now move to the nearest character
+boundary: the visible head is exactly the bytes before `start`, and the
+visible tail is exactly the bytes from `end` on.
 - The store's `0700` was only applied when it created the directory: a
   pre-existing world-traversable store kept its mode and exposed every entry
   name. An existing directory is now tightened, and one owned by another user,

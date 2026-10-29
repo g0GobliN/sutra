@@ -36,8 +36,10 @@ A rewritten result carries a single-line marker in place of the omitted bytes.
 ```
 
 `start` is the first omitted byte and `end` is one past the last omitted byte,
-counted in the UTF-8 encoding of the original. Both are exact, and both were
-computed by the code that did the cutting, not reconstructed afterwards.
+counted in the UTF-8 encoding of the original. Both are exact, both were
+computed by the code that did the cutting, and both sit on character
+boundaries: the bytes before `start` are exactly the visible head, and the
+bytes from `end` on are exactly the visible tail.
 
 **Field elision** (inside one JSON string field):
 
