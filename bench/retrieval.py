@@ -16,7 +16,6 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
-import platform
 import shutil
 import statistics
 import sys
@@ -25,11 +24,13 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-spec = importlib.util.spec_from_file_location(
-    "sutra_bench_pkg", ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
-sutra = importlib.util.module_from_spec(spec)
-sys.modules["sutra_bench_pkg"] = sutra
-spec.loader.exec_module(sutra)
+# bench/benchmark.py owns the plugin load and the provenance block; reusing it
+# keeps one module instance per process and one definition of "environment".
+_spec = importlib.util.spec_from_file_location(
+    "bench_benchmark", ROOT / "bench" / "benchmark.py")
+bench = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(bench)
+sutra = bench.sutra
 
 CAP = 32 * 1024 * 1024
 RUNS = 3
@@ -57,7 +58,9 @@ def measure(sutra, store, cases: "list[dict]") -> "list[dict]":
         rows.append({
             "operation": case["operation"],
             "median_ms": round(statistics.median(times), 1),
+            "min_ms": round(min(times), 1),
             "worst_ms": round(max(times), 1),
+            "trials_ms": [round(value, 1) for value in times],
             "status": payload.get("status"),
             "content_bytes": len(payload.get("content", "").encode("utf-8")),
             "matches_found": payload.get("matches_found"),
@@ -107,9 +110,12 @@ def main() -> int:
                       "query": NEEDLE}},
         ]
         rows = measure(sutra, store, cases)
+        env = bench.environment()
+        representative, load_note = bench.load_policy(env)
         result = {
-            "measured_on": "the machine that wrote this file",
-            "python": platform.python_version(),
+            "environment": env,
+            "representative": representative,
+            "load_note": load_note,
             "entry_cap_bytes": CAP,
             "runs_per_case": RUNS,
             "plain_entry_bytes": len(text.encode("utf-8")),
@@ -119,13 +125,15 @@ def main() -> int:
         out = ROOT / "bench" / "retrieval.json"
         out.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
 
-        print("| operation | median | worst | status | content |")
-        print("|---|---|---|---|---|")
+        print("| operation | median | min | worst | status | content |")
+        print("|---|---|---|---|---|---|")
         for row in rows:
             print(f'| {row["operation"]} | {row["median_ms"]} ms | '
-                  f'{row["worst_ms"]} ms | `{row["status"]}` | '
-                  f'{row["content_bytes"]} B |')
+                  f'{row["min_ms"]} ms | {row["worst_ms"]} ms | '
+                  f'`{row["status"]}` | {row["content_bytes"]} B |')
         print(f"\nwrote {out}")
+        if not representative:
+            print(f"NOT representative: {load_note}")
         return 0
     finally:
         if previous_home is None:
