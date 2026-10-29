@@ -289,9 +289,11 @@ su_<32 hex>.txt    the original, UTF-8, byte-exact, 0600
 su_<32 hex>.json   {id, created_at, original_bytes, sha256, tool, session_id, version}, 0600
 ```
 
-The directory is `0700`. Writes go to a `.tmp-*` file in the same directory and
-are renamed into place, metadata last; a data file without metadata is
-invisible. The entry count and byte quota are checked on every write against
+The directory is `0700`, and a pre-existing one is tightened to it; a directory
+owned by another user is refused. Both files are opened with `O_NOFOLLOW`, so a
+symlink planted at either path is not followed. Writes go to a `.tmp-*` file in
+the same directory and are renamed into place, metadata last; a data file
+without metadata is invisible, and a failed metadata write removes it. The entry count and byte quota are checked on every write against
 in-process totals. A full sweep — expired entries first, then oldest-first until
 the quotas are satisfied — runs when a budget is exceeded, every 128 writes, or
 every ten minutes, so a write does not scan the whole store. The first write in

@@ -32,15 +32,22 @@ then say the original was not retained and compression still works.
 
 ## Protections in place
 
-- **Directory** `0700`, created if missing; a symlinked or non-directory store
-  path is refused rather than followed.
-- **Files** `0600`, created with `O_CREAT|O_EXCL` and reopened with
-  `O_NOFOLLOW`. Temp files use `O_EXCL` and a random suffix.
+- **Directory** `0700`, created if missing; a pre-existing directory is
+  tightened to `0700`. One owned by another user, a symlink, or a non-directory
+  is refused rather than used.
+- **Files** `0600`, created with `O_CREAT|O_EXCL` and opened with `O_NOFOLLOW`
+  — data *and* metadata, so a symlink planted at either path is not followed.
+  Temp files use `O_EXCL` and a random suffix.
+- **Stats log** is opened with `O_NOFOLLOW` and only rotated when the path is a
+  regular file, so a symlink at `sutra-stats.jsonl` cannot redirect an append
+  into another file.
 - **Ids** are 128-bit random and validated against `^su_[0-9a-f]{32}$` before
   any path is built. A request cannot name a path.
 - **Atomicity**: temp file + `os.replace`. A crash leaves an orphan that is
-  pruned; a reader never sees a half-written entry. A size mismatch between
-  metadata and data is treated as corruption and the entry is deleted.
+  pruned; a reader never sees a half-written entry. A failed metadata write
+  removes the data file it belongs to, so a failed write leaves nothing behind.
+  A size mismatch between metadata and data is treated as corruption and the
+  entry is deleted.
 - **Bounds**: 32 MiB per entry, 128 MiB total, 2,000 entries, 7-day TTL, and a
   bounded response (8 KiB default, 64 KiB hard cap). The count and byte quotas
   are checked on every write against per-process totals; the oldest-first sweep
@@ -89,6 +96,10 @@ bytes only, never parses it as instructions, and never runs it.
 - **The plugin runs in the Hermes plugin host** (`plugins.isolation: host`), so
   its code executes in the same per-profile process as other user plugins.
   SUTRA does not sandbox other plugins and is not sandboxed by them.
+- **Hardlinks are not defended against.** `O_NOFOLLOW` stops a symlink, not a
+  hardlink to a file the attacker already owns. The boundary is the private
+  directory: a store or cache directory writable by another user is out of
+  scope.
 - **Timing side channels** on the store are not addressed; local access is
   assumed.
 - **No per-caller audit trail.** Restores are counted by outcome in
