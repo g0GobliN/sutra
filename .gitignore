@@ -29,6 +29,7 @@ dist/
 !.env.example
 
 # Internal working notes (kept on disk, not part of the public repo)
+AGENTS.md
 docs/idea.md
 docs/baseline.md
 *.local.md
