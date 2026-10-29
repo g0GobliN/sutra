@@ -31,7 +31,9 @@ payload is untouched).
 
 The patch and the array are the two cases that must **not** change: a diff
 because a rewritten patch can hide a code change, an array because reshaping it
-breaks the payload's schema. Their reported 0.0% is a pass, not a miss.
+breaks the payload's schema. Their reported 0.0% is a pass, not a miss. The
+array preview that was evaluated and rejected, with the consumer failures that
+rejected it, is recorded in [json-array-preview.md](json-array-preview.md).
 
 ## Method
 

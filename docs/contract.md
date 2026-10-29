@@ -60,7 +60,7 @@ for the omitted range (byte offsets) or the omitted lines (repeat collapse).
 | A JSON document in is a JSON document out, same top-level type, never byte-sliced; `json.loads` on the output succeeds or the original is returned (`json-kept`). | `test_json_document_is_never_byte_sliced`, `test_json_invariant_guard_returns_the_original`, fuzz invariant in `test_generated_payloads_keep_the_promises` |
 | Only string values are rewritten; numbers, booleans, nulls, array shapes and key sets are untouched. | `test_json_document_with_only_small_strings_is_left_alone`, `test_json_array_stays_an_array` |
 | Re-encoding normalizes whitespace/indentation and collapses duplicate keys to the last value. This is a **visible-copy change**; the original bytes stay in the store and markers address them. | documented here and in README "Known limitations"; `test_json_with_escaped_unicode_stays_valid` (round-trip) |
-| Large arrays with no large string fields are returned untouched (`json-kept`) — the price of keeping their shape. | benchmark row "8,000-item JSON array" |
+| Large arrays with no large string fields are returned untouched (`json-kept`) — the price of keeping their shape. A preview that elides or replaces elements is never emitted: it can pass the top-level-type check while changing element count, element types or key sets. The evaluation is recorded in [json-array-preview.md](json-array-preview.md). | `test_json_array_of_small_objects_is_returned_byte_identical`, benchmark row "8,000-item JSON array" |
 | `SUTRA_JSON_ITEMS` is retired: parsed, warned about once, ignored. | `test_json_retired_array_option_is_ignored` |
 
 ## 6. Recovery (`sutra_restore`)
