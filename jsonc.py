@@ -149,6 +149,20 @@ def _entry_block(indent: str, python: str) -> str:
     ))
 
 
+def has_entry(text: str, key: str = "sutra") -> bool:
+    """True when the `mcp` object already names ``key`` (read-only)."""
+    try:
+        root = _root_object(text)
+        root_members, _ = _members(text, root)
+        mcp = _find(text, root_members, "mcp")
+        if mcp is None or text[mcp[2]] != "{":
+            return False
+        members, _ = _members(text, mcp[2])
+        return _find(text, members, key) is not None
+    except (ValueError, IndexError):
+        return False
+
+
 def with_entry(text: str, python: str) -> tuple[str, bool]:
     """The config with a `sutra` MCP entry. Returns (text, changed)."""
     root = _root_object(text)

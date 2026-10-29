@@ -1,0 +1,196 @@
+# Automatic installation and the client audit
+
+The target is one command, then normal agent work:
+
+```bash
+sutra install          # detect and configure every safely supported client
+sutra doctor           # prove the automatic path, not just the config
+```
+
+`sutra install` never asks the user to edit JSON, register an MCP server by
+hand, or launch a second process. `sutra uninstall` removes only what SUTRA
+added, and every edit is backed up first.
+
+## What is shipped today
+
+| Client | Automatic interception | Installer | Verified how |
+|---|---|---|---|
+| **Claude Code** | **Yes** — native `PostToolUse` hook replacing `updatedToolOutput` | **Yes** — user settings + user-scope MCP entry, then a doctor probe | Live Claude Code 2.1.268 with a scripted provider; real Bash tool execution; marker seen by the model; retained original restored through MCP |
+| **Hermes Agent** | **Yes** — native `tool_execution` middleware | Existing plugin install | Real gateway E2E, recorded in `docs/mission-log.md` |
+| **OpenCode** | Hook verified in a spike; production adapter deferred | **MCP only** — `sutra install` registers the server | OpenCode 1.19.0 real-host spike; the model saw the replacement and restored the clue |
+| **Codex CLI** | **No** — `PostToolUse` has no transparent output replacement | Not auto-configured | Official hooks and MCP documentation read; no host run |
+| **Cursor** | **No** — `postToolUse` replaces MCP tool output only | Not auto-configured | Official hooks and MCP documentation read; no host run |
+| **Windsurf / Cascade** | **No** — no documented output-replacement hook | Not auto-configured | Official MCP documentation read; no host run |
+
+The rest of this page records the evidence behind those labels. A client is not
+listed as automatic because its config file resembles another client's.
+
+## Claude Code
+
+### What the installer changes
+
+`claude_code.py` writes the user settings file and registers the MCP server with
+Claude Code's own CLI:
+
+- user settings: `$CLAUDE_CONFIG_DIR/settings.json`, or `~/.claude/settings.json`
+  when the variable is unset;
+- one `PostToolUse` group containing
+  `{type: "command", command: "<python>", args: ["-m", "sutra.hook"], timeout: 60}`;
+- MCP: `claude mcp add --scope user --transport stdio sutra -- <python> -m sutra.mcp`.
+
+Existing hooks, other settings, and other MCP servers are preserved. The
+settings write is atomic, uses a timestamped `.bak-*` backup, and a second
+install is a no-op. A different existing `sutra` MCP entry is refused rather
+than overwritten; `sutra uninstall --client claude` is the documented repair.
+
+`claude mcp get sutra` must report `Status: ✔ Connected`. The installer does not
+claim success from a written file alone: after both edits it runs the same probe
+as `sutra doctor`.
+
+### The host limit that matters
+
+Claude Code's `bashOutputMaxChars` defaults to **30,000 characters** ("how many
+characters of a successful Bash or PowerShell command's output Claude receives
+inline"). Larger output is persisted by Claude Code; the hook receives a
+30,000-character preview plus:
+
+```json
+{
+  "persistedOutputPath": "/…/<session>/tool-results/<id>.txt",
+  "persistedOutputSize": 70885
+}
+```
+
+Compressing that preview would store a truncated "original" and hand the model
+an id that cannot restore what the tool printed. The hook therefore:
+
+1. accepts `persistedOutputPath` only for `Bash`/`PowerShell`;
+2. requires an absolute `.txt` file directly under a `tool-results` directory,
+   inside the session tree named by `transcript_path`;
+3. refuses symlinks (`lstat` + `O_NOFOLLOW`), requires the declared size to match
+   the file, caps the read at 64 MiB, and decodes UTF-8 strictly;
+4. if any check fails, returns `{}` and leaves the tool result untouched — never
+   a compressed preview.
+
+When the checks pass, the full file replaces `stdout`, the persisted metadata is
+removed, and the normal SUTRA seam compresses it. The model receives one inline
+compressed result with a recovery id for the complete original.
+
+This is a real host constraint, not a SUTRA preference. Claude Code versions that
+persist output differently, or a tool that does not set these fields, fall back
+to the old behaviour: only the text the hook actually received is eligible.
+
+### Live-host evidence (2026-10-29)
+
+Environment: Claude Code **2.1.268** on Linux, an isolated `HOME` and
+`CLAUDE_CONFIG_DIR`, and a local Anthropic-compatible endpoint that scripts one
+Bash tool call. No provider was contacted and no live model was called.
+
+1. `sutra install --client claude` wrote the hook and MCP entry; Claude Code
+   reported `✔ Connected`.
+2. The scripted turn ran a Bash command that emitted **70,885 bytes** and buried
+   a `CLUE` token in the middle.
+3. Claude Code persisted the full result and gave the hook a 29,999-character
+   preview plus the path. The hook read the file, compressed the full text, and
+   returned **18,642 bytes**.
+4. The next model request contained the marker and the id, with **no**
+   `<persisted-output>` pointer and no clue (the clue was in the omitted middle).
+5. `sutra_restore(id=…, mode="search", query=…)` returned `status: ok` and the
+   original clue through the MCP server.
+6. `sutra doctor` passed with the same synthetic persisted-output shape.
+
+This is host-level proof: a real Claude Code process executed a real tool and
+the model-facing request was inspected. It is not a live-model task-success or
+billing measurement.
+
+### Limitations
+
+- The hook uses `python -m sutra.hook`; the interpreter that installed SUTRA must
+  still exist. `sutra uninstall` uses the same command to find its entry.
+- The `args` form of a hook handler is verified on 2.1.268, the version tested
+  here. Older releases may use a different handler schema; the installer does
+  not edit project-scope settings, and no claim is made for unexercised versions.
+- Windows is not covered by CI or by this probe. The path and `O_NOFOLLOW` code
+  use POSIX facilities, with `O_NOFOLLOW` omitted where the platform lacks it.
+- MCP must be connected for `sutra_restore` to work. If the MCP registration
+  fails or the server cannot connect, install returns a non-zero status and
+  rolls back both the MCP entry it added and the hook; it does not leave a
+  marker with no recovery path as a "success".
+- The doctor probe uses a temporary store and synthetic text. It proves the
+  installed command and the recovery seam; it does not prove a model will choose
+  to restore.
+
+## The other clients
+
+### OpenCode
+
+The MCP server is installed by `sutra install` (`~/.config/opencode/opencode.jsonc`
+or `.json`, comments preserved). That is **manual compression**: OpenCode must
+call `sutra_compress`.
+
+An automatic adapter is possible: OpenCode's `tool.execute.after` hook can mutate
+`output.output` in place, and the spike in `spikes/opencode-poc/` verified the
+replacement, recovery, and fail-open behavior on OpenCode 1.19.0. It is not part
+of this installer because it needs a long-lived local bridge (the plugin cannot
+hold the Python core in-process), plus packaging, lifecycle, token, and version
+coupling that the spike documents. Shipping a half-managed bridge would violate
+the same "configuration is not functionality" rule as a hook that never fires.
+
+### Codex CLI
+
+Verified from the official Codex documentation:
+
+- MCP config is `~/.codex/config.toml` (or project `.codex/config.toml`) with a
+  `[mcp_servers.sutra]` table; `codex mcp add sutra -- <python> -m sutra.mcp`
+  is the official CLI path.
+- `PostToolUse` runs for Bash, `apply_patch`, MCP, and other local tools, but it
+  has **no field for replacing the tool result**. `decision: "block"` and
+  `continue: false` replace the result with hook *feedback* and continue from
+  that message; `updatedMCPToolOutput` is parsed but not supported. Using those
+  to inject a compressed result would turn every large output into a hook
+  intervention, not a transparent rewrite, so no adapter is claimed.
+
+### Cursor
+
+- Global MCP config is `~/.cursor/mcp.json`; project config is
+  `.cursor/mcp.json`; the `mcpServers` entry uses `type: "stdio"`, `command`,
+  `args`, and optional `env`.
+- `postToolUse` fires for all tools, but the only output-replacement field is
+  `updated_mcp_tool_output`, and it applies to MCP tools only. Built-in Shell,
+  Read, Write, and other tool output cannot be replaced. That is not enough for
+  SUTRA's generic interception, so Cursor is MCP-only and not auto-configured.
+
+### Windsurf / Cascade
+
+The legacy Cascade agent reads `mcp_config.json` under
+`~/.config/devin/mcp_config.json` on macOS/Linux (`%APPDATA%\devin\mcp_config.json`
+on Windows), with a top-level `mcpServers` object. The current documentation is
+published under the Devin Desktop name, which is a moving target; the file has no
+documented post-tool output hook. It remains a manual MCP client and is not
+auto-configured.
+
+## Why MCP registration is not called automatic
+
+MCP is a tool protocol, not an interception layer. Registering `sutra` gives the
+model two tools; it does not make another server's results pass through SUTRA.
+Only a host hook that replaces the result before the model reads it is automatic.
+That is why Claude Code is the only client this installer configures for
+automatic use today, and why the other rows say "manual" even when their MCP
+entry is one command away.
+
+## Diagnostic
+
+```bash
+sutra doctor          # human-readable
+sutra doctor --json   # machine-readable
+```
+
+`doctor` checks the hook is present in the exact settings file, asks Claude Code
+whether the MCP server is connected, runs the configured hook command on a
+synthetic persisted-output event, then restores the marker's id through the
+recovery seam. It uses a temporary store, so it never reads or writes the user's
+entries and stats. Exit status is `0` only when all three checks pass.
+
+If it fails, the report names the failing layer: missing hook, unconnected MCP,
+hook left the result unchanged, or restore status. It does not report a
+configuration file as working when the command cannot actually replace output.
