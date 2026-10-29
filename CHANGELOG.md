@@ -85,8 +85,22 @@
   '_sutra'`; a test now runs the real handover from a directory where only the
   package root is importable.
 
+- The benchmark published best-of-three **minima** and one unlabelled "peak
+  allocation" number with no environment, load or raw trials, so a 44.5 ms
+  figure and a 567.70 ms observation on the same host could not be reconciled.
+  Timing is now split per phase (compress, store write, full rewrite, restore),
+  reported as a median with min/max and every trial kept, gated by a load
+  policy that defers on a busy machine, and memory is reported as Python heap
+  peak and process RSS delta separately.
+
 ### Documentation
 
+- `docs/benchmark.md` now labels each claim by measurement class: deterministic
+  bytes, deterministic recovery, wall-clock phases, tokenizer counts. Timing
+  figures are medians of five trials with the raw spread and the run's
+  platform, CPU count, RAM, load and git SHA recorded; a loaded run is marked
+  deferred instead of published as representative. The historical
+  2026-10-25 artifacts are preserved under `bench/reference/` with hashes.
 - README restructured as an entry point (positioning up front, installation
   verification, guarantees stated once, benchmark details moved to
   `docs/benchmark.md`; full troubleshooting in `docs/troubleshooting.md`).
