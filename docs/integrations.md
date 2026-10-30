@@ -136,9 +136,14 @@ result is left alone. The evidence and the failure cases are in
 python3 scripts/sutra-cli.py compress --tool bash < output.txt
 # retrieve retained evidence; the recovery protocol, verbatim
 python3 scripts/sutra-cli.py restore --id su_… --mode search --query "error" --context 2
+# search is case-sensitive by default; --ignore-case matches without case
+python3 scripts/sutra-cli.py restore --id su_… --mode search --query "error" --ignore-case
 # resolved configuration (no secrets)
 python3 scripts/sutra-cli.py config
 ```
+
+`--case-sensitive` and `--ignore-case` are mutually exclusive. Omitting both
+keeps the recovery protocol's default, which is case-sensitive.
 
 Exit codes: `0` a result was produced (including explicit recovery statuses);
 `1` internal failure, input above 64 MiB, or input that is not valid UTF-8
