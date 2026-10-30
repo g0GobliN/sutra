@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = ROOT / "scripts" / "sutra-mcp-server.py"
 
@@ -210,3 +212,37 @@ def test_partial_line_at_eof_is_handled_not_lost():
     finally:
         if proc.poll() is None:
             proc.kill()
+
+
+def test_invalid_utf8_is_one_parse_error_and_the_server_survives():
+    """The text wrapper used to decode ahead and raise before the first valid
+    request was handled. One bad line must not kill the stdio server."""
+    initialize = json.dumps({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    invalid = b'{"jsonrpc":"2.0","id":2,"method":"ping","x":"\xff"}'
+    ping = json.dumps({"jsonrpc": "2.0", "id": 3, "method": "ping"})
+    result = subprocess.run(
+        [sys.executable, str(SERVER)],
+        input=(initialize.encode() + b"\n" + invalid + b"\n" + ping.encode() + b"\n"),
+        capture_output=True, timeout=60, cwd=str(ROOT))
+    assert result.returncode == 0, result.stderr
+    assert not result.stderr, result.stderr[:400]
+    responses = [json.loads(line) for line in result.stdout.decode("utf-8").splitlines()]
+    assert responses[0]["id"] == 1
+    assert responses[1]["error"]["code"] == -32700
+    assert responses[2]["id"] == 3 and responses[2]["result"] == {}
+
+
+@pytest.mark.parametrize("output", [
+    "small\ud800 output",
+    "head\ud800" + "x" * 30_000,
+])
+def test_compress_preserves_text_that_is_not_utf8_encodable(output):
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        compressed = tool_text(session.call_tool("sutra_compress", {"output": output}))
+        assert compressed["changed"] is False
+        assert compressed["output"] == output
+        assert compressed["id"] is None
+    finally:
+        assert session.close() == 0

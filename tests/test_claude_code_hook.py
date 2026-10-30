@@ -41,6 +41,13 @@ def run_hook(payload=None, *, raw=None, env=None, timeout=60):
         timeout=timeout, cwd=str(ROOT), env=env)
 
 
+def run_hook_bytes(raw: bytes, env=None, timeout=60):
+    """Invoke the hook with bytes so an invalid UTF-8 envelope is possible."""
+    return subprocess.run(
+        [sys.executable, str(HOOK)], input=raw, capture_output=True,
+        timeout=timeout, cwd=str(ROOT), env=env)
+
+
 def updated(result):
     response = json.loads(result.stdout)
     return response["hookSpecificOutput"]["updatedToolOutput"]
@@ -141,6 +148,33 @@ def test_malformed_and_unexpected_inputs_fail_open():
     malformed = run_hook(raw="{oops")
     assert malformed.returncode == 0
     assert malformed.stdout.strip() == "{}"
+
+    # The hook envelope is UTF-8 JSON. Replacing an invalid byte could turn a
+    # corrupt event into a valid one and rewrite the wrong tool result.
+    invalid_utf8 = b'{"tool_name":"Bash","tool_response":"' + b"x" * 30_000 + b'\xff"}'
+    result = run_hook_bytes(invalid_utf8)
+    assert result.returncode == 0
+    assert result.stdout.strip() == b"{}"
+
+    # A lone surrogate is not UTF-8 encodable. It must stay untouched rather
+    # than become "?" or crash the hook.
+    surrogate = ('{"tool_name":"Bash","tool_response":"head\\ud800'
+                 + "x" * 30_000 + '"}').encode()
+    result = run_hook_bytes(surrogate)
+    assert result.returncode == 0
+    assert result.stdout.strip() == b"{}"
+
+
+def test_a_surrogate_in_one_field_does_not_block_a_compressible_field():
+    payload = {
+        "tool_name": "Bash",
+        "tool_response": {"stdout": big(), "stderr": "warning\ud800"},
+    }
+    result = run_hook(payload)
+    assert result.returncode == 0, result.stderr
+    output = updated(result)
+    assert "[sutra:" in output["stdout"]
+    assert output["stderr"] == "warning\ud800"
 
     # RecursionError from json.loads is an unexpected exception, not a shape
     # the hook should ever turn into a broken tool result.
