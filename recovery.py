@@ -15,6 +15,7 @@ Never raises: every failure is a JSON envelope with an explicit status.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from . import config
@@ -96,6 +97,19 @@ def _int_arg(args: dict, name: str, default: int | None = None) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _at_utf8_boundary(data: bytes, offset: int) -> bool:
+    """True when ``offset`` is a valid place to split UTF-8 text."""
+    return (offset <= 0 or offset >= len(data)
+            or (data[offset] & 0xC0) != 0x80)
+
+
+def _utf8_start_at_or_after(raw: bytes, offset: int) -> int:
+    """Move a byte offset forward out of a multi-byte character."""
+    while offset < len(raw) and (raw[offset] & 0xC0) == 0x80:
+        offset += 1
+    return offset
 
 
 def _lookup_error(lookup: Lookup) -> str | None:
@@ -263,6 +277,15 @@ def _bytes(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> st
             range={"start": start, "end": end},
             error=f"empty or reversed range: start={start} end={end} "
                   f"(the scope is {size:,} bytes)")
+    split = [name for name, offset in (("start", start), ("end", end))
+             if not _at_utf8_boundary(data, offset)]
+    if split:
+        return _response(
+            "error", **scope, mode="bytes", original_bytes=size,
+            range={"start": start, "end": end},
+            error=(f"byte range splits a UTF-8 character at "
+                   f"{' and '.join(split)}: start={start} end={end}; "
+                   f"choose offsets on character boundaries"))
     truncated = end - start > max_bytes
     take = max_bytes if truncated else end - start
     chunk = data[start:start + take]
@@ -306,6 +329,7 @@ def _clip_line(line: str, budget: int, focus: int | None = None) -> tuple[str, i
         return line, 0
     focus_byte = len(line[:focus].encode("utf-8")) if focus and focus > 0 else 0
     start = max(0, min(len(raw) - budget, focus_byte - budget // 3))
+    start = _utf8_start_at_or_after(raw, start)
     return raw[start:start + budget].decode("utf-8", "ignore"), start
 
 
@@ -409,16 +433,27 @@ def _search(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> s
     max_matches = max(1, min(HARD_MAX_MATCHES, int(max_matches)))
 
     lines = _read_lines(data)
-    needle = query if case_sensitive else query.lower()
+    # Match on the original text so a case-insensitive hit still has a valid
+    # character index for clipping. ``str.lower()`` can change length (İ → i̇),
+    # which used to shift the clip past the match it was meant to show. The
+    # pattern is an escaped literal, never a caller-supplied regex surface.
+    pattern = None if case_sensitive else re.compile(re.escape(query), re.IGNORECASE)
     hits: list[int] = []
+    hit_starts: dict[int, int] = {}
     more_matches = False
     for index, line in enumerate(lines):
-        candidate = line if case_sensitive else line.lower()
-        if needle in candidate:
-            if len(hits) >= max_matches:
-                more_matches = True
-                break
-            hits.append(index)
+        if pattern is None:
+            position = line.find(query)
+        else:
+            match = pattern.search(line)
+            position = match.start() if match else -1
+        if position < 0:
+            continue
+        if len(hits) >= max_matches:
+            more_matches = True
+            break
+        hits.append(index)
+        hit_starts[index] = position
     if not hits:
         return _response(
             "ok", **scope, mode="search", original_bytes=len(data), total_lines=len(lines),
@@ -458,8 +493,7 @@ def _search(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> s
         if budget < 128:
             truncated = True
             break
-        focus = lines[first].find(query) if case_sensitive else lines[first].lower().find(needle)
-        clipped, offset = _clip_line(lines[first], budget, focus)
+        clipped, offset = _clip_line(lines[first], budget, hit_starts.get(first))
         note = (f"\n[sutra: line {first + 1} clipped, bytes {offset}-"
                 f"{offset + len(clipped.encode('utf-8'))} of "
                 f"{len(lines[first].encode('utf-8'))}]\n")
