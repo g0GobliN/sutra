@@ -23,7 +23,9 @@ exact data it replaced.
 - Machine: the development host described in `docs/benchmark.md` — 4 CPUs,
   19 GiB RAM, Linux. **Load average was not recorded.** The mission that
   prompted this work observed a later traceback timing of 567.70 ms on the same
-  host at load average 29.7, against the 44.5 ms published from this run.
+  host at load average 29.7, against the 44.5 ms best-of-three figure the
+  pre-hardening documentation published. The `timing.json` preserved here
+  records 48.25 ms for that path.
 - Method: compression byte counts are deterministic; timings were best-of-three
   after a warm-up (`min`), which is why the published table is lower than a
   median under contention.

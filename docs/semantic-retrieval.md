@@ -19,7 +19,7 @@ contract](contract.md), [the security model](../SECURITY.md).
 | Matching | Literal substring scan over lines; `case_sensitive` defaults to true |
 | Query input | At most 200 characters; regex metacharacters have no special meaning |
 | Result shape | Exact lines with headers, or an explicit clipped byte window |
-| Work bounds | One entry ≤32 MiB, response ≤64 KiB, at most 20 matching lines |
+| Work bounds | One entry at most `SUTRA_STORE_MAX_ENTRY_BYTES` (32 MiB default); returned content ≤64 KiB; at most 20 matching lines |
 | Locality | No network code; no model call; no third-party dependency |
 | Determinism | Same entry and request produce the same response |
 | Integrity | `mode=full` reports the store's SHA-256 check; byte offsets are exact |
@@ -50,9 +50,10 @@ The candidate designs all carry a cost the current architecture does not pay:
    but still not semantic. It would add ambiguity and ranking behavior without
    evidence that the extra surface improves real task outcomes.
 
-The existing envelope is already measurable: at the 32 MiB cap, a search under
-load 22.36 on 4 CPUs had a 507 ms median for an absent token and multi-second
-outliers; the artifact is marked not representative and the protocol
+The existing envelope is already measurable: on a 32,000,001-byte plain entry,
+just under the 32 MiB default cap, a search under load 22.36 on 4 CPUs had a
+507 ms median for an absent token and multi-second outliers; the artifact is
+marked not representative and the protocol
 deliberately avoids a wall-clock promise (see [recovery.md § Execution-time
 envelope](recovery.md#execution-time-envelope)). Adding an index build or model
 call would consume that budget before any evidence is returned.

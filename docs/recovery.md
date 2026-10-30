@@ -38,8 +38,10 @@ A rewritten result carries a single-line marker in place of the omitted bytes.
 `start` is the first omitted byte and `end` is one past the last omitted byte,
 counted in the UTF-8 encoding of the original. Both are exact, both were
 computed by the code that did the cutting, and both sit on character
-boundaries: the bytes before `start` are exactly the visible head, and the
-bytes from `end` on are exactly the visible tail.
+boundaries: `[start, end)` is exactly the omitted region of the stored
+original. The visible copy can be smaller than the original on either side —
+ANSI escapes and collapsed lines are dropped after the offsets are fixed — but
+restoring `[start, end)` returns exactly the omitted bytes.
 
 **Field elision** (inside one JSON string field):
 
@@ -84,13 +86,13 @@ rewritten copy. If the engine cannot align its line numbers with the retrieval
 tool's (a form feed, a lone CR, or a tail fragment that starts on a line
 break), the marker states that the omitted lines cannot be addressed by line
 number and quotes no call. It never emits a placeholder query or a `mode` that
-the default response cap would refuse.
+the default content cap would refuse.
 
 ### Marker grammar
 
 ```
 marker      = "[sutra: partial · " size " bytes elided (" reason ")" scope? id? retention? remedy? "]"
-size        = 1*DIGIT "," 3DIGIT          ; informational, not parsed by the tool
+size        = 1*DIGIT *("," 3DIGIT)      ; informational, not parsed by the tool
 scope       = " · field=\"" pointer "\""  ; only for an elision inside a JSON field
 id          = " · id=" ( "su_" 32HEXDIG )
 retention   = " · original " size " B retained " hours "h"
@@ -133,7 +135,7 @@ surface.
 | `context` | integer | `3` | lines of context around a search hit, max 20 |
 | `case_sensitive` | boolean | `true` | literal search case sensitivity |
 | `max_matches` | integer | `5` | maximum matching lines, max 20 |
-| `max_bytes` | integer | `8192` | response cap, min 512, max 65536 |
+| `max_bytes` | integer | `8192` | returned-content cap, min 512, max 65536 |
 
 `search` is a literal substring scan over lines. There is no regular
 expression surface: a retrieval request cannot ask for work proportional to
@@ -187,20 +189,22 @@ There is no wall-clock timeout. A synchronous handler cannot interrupt a
 the work would only relabel the cost. The enforced work bounds are structural:
 
 - one entry, at most `SUTRA_STORE_MAX_ENTRY_BYTES` (32 MiB by default);
-- one response, at most 64 KiB (`SUTRA_RECOVERY_MAX_BYTES` defaults to 8 KiB);
+- returned content, at most 64 KiB (`SUTRA_RECOVERY_MAX_BYTES` defaults to
+  8 KiB; the JSON envelope adds a small metadata header);
 - at most 20 matching lines (5 by default);
 - at most a 200-character literal query.
 
 Work is linear in the entry size, and an entry above the per-entry cap is never
-retained. Measured at the 32 MiB cap with the repository's `.venv` (Python
-3.13.5). The plugin itself is validated against Hermes Agent
+retained. Measured on a 32,000,001-byte plain entry and a 32,400,015-byte JSON
+document, just under the 32 MiB default cap, with the repository's `.venv`
+(Python 3.13.5). The plugin itself is validated against Hermes Agent
 v0.22.2+3030.g4d04303 (Python 3.14.7).
 
 The latest `bench/retrieval.json` was recorded at **load 22.36 on 4 CPUs (5.59
 per CPU)** and records `"representative": false`. It is a contended sample, not
 an envelope:
 
-| Operation at the 32 MiB cap | Median | Worst of 3 | Status |
+| Operation near the 32 MiB default cap | Median | Worst of 3 | Status |
 |---|---:|---:|---|
 | `full` (refuses above 8 KiB) | 18.6 ms | 23.6 ms | `too_large` |
 | `bytes` page, 64 KiB | 20.8 ms | 24.7 ms | `ok` |
@@ -212,14 +216,16 @@ an envelope:
 | `search`, JSON field, no match | 732.8 ms | 2200.5 ms | `ok` |
 | `search`, JSON field, last line | 541.2 ms | 1332.8 ms | `ok` |
 
-The `bytes` rows request a 64 KiB range; the default response cap clips it to
+The `bytes` rows request a 64 KiB range; the default content cap clips it to
 8 KiB, which is what the benchmark records. The 2026-10-25 artifact recorded
-329 ms for the JSON-field search, and its load was not captured; the two runs
-differ by roughly 2× for that reason. Do not read either as a portable number.
+480.7 ms for the absent-token JSON-field search and 504.4 ms for the last-line
+search, and its load was not captured; the contended run is 732.8 ms and
+541.2 ms for the same two cases. Do not read either as a portable number.
 
 The operator budget is therefore stated structurally, not as a single figure:
-**one restore reads at most 32 MiB and returns at most 64 KiB; budget a few
-hundred milliseconds at the cap on an idle machine, and allow multi-second
+**one restore reads at most one entry, whose default cap is 32 MiB
+(`SUTRA_STORE_MAX_ENTRY_BYTES`), and returns at most 64 KiB of content; budget
+hundreds of milliseconds for a scan near the default cap, and allow multi-second
 outliers on a contended host.** Raising the entry cap raises the envelope
 roughly linearly. Every artifact now records its platform, load and git SHA, and
 `bench/retrieval.py` marks a loaded run as not representative.
@@ -271,7 +277,7 @@ Without supplied bytes, `verify(entry)` still reads the file once itself.
 | `ok` | served | use the content as evidence |
 | `not_found` | no entry with that id: never retained, pruned, or wrong id | re-run the tool narrower |
 | `expired` | retained once, deleted by the TTL or quota (or vanished mid-read) | re-run the tool narrower |
-| `too_large` | the scope exceeds the response cap | ask for a range or a literal search |
+| `too_large` | the scope exceeds the returned-content cap | ask for a range or a literal search |
 | `unavailable` | storage is disabled (`SUTRA_STORE=0`) | re-run the tool narrower |
 | `error` | malformed request (bad id, bad pointer, oversized query) | fix the arguments |
 

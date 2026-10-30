@@ -24,7 +24,7 @@ payload is untouched).
 | 2 | JSON tool envelope | `{"output": …, "exit_code": 0}` | `line 1500 of a long command` inside the field |
 | 3 | test run, 2,000 cases | repeated PASS lines, one FAIL | `FAIL src/module-1000.test.ts` |
 | 4 | 3,000-frame traceback | frames + exception | `ValueError: the thing broke` at the end |
-| 5 | 600 KB patch | unified diff | `+const line = 'added by the patch'` |
+| 5 | 432 kB patch | unified diff | `+const line = 'added by the patch'` |
 | 6 | 900-row SQL result | tab-separated rows | `user450@example.com` |
 | 7 | 8,000-line build log | compiler lines, one error | `'node' undeclared` |
 | 8 | 8,000-item JSON array | array of objects | `"id": 4000` |
@@ -32,6 +32,8 @@ payload is untouched).
 The patch and the array are the two cases that must **not** change: a diff
 because a rewritten patch can hide a code change, an array because reshaping it
 breaks the payload's schema. Their reported 0.0% is a pass, not a miss. The
+patch fixture is labelled `600 KB patch` in the generated artifacts; its measured
+size is 432,087 bytes, which is why every results table here says 432.1 kB. The
 array preview that was evaluated and rejected, with the consumer failures that
 rejected it, is recorded in [json-array-preview.md](json-array-preview.md).
 
@@ -135,7 +137,7 @@ python3 bench/tokens.py
 | JSON tool envelope | `json-fields` | 85.9 kB | 19.2 kB | 77.7% |
 | test run, 2,000 cases | `head-tail` | 99.8 kB | 18.6 kB | 81.4% |
 | 3,000-frame traceback | `traceback` | 359.4 kB | 10.3 kB | 97.1% |
-| 600 KB patch | `diff-kept` | 432.1 kB | 432.1 kB | 0.0% |
+| 432 kB patch | `diff-kept` | 432.1 kB | 432.1 kB | 0.0% |
 | 900-row SQL result | `head-tail` | 46.6 kB | 18.5 kB | 60.2% |
 | 8,000-line build log | `head-tail` | 334.9 kB | 18.6 kB | 94.5% |
 | 8,000-item JSON array | `json-kept` | 206.9 kB | 206.9 kB | 0.0% |
@@ -149,7 +151,7 @@ python3 bench/tokens.py
 | JSON tool envelope | 19.3 kB | 1 | 8.9 kB | 28.2 kB | yes |
 | test run, 2,000 cases | 18.6 kB | 1 | 711 B | 19.3 kB | yes |
 | 3,000-frame traceback | 10.4 kB | 0 | — | 10.4 kB | yes (error end kept) |
-| 600 KB patch | 432.1 kB | 0 | — | 432.1 kB | yes (untouched) |
+| 432 kB patch | 432.1 kB | 0 | — | 432.1 kB | yes (untouched) |
 | 900-row SQL result | 18.6 kB | 1 | 716 B | 19.3 kB | yes |
 | 8,000-line build log | 18.6 kB | 1 | 712 B | 19.4 kB | yes |
 | 8,000-item JSON array | 206.9 kB | 0 | — | 206.9 kB | yes (untouched) |
@@ -181,7 +183,7 @@ next comparison dishonest.
 | JSON tool envelope | 19.8 | 1.3 | 39.8 | 1.0 |
 | test run, 2,000 cases | 11.4 | 2.1 | 31.5 | 3.8 |
 | 3,000-frame traceback | 67.7 | 7.4 | 80.1 | n/a |
-| 600 KB patch | 0.6 | 4.7 | 1.5 | n/a |
+| 432 kB patch | 0.6 | 4.7 | 1.5 | n/a |
 | 900-row SQL result | 6.6 | 0.8 | 17.7 | 1.3 |
 | 8,000-line build log | 40.3 | 6.0 | 84.2 | 7.4 |
 | 8,000-item JSON array | 174.7 | 2.0 | 154.9 | n/a |
@@ -208,7 +210,7 @@ payload size.
 | JSON tool envelope | 26,012 | 5,670 | 78.2% |
 | test run, 2,000 cases | 29,998 | 5,529 | 81.6% |
 | 3,000-frame traceback | 126,015 | 3,680 | 97.1% |
-| 600 KB patch | 120,039 | 120,039 | 0.0% |
+| 432 kB patch | 120,039 | 120,039 | 0.0% |
 | 900-row SQL result | 18,906 | 7,543 | 60.1% |
 | 8,000-line build log | 127,005 | 6,905 | 94.6% |
 | 8,000-item JSON array | 103,002 | 103,002 | 0.0% |
@@ -220,15 +222,17 @@ host truncation and the model's own choices all change what is actually re-sent.
 ## The 567.70 ms question
 
 An earlier observation reported 567.70 ms for traceback compression-plus-storage
-on this 4-core host at load average 29.7, against the 44.5 ms published from the
-2026-10-25 best-of-three run. Both numbers are consistent with the same code:
+on this 4-core host at load average 29.7, against the 44.5 ms best-of-three
+figure the earlier documentation published. The archived 2026-10-25
+`timing.json` records 48.25 ms for that path. Both numbers are consistent with
+the same code:
 
 - The old method published the **minimum of three** trials, which is the fastest
   trial by construction.
 - At load 19.04 the median full rewrite is 80.1 ms with trials up to 85 ms; at
-  load ~20 a single full-size rewrite is routinely 2–3× the quiet-host figure,
-  and a first call after a stall is far worse. A 567.70 ms sample is plausible
-  contention, not a 12× regression.
+  load ~20 a median full rewrite is about 1.6–2× the quiet-host minimum-of-three
+  figure (80.1 vs 48.25 ms for the traceback), and a first call after a stall is
+  far worse. A 567.70 ms sample is plausible contention, not a 12× regression.
 - The 2026-10-25 artifact recorded neither load nor run conditions, so the two
   figures cannot be reconciled exactly. That is the defect this milestone fixes:
   a number without its conditions is not evidence.
@@ -239,21 +243,24 @@ KiB peak exactly once the `(current, peak)` tuple order is respected.
 
 ## Worst-case retrieval
 
-The eight fixtures above retrieve small, ordinary results. Retrieval cost at the
-hard cap is measured separately, because that is where an execution-time claim
-could be wrong:
+The eight fixtures above retrieve small, ordinary results. Retrieval cost near
+the default entry cap is measured separately, because that is where an
+execution-time claim could be wrong:
 
 ```bash
 python3 bench/retrieval.py    # writes bench/retrieval.json
 ```
 
-It stores a 32 MiB plain entry and a 32 MiB JSON document, then times every
-mode and a search that has to scan the whole entry. The latest artifact was
-recorded at **load 22.36 on 4 CPUs (5.59 per CPU)** and is marked
-`"representative": false`: medians ran from 0.18 s to 0.73 s and individual
-restores reached 2.2 s. The same harness recorded 0.33 s for the JSON-field
-search on a quieter run. Treat a 32 MiB restore as hundreds of milliseconds,
-with multi-second outliers under contention; see
+It stores a 32,000,001-byte plain entry and a 32,400,015-byte JSON document,
+just under the 32 MiB default cap, then times every mode and a search that has
+to scan the whole entry. The latest artifact was recorded at **load 22.36 on 4
+CPUs (5.59 per CPU)** and is marked `"representative": false`: medians ran from
+18.6 ms to 0.73 s and individual restores reached 2.2 s. The 2026-10-25 artifact
+(load not captured) recorded 480.7 ms for the absent-token JSON-field search and
+504.4 ms for the last-line search, against 732.8 ms and 541.2 ms in the
+contended run. Treat a scan over a 32 MB entry as hundreds of milliseconds, with
+multi-second outliers under contention; the fastest operations (a plain `bytes`
+slice, a refused `full`) are tens of milliseconds. See
 [docs/recovery.md](recovery.md#execution-time-envelope).
 
 ## Not measured
@@ -283,7 +290,7 @@ A release must satisfy all of these:
    `json-kept`; JSON documents re-parse.
 3. **Every planted clue is recoverable** through the real store and tool.
 4. **No fixture grows** after compression.
-5. **Retrieval is bounded**: one call returns a response under the cap for every
+5. **Retrieval is bounded**: one call returns content under the cap for every
    fixture, and `bytes_to_clue` is recorded so a regression in retrieval cost is
    visible.
 6. **Generated artifacts agree with a fresh measurement** — `bench/benchmark.py
