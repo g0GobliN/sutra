@@ -117,9 +117,10 @@ resolves against a different directory and `sutra_restore` answers
 `not_found`. With the defaults, both use `$HERMES_HOME/cache/sutra-store`.
 
 The hook is fail-open: a parse error, a missing `tool_response`, a non-text
-result, or any internal failure prints `{}` and leaves the original tool result
-untouched. When storage is unavailable it still compresses, but the marker says
-"original not retained" and quotes no id.
+result, an envelope that is not valid UTF-8, or any internal failure prints `{}`
+and leaves the original tool result untouched. It never decodes its protocol
+input with replacement characters. When storage is unavailable it still
+compresses, but the marker says "original not retained" and quotes no id.
 
 When Claude Code persists a large Bash/PowerShell result, the hook reads the
 full file named by `persistedOutputPath` only if it is a regular `.txt` file of
@@ -140,9 +141,10 @@ python3 scripts/sutra-cli.py config
 ```
 
 Exit codes: `0` a result was produced (including explicit recovery statuses);
-`1` internal failure or input above 64 MiB (JSON error on stdout); `2` usage
-error. Uninstall: delete the scripts; retained originals live under
-`HERMES_HOME` (see [troubleshooting](troubleshooting.md#removing-it)).
+`1` internal failure, input above 64 MiB, or input that is not valid UTF-8
+(JSON error on stdout); `2` usage error. Invalid bytes are rejected, never
+replaced with U+FFFD. Uninstall: delete the scripts; retained originals live
+under `HERMES_HOME` (see [troubleshooting](troubleshooting.md#removing-it)).
 
 ### MCP server
 
@@ -159,9 +161,11 @@ add:
 ```
 
 The server speaks newline-delimited JSON-RPC 2.0 on stdio, exposes
-`sutra_compress` and `sutra_restore`, and exits cleanly on stdin EOF. Point
-`HERMES_HOME` at a dedicated directory to isolate its store from a Hermes
-profile. Uninstall: remove the server entry from the client config.
+`sutra_compress` and `sutra_restore`, and exits cleanly on stdin EOF. A request
+line that is not valid UTF-8 receives one `-32700` parse error and the loop
+keeps serving; it does not kill the server. Point `HERMES_HOME` at a dedicated
+directory to isolate its store from a Hermes profile. Uninstall: remove the
+server entry from the client config.
 
 ## What is verified where
 
