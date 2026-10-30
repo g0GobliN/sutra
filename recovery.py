@@ -289,9 +289,12 @@ def _bytes(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> st
     truncated = end - start > max_bytes
     take = max_bytes if truncated else end - start
     chunk = data[start:start + take]
+    # Both offsets were checked above, so this slice starts and ends on a
+    # character boundary. A literal U+FFFD is content, not a decode artifact:
+    # never trim it to guess where a character ends.
     if truncated:
-        # Stop on a UTF-8 character boundary so the next page starts exactly
-        # where this one ended: concatenating pages is byte-exact.
+        # Only the page end can split a character; stop there so the next page
+        # starts exactly where this one ended. Concatenating pages is byte-exact.
         text = chunk.decode("utf-8", "ignore")
         consumed = len(text.encode("utf-8"))
         if consumed <= 0:
@@ -300,10 +303,6 @@ def _bytes(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> st
     else:
         text = chunk.decode("utf-8", "replace")
         consumed = len(chunk)
-        if end < size:
-            text = text.rstrip("\ufffd")
-    if start > 0:
-        text = text.lstrip("\ufffd")
     next_range = {"mode": "bytes", "start": start + consumed, "end": end}
     if scope.get("field"):
         next_range["field"] = scope["field"]
