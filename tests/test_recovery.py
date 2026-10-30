@@ -245,6 +245,39 @@ def _compressed(sutra):
     return log, stored, entry_id, start, end
 
 
+def test_multibyte_cut_offsets_restore_exactly(sutra, monkeypatch):
+    """The marker's offsets and recovery's boundary rule must agree.
+
+    Both ends of the elided range fall inside a three-byte character. The
+    engine backs the head cut up and moves the tail cut forward; restore must
+    accept exactly those offsets and return the bytes between them. A second
+    copy of the continuation-byte rule that drifted on either side would
+    either reject this marker or return a different slice.
+    """
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "4000")
+    monkeypatch.setenv("SUTRA_HEAD_BYTES", "1001")
+    monkeypatch.setenv("SUTRA_TAIL_BYTES", "301")
+    text = "€" * 1000 + "A" * 1000 + "€" * 1000
+    raw = text.encode("utf-8")
+    stored = sutra.compress_result({"output": text})["output"]
+    marker = re.search(r"\[sutra: partial[^\]]*\]", stored).group(0)
+    entry_id = ID_RE.search(marker).group(1)
+    start, end = (int(x) for x in re.search(r"start=(\d+), end=(\d+)", marker).groups())
+    assert (start, end) == (999, 6700)
+
+    head = stored.split("[sutra:", 1)[0].rstrip("\r\n")
+    tail = stored[stored.index(marker) + len(marker):].lstrip("\r\n")
+    assert head.encode("utf-8") == raw[:start]
+    assert tail.encode("utf-8") == raw[end:]
+
+    response = json.loads(sutra.recovery.restore(
+        {"id": entry_id, "mode": "bytes", "start": start, "end": end}))
+    assert response["status"] == "ok"
+    assert response["content"] == raw[start:end].decode("utf-8")
+    assert response["returned_bytes"] == end - start
+    assert response["complete"] is True
+
+
 def test_bytes_mode_pages_out_the_exact_original_slice(sutra):
     log, stored, entry_id, start, end = _compressed(sutra)
     expected = log.encode("utf-8")[start:end].decode("utf-8")
