@@ -157,7 +157,9 @@ pages reproduces the original slice exactly — including multi-byte text. A
 requested `start` or `end` that falls inside a multi-byte character is an
 explicit `error`, not a page that quietly returns fewer bytes than its `range`
 claims. Move the offset to a boundary, or use the `next` range the previous page
-returned.
+returned. A literal U+FFFD in the original is content, not a partial-decode
+artifact: a range covering one returns it exactly, and the protocol never trims
+it to guess where a character ends.
 
 `lines` and `search` render blocks with a header line:
 
