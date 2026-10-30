@@ -318,6 +318,35 @@ def test_byte_mode_rejects_ranges_that_split_a_character(sutra, store):
         assert response["complete"] is True
 
 
+def test_byte_mode_preserves_literal_replacement_characters(sutra, store):
+    """U+FFFD is valid content, not proof of a partial decode. The old cleanup
+    stripped it at a range edge and still reported the range complete."""
+    entry = store.put("\ufffdabc\ufffdz")
+    for start, end, expected in ((0, 3, "\ufffd"), (3, 6, "abc"),
+                                 (6, 9, "\ufffd"), (9, 10, "z"),
+                                 (0, 10, "\ufffdabc\ufffdz")):
+        response = json.loads(sutra.recovery.restore(
+            {"id": entry.id, "mode": "bytes", "start": start, "end": end}, store=store))
+        assert response["status"] == "ok", (start, end, response)
+        assert response["content"] == expected, (start, end, response)
+        assert response["returned_bytes"] == len(expected.encode("utf-8"))
+        assert response["complete"] is True
+
+
+def test_byte_mode_preserves_a_replacement_character_at_a_page_start(sutra, store):
+    """A long page that starts on a literal U+FFFD must return it; the old
+    lstrip removed it while next.start advanced past its bytes."""
+    text = "a" * 30_000 + "\ufffd" + "b" * 30_000
+    entry = store.put(text)
+    response = json.loads(sutra.recovery.restore(
+        {"id": entry.id, "mode": "bytes", "start": 30_000,
+         "end": len(text.encode("utf-8")), "max_bytes": 512}, store=store))
+    assert response["status"] == "ok"
+    assert response["content"].startswith("\ufffd"), response["content"][:20]
+    assert response["returned_bytes"] == 512
+    assert response["next"]["start"] == 30_512
+
+
 def test_case_insensitive_search_keeps_the_match_in_a_clipped_line(sutra, store):
     """Lowercasing can expand a character (İ → i̇); mapping that index back to
     the original line used to clip the window past the match it announced."""

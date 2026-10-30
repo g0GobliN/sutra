@@ -127,6 +127,24 @@ def test_byte_restore_rejects_a_range_that_splits_a_character():
     assert "splits a UTF-8 character" in response["error"]
 
 
+def test_byte_restore_preserves_a_literal_replacement_character():
+    """A range covering one valid U+FFFD must return that character, not strip
+    it while claiming the response is complete."""
+    payload = "\ufffd" + "a" * 30000
+    compressed = run_cli(["compress"], stdin_text=payload)
+    assert compressed.returncode == 0, compressed.stderr
+    body = json.loads(compressed.stdout)
+    assert body["id"]
+    result = run_cli(["restore", "--id", body["id"], "--mode", "bytes",
+                      "--start", "0", "--end", "3"])
+    assert result.returncode == 0, result.stderr
+    response = json.loads(result.stdout)
+    assert response["status"] == "ok"
+    assert response["content"] == "\ufffd"
+    assert response["returned_bytes"] == 3
+    assert response["complete"] is True
+
+
 def test_json_array_of_long_strings_keeps_every_element():
     """Safe array compression rewrites string values in place: length, element
     types and keys stay, and the original is recoverable."""

@@ -124,6 +124,27 @@ def test_case_insensitive_restore_keeps_a_match_inside_a_clipped_line():
         assert session.close() == 0
 
 
+def test_byte_restore_preserves_a_literal_replacement_character_at_the_range_end():
+    """The MCP surface must return a valid U+FFFD at the end of a range; the old
+    rstrip deleted it and reported the range complete."""
+    payload = "a" * 30000 + "\ufffd" + "z"
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        compressed = tool_text(session.call_tool("sutra_compress", {"output": payload}))
+        assert compressed["id"]
+        restored = tool_text(session.call_tool(
+            "sutra_restore",
+            {"id": compressed["id"], "mode": "bytes", "start": 30000, "end": 30003},
+            request_id="replacement"))
+        assert restored["status"] == "ok"
+        assert restored["content"] == "\ufffd"
+        assert restored["returned_bytes"] == 3
+        assert restored["complete"] is True
+    finally:
+        assert session.close() == 0
+
+
 def test_bad_requests_are_isError_not_protocol_errors():
     session = McpSession()
     try:
