@@ -28,7 +28,7 @@ Usage:
     python3 scripts/sutra-cli.py compress [--tool NAME] [--file PATH] < payload
     python3 scripts/sutra-cli.py restore --id su_... [--mode bytes|lines|search|full] \
         [--field /output] [--start N] [--end N] [--query Q] [--context N] \
-        [--max-bytes N]
+        [--case-sensitive | --ignore-case] [--max-bytes N]
     python3 scripts/sutra-cli.py config
 """
 
@@ -46,8 +46,7 @@ MAX_INPUT_BYTES = 64 * 1024 * 1024  # the engine refuses larger inputs anyway
 RECOVERY_ARG_MAP = {
     "mode": "mode", "field": "field", "start": "start", "end": "end",
     "query": "query", "context": "context",
-    "case-sensitive": "case_sensitive", "max-bytes": "max_bytes",
-    "max-matches": "max_matches",
+    "max-bytes": "max_bytes", "max-matches": "max_matches",
 }
 
 
@@ -101,6 +100,8 @@ def cmd_restore(args: argparse.Namespace) -> int:
         value = getattr(args, cli_name.replace("-", "_"), None)
         if value is not None:
             request[protocol_name] = value
+    if args.case_sensitive is not None:
+        request["case_sensitive"] = args.case_sensitive
     response = json.loads(sutra.core.restore(request))
     return _emit(response, 0)  # an explicit recovery status is a result, not a failure
 
@@ -136,10 +137,13 @@ def main(argv: list[str] | None = None) -> int:
                                  default=None)
         elif protocol_name in ("start", "end", "context", "max-bytes".replace("-", "_"), "max-matches".replace("-", "_")) or cli_name in ("max-bytes", "max-matches"):
             restore.add_argument(f"--{cli_name}", type=int, default=None, dest=cli_name.replace("-", "_"))
-        elif protocol_name == "case_sensitive":
-            restore.add_argument("--case-sensitive", action="store_true", default=None)
         else:
             restore.add_argument(f"--{cli_name}", default=None)
+    case = restore.add_mutually_exclusive_group()
+    case.add_argument("--case-sensitive", dest="case_sensitive", action="store_true",
+                      default=None, help="match case (default)")
+    case.add_argument("--ignore-case", dest="case_sensitive", action="store_false",
+                      default=None, help="match case-insensitively")
     restore.set_defaults(func=cmd_restore)
 
     config = sub.add_parser("config", help="print the resolved configuration as JSON")
