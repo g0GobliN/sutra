@@ -56,6 +56,27 @@ def test_process_text_never_raises_and_returns_the_original(sutra, monkeypatch):
     assert outcome.original_bytes == outcome.compressed_bytes
 
 
+def test_unencodable_text_is_never_replaced(sutra):
+    """A lone surrogate must not become ``?`` or raise through the seam.
+
+    JSON clients can send ``\\ud800``. Encoding that with ``errors="replace"``
+    invented a different character and, for a small string, a fallback byte
+    count raised ``UnicodeEncodeError`` out of ``process_text``.
+    """
+    for text in ("small\ud800 output", "head\ud800" + "x" * 30_000):
+        outcome = sutra.process_text(text)
+        assert outcome.output == text
+        assert outcome.changed is False
+        assert outcome.marker is False
+        assert outcome.id is None
+        assert outcome.original_bytes == outcome.compressed_bytes == 0
+
+        direct, stats = sutra.compress(text)
+        assert direct == text
+        assert stats["changed"] is False
+        assert stats["rule"] == "invalid-utf8-kept"
+
+
 def test_process_result_bypasses_evidence_tools_by_name_and_namespace(sutra):
     payload = {"output": big()}
     for name in ("sutra_restore", "mcp__sutra__sutra_restore", "sutra_compress"):

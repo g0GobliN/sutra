@@ -105,10 +105,14 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
     """Compress one string through the existing engine and store.
 
     The one entry point for text-shaped hosts (CLI, MCP). Never raises: an
-    internal failure returns the original text as an unchanged outcome.
+    internal failure returns the original text as an unchanged outcome. A
+    string that cannot be encoded as UTF-8 is returned untouched with zero
+    byte counts: it has no UTF-8 representation to measure or store.
     """
     cfg = cfg or _config.resolve()
-    original_bytes = len(text.encode("utf-8", "replace"))
+    original_bytes = engine.utf8_byte_length(text)
+    if original_bytes is None:
+        return Outcome(False, text, False, None, 0, 0)
     if not cfg.enabled or should_bypass(tool_name):
         return _failed(text, original_bytes)
     try:
@@ -118,13 +122,20 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
         logger.exception("sutra: compression failed; returning the original")
         return _failed(text, original_bytes)
     _record_compression(stats, cfg)
+    compressed_bytes = stats.get("compressed_bytes")
+    if compressed_bytes is None:
+        compressed_bytes = engine.utf8_byte_length(out)
+        if compressed_bytes is None:
+            # A host adapter must never turn a string it cannot measure into an
+            # exception. This is defensive; the engine already refuses one.
+            compressed_bytes = original_bytes
     return Outcome(
         changed=bool(stats.get("changed")),
         output=out,
         marker="[sutra:" in out,
         id=stats.get("id"),
         original_bytes=int(stats.get("original_bytes", original_bytes)),
-        compressed_bytes=int(stats.get("compressed_bytes", len(out.encode("utf-8")))),
+        compressed_bytes=int(compressed_bytes),
     )
 
 
