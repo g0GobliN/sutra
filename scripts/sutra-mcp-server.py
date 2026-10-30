@@ -70,18 +70,20 @@ def _tool_definitions(sutra) -> list[dict]:
 
 
 def _result(request_id, content_text: str, isError: bool = False) -> str:
+    # ASCII escapes keep the JSON-RPC wire valid for a lone surrogate in an
+    # id or a tool result, and on a host whose stdout is not UTF-8.
     return json.dumps({
         "jsonrpc": "2.0", "id": request_id,
         "result": {"content": [{"type": "text", "text": content_text}],
                    "isError": isError},
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _error(request_id, code: int, message: str) -> str:
     return json.dumps({
         "jsonrpc": "2.0", "id": request_id,
         "error": {"code": code, "message": message},
-    }, ensure_ascii=False)
+    }, ensure_ascii=True)
 
 
 def _compress(sutra, arguments: dict) -> str:
@@ -90,7 +92,7 @@ def _compress(sutra, arguments: dict) -> str:
         return json.dumps({"error": "output must be a string"})
     outcome = sutra.core.process_text(
         text, tool_name=str(arguments.get("tool") or "")[:64])
-    return json.dumps(sutra.core.outcome_json(outcome), ensure_ascii=False)
+    return json.dumps(sutra.core.outcome_json(outcome), ensure_ascii=True)
 
 
 def handle(sutra, line: str) -> str | None:
@@ -145,13 +147,22 @@ def handle(sutra, line: str) -> str | None:
 
 def main() -> int:
     sutra = load_sutra()
-    for line in sys.stdin:
-        line = line.strip()
-        if not line:
-            continue
-        if len(line) > MAX_LINE_BYTES:
+    # Read bytes, not text: the text wrapper decodes ahead, so one invalid byte
+    # used to raise before the first valid request was even handled. The
+    # protocol is UTF-8; an invalid line is one request's error, not a dead
+    # server.
+    for raw in sys.stdin.buffer:
+        if len(raw) > MAX_LINE_BYTES:
             print(_error(None, -32600,
                          f"request exceeds {MAX_LINE_BYTES:,} bytes"), flush=True)
+            continue
+        try:
+            line = raw.decode("utf-8").strip()
+        except UnicodeDecodeError:
+            print(_error(None, -32700, "parse error: input is not valid UTF-8"),
+                  flush=True)
+            continue
+        if not line:
             continue
         try:
             response = handle(sutra, line)

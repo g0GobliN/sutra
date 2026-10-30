@@ -52,7 +52,9 @@ RECOVERY_ARG_MAP = {
 
 
 def _emit(payload: dict, code: int) -> int:
-    print(json.dumps(payload, ensure_ascii=False))
+    # ASCII escapes keep the JSON wire valid even when the host's stdout is a
+    # non-UTF-8 locale; the caller gets the same string after json.loads().
+    print(json.dumps(payload, ensure_ascii=True))
     return code
 
 
@@ -62,18 +64,30 @@ def _fail(message: str, code: int) -> int:
     return code
 
 
+def _decode_utf8(data: bytes, source: str) -> str:
+    """Decode strictly: replacement characters are a silent data loss."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError(
+            f"{source} is not valid UTF-8 (byte {exc.start})") from None
+
+
 def _read_input(limit: int) -> str:
     data = sys.stdin.buffer.read(limit + 1)
     if len(data) > limit:
         raise ValueError(f"input exceeds {limit:,} bytes")
-    return data.decode("utf-8", "replace")
+    return _decode_utf8(data, "stdin")
 
 
 def cmd_compress(args: argparse.Namespace) -> int:
     sutra = load_sutra()
     try:
-        text = pathlib.Path(args.file).read_text(encoding="utf-8", errors="replace") \
-            if args.file else _read_input(MAX_INPUT_BYTES)
+        if args.file:
+            data = pathlib.Path(args.file).read_bytes()
+            text = _decode_utf8(data, str(args.file))
+        else:
+            text = _read_input(MAX_INPUT_BYTES)
     except (OSError, ValueError) as exc:
         return _fail(f"could not read input: {exc}", 1)
     outcome = sutra.core.process_text(text, tool_name=args.tool or "")
@@ -88,14 +102,12 @@ def cmd_restore(args: argparse.Namespace) -> int:
         if value is not None:
             request[protocol_name] = value
     response = json.loads(sutra.core.restore(request))
-    print(json.dumps(response, ensure_ascii=False))
-    return 0  # an explicit status (not_found, expired, ...) is a result, not a failure
+    return _emit(response, 0)  # an explicit recovery status is a result, not a failure
 
 
 def cmd_config(_args: argparse.Namespace) -> int:
     sutra = load_sutra()
-    print(json.dumps(sutra.configuration().as_dict(), ensure_ascii=False, default=str))
-    return 0
+    return _emit(sutra.configuration().as_dict(), 0)
 
 
 class _JsonArgumentParser(argparse.ArgumentParser):

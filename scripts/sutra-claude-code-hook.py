@@ -111,7 +111,9 @@ def _read_payload() -> object:
     data = sys.stdin.buffer.read(MAX_INPUT_BYTES + 1)
     if len(data) > MAX_INPUT_BYTES:
         raise ValueError(f"hook input exceeds {MAX_INPUT_BYTES:,} bytes")
-    return json.loads(data.decode("utf-8", "replace"))
+    # The hook protocol is UTF-8 JSON. Replacing invalid bytes could turn a
+    # corrupt envelope into a valid event and then rewrite the wrong result.
+    return json.loads(data.decode("utf-8"))
 
 
 def main() -> int:
@@ -143,8 +145,9 @@ def main() -> int:
             }
         }
         # Serialize before writing: a partial write would corrupt the hook's
-        # only protocol channel.
-        sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\n")
+        # only protocol channel. ASCII escapes keep a lone surrogate in an
+        # untouched field representable on the wire instead of raising.
+        sys.stdout.write(json.dumps(response, ensure_ascii=True) + "\n")
     except Exception:  # fail open: never break a tool call over compression
         return _noop()
     return 0

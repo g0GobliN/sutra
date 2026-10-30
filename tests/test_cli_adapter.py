@@ -7,6 +7,7 @@ test; no mocking anywhere.
 """
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -22,10 +23,16 @@ SHARED_LINES[500] = "CLUE: adapter-equivalence-token-7Q"
 SHARED_PAYLOAD = "\n".join(SHARED_LINES) + "\n"
 
 
-def run_cli(args, stdin_text=None, timeout=60):
+def run_cli(args, stdin_text=None, timeout=60, env=None):
     return subprocess.run(
         [sys.executable, str(CLI), *args], input=stdin_text, capture_output=True,
-        text=True, timeout=timeout, cwd=str(ROOT))
+        text=True, timeout=timeout, cwd=str(ROOT), env=env)
+
+
+def run_cli_bytes(args, stdin_bytes=b"", timeout=60, env=None):
+    return subprocess.run(
+        [sys.executable, str(CLI), *args], input=stdin_bytes, capture_output=True,
+        timeout=timeout, cwd=str(ROOT), env=env)
 
 
 def test_compress_round_trip_restores_the_buried_clue():
@@ -147,3 +154,32 @@ def test_empty_input_is_an_unchanged_empty_result():
     assert result.returncode == 0
     payload = json.loads(result.stdout)
     assert payload["changed"] is False and payload["output"] == ""
+
+
+def test_invalid_utf8_on_stdin_is_rejected_not_replaced():
+    result = run_cli_bytes(["compress"], b"ok\xff\xfe\n")
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert "not valid UTF-8" in payload["error"]
+    assert b"\xef\xbf\xbd" not in result.stdout
+
+
+def test_invalid_utf8_file_is_rejected_not_replaced(tmp_path):
+    path = tmp_path / "tool-output.txt"
+    path.write_bytes(b"ok\xff\xfe\n")
+    result = run_cli_bytes(["compress", "--file", str(path)])
+    assert result.returncode == 1
+    payload = json.loads(result.stdout)
+    assert "not valid UTF-8" in payload["error"]
+    assert b"\xef\xbf\xbd" not in result.stdout
+
+
+def test_non_ascii_output_survives_an_ascii_stdout():
+    env = dict(os.environ, PYTHONIOENCODING="ascii")
+    text = "日本語のログ行\n" * 4000
+    result = run_cli(["compress"], stdin_text=text, env=env)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.isascii()
+    payload = json.loads(result.stdout)
+    assert payload["changed"] is True
+    assert "日本語" in payload["output"]
