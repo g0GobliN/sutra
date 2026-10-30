@@ -52,6 +52,45 @@ def test_compress_round_trip_restores_the_buried_clue():
     assert "adapter-equivalence-token-7Q" in response["content"]
 
 
+def test_search_flags_expose_both_case_modes():
+    """`--case-sensitive` used to be a no-op because it was the default; there
+    was no way to ask the CLI for case-insensitive search at all."""
+    compressed = run_cli(["compress"], stdin_text=SHARED_PAYLOAD)
+    body = json.loads(compressed.stdout)
+    assert body["id"]
+
+    def search(*extra):
+        result = run_cli(["restore", "--id", body["id"], "--mode", "search",
+                          "--query", "clue: adapter-equivalence-token-7q", *extra])
+        return result, json.loads(result.stdout)
+
+    default, default_body = search()
+    explicit, explicit_body = search("--case-sensitive")
+    folded, folded_body = search("--ignore-case")
+
+    assert default.returncode == 0, default.stderr
+    assert explicit.returncode == 0, explicit.stderr
+    assert folded.returncode == 0, folded.stderr
+    assert default_body["matches_found"] == 0
+    assert explicit_body["matches_found"] == 0
+    assert folded_body["matches_found"] == 1
+    assert "CLUE: adapter-equivalence-token-7Q" in folded_body["content"]
+    assert folded_body["case_sensitive"] is False
+
+    exact = run_cli(["restore", "--id", body["id"], "--mode", "search",
+                     "--query", "CLUE: adapter-equivalence-token-7Q",
+                     "--case-sensitive"])
+    exact_body = json.loads(exact.stdout)
+    assert exact.returncode == 0, exact.stderr
+    assert exact_body["matches_found"] == 1
+    assert exact_body["case_sensitive"] is True
+
+    both = run_cli(["restore", "--id", body["id"], "--mode", "search",
+                    "--query", "clue", "--case-sensitive", "--ignore-case"])
+    assert both.returncode == 2
+    assert "not allowed with argument" in both.stderr
+
+
 def test_small_input_is_unchanged_with_exit_zero():
     result = run_cli(["compress"], stdin_text="tiny output")
     assert result.returncode == 0
