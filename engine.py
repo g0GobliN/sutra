@@ -23,7 +23,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from . import config
+from . import config, utf8
 
 logger = logging.getLogger(__name__)
 
@@ -332,27 +332,6 @@ def collapse_repeats(text: str, keep: int = 2, ref: Ref | None = None,
     return "".join(out)
 
 
-def _utf8_head_end(raw: bytes, end: int) -> int:
-    """Move a head cut back to the nearest character boundary.
-
-    ``raw`` is valid UTF-8, so only the character containing ``end`` can be
-    split. When ``raw[end]`` is a continuation byte, back up over that
-    character and exclude it: the prefix then decodes exactly.
-    """
-    if end >= len(raw):
-        return len(raw)
-    while end > 0 and (raw[end] & 0xC0) == 0x80:
-        end -= 1
-    return max(0, end)
-
-
-def _utf8_tail_start(raw: bytes, start: int) -> int:
-    """Move a tail cut forward to the nearest character boundary."""
-    while start < len(raw) and (raw[start] & 0xC0) == 0x80:
-        start += 1
-    return start
-
-
 def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
                   ref: Ref | None = None) -> tuple[str, int, bool]:
     """Keep the start and the end, replace the middle with an explicit marker.
@@ -372,8 +351,9 @@ def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
     tail_bytes = max(0, tail_bytes)
     if head_bytes + tail_bytes <= 0 or len(raw) <= head_bytes + tail_bytes:
         return text, 0, False
-    head_raw = raw[:_utf8_head_end(raw, head_bytes)]
-    tail_start = _utf8_tail_start(raw, len(raw) - tail_bytes) if tail_bytes else len(raw)
+    head_raw = raw[:utf8.end_at_or_before(raw, head_bytes)]
+    tail_start = (utf8.start_at_or_after(raw, len(raw) - tail_bytes)
+                  if tail_bytes else len(raw))
     tail_raw = raw[tail_start:]
     cut = head_raw.rfind(b"\n")
     if cut >= len(head_raw) // 2:
