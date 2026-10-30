@@ -299,6 +299,50 @@ def test_search_mode_finds_the_middle(sutra):
     assert "untrusted data" in response["content_note"]
 
 
+def test_byte_mode_rejects_ranges_that_split_a_character(sutra, store):
+    """A range that cuts through UTF-8 used to return ok with fewer bytes than
+    its own range claimed, and with no way to ask for the missing part."""
+    entry = store.put("a€b")
+    for start, end in ((0, 2), (1, 3), (2, 4), (0, 3)):
+        response = json.loads(sutra.recovery.restore(
+            {"id": entry.id, "mode": "bytes", "start": start, "end": end}, store=store))
+        assert response["status"] == "error", (start, end, response)
+        assert "splits a UTF-8 character" in response["error"]
+        assert "content" not in response
+
+    for start, end, expected in ((0, 1, "a"), (1, 4, "€"), (4, 5, "b"), (0, 5, "a€b")):
+        response = json.loads(sutra.recovery.restore(
+            {"id": entry.id, "mode": "bytes", "start": start, "end": end}, store=store))
+        assert response["status"] == "ok"
+        assert response["content"] == expected
+        assert response["complete"] is True
+
+
+def test_case_insensitive_search_keeps_the_match_in_a_clipped_line(sutra, store):
+    """Lowercasing can expand a character (İ → i̇); mapping that index back to
+    the original line used to clip the window past the match it announced."""
+    line = "İ" * 3000 + "x" * 2000 + "NEEDLE-AT-END" + "y" * 8000
+    entry = store.put(line)
+    response = json.loads(sutra.recovery.restore(
+        {"id": entry.id, "mode": "search", "query": "NEEDLE-AT-END",
+         "case_sensitive": False, "max_bytes": 8192}, store=store))
+    assert response["status"] == "ok"
+    assert response["matches_found"] == 1
+    assert "NEEDLE-AT-END" in response["content"]
+    assert response["complete"] is True
+    assert len(response["content"].encode("utf-8")) <= 8192
+
+
+def test_search_treats_regex_metacharacters_literally(sutra, store):
+    entry = store.put("a.*b\naxxb\n")
+    response = json.loads(sutra.recovery.restore(
+        {"id": entry.id, "mode": "search", "query": ".*",
+         "case_sensitive": False}, store=store))
+    assert response["status"] == "ok"
+    assert response["matches_found"] == 1
+    assert "a.*b" in response["content"]
+
+
 def test_retrieval_at_the_entry_cap_stays_within_its_bounds(sutra, tmp_path):
     """The execution envelope starts with hard work bounds: one 32 MiB entry,
     at most 64 KiB returned, at most the requested matches, every mode an

@@ -113,6 +113,20 @@ def test_json_array_of_small_objects_is_returned_byte_identical():
                for item in json.loads(payload["output"]))
 
 
+def test_byte_restore_rejects_a_range_that_splits_a_character():
+    """The CLI exposes the same byte-range contract as the library: a range
+    that cuts through UTF-8 is an explicit error, not a quietly short page."""
+    payload = "€" * 9000
+    compressed = run_cli(["compress"], stdin_text=payload)
+    body = json.loads(compressed.stdout)
+    assert body["id"]
+    result = run_cli(["restore", "--id", body["id"], "--mode", "bytes",
+                      "--start", "0", "--end", "2"])
+    response = json.loads(result.stdout)
+    assert response["status"] == "error"
+    assert "splits a UTF-8 character" in response["error"]
+
+
 def test_json_array_of_long_strings_keeps_every_element():
     """Safe array compression rewrites string values in place: length, element
     types and keys stay, and the original is recoverable."""

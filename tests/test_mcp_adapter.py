@@ -104,6 +104,26 @@ def test_compress_then_restore_recovers_the_buried_clue():
         assert session.close() == 0
 
 
+def test_case_insensitive_restore_keeps_a_match_inside_a_clipped_line():
+    """The MCP surface must not announce a hit and then clip it away when the
+    query needs a case-insensitive match on expanding Unicode lowercase."""
+    line = "İ" * 3000 + "x" * 4000 + "NEEDLE-AT-END" + "y" * 15000
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        compressed = tool_text(session.call_tool("sutra_compress", {"output": line}))
+        assert compressed["id"]
+        restored = tool_text(session.call_tool(
+            "sutra_restore",
+            {"id": compressed["id"], "mode": "search", "query": "NEEDLE-AT-END",
+             "case_sensitive": False, "max_bytes": 8192},
+            request_id="casefold"))
+        assert restored["status"] == "ok"
+        assert "NEEDLE-AT-END" in restored["content"]
+    finally:
+        assert session.close() == 0
+
+
 def test_bad_requests_are_isError_not_protocol_errors():
     session = McpSession()
     try:
