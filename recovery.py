@@ -20,6 +20,7 @@ from typing import Any
 
 from . import config
 from . import metrics
+from . import utf8
 from .store import Entry, Lookup, Store, store_from_env
 
 TOOL_NAME = "sutra_restore"
@@ -97,19 +98,6 @@ def _int_arg(args: dict, name: str, default: int | None = None) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return default
-
-
-def _at_utf8_boundary(data: bytes, offset: int) -> bool:
-    """True when ``offset`` is a valid place to split UTF-8 text."""
-    return (offset <= 0 or offset >= len(data)
-            or (data[offset] & 0xC0) != 0x80)
-
-
-def _utf8_start_at_or_after(raw: bytes, offset: int) -> int:
-    """Move a byte offset forward out of a multi-byte character."""
-    while offset < len(raw) and (raw[offset] & 0xC0) == 0x80:
-        offset += 1
-    return offset
 
 
 def _lookup_error(lookup: Lookup) -> str | None:
@@ -278,7 +266,7 @@ def _bytes(scope: dict[str, Any], data: bytes, args: dict, max_bytes: int) -> st
             error=f"empty or reversed range: start={start} end={end} "
                   f"(the scope is {size:,} bytes)")
     split = [name for name, offset in (("start", start), ("end", end))
-             if not _at_utf8_boundary(data, offset)]
+             if not utf8.is_boundary(data, offset)]
     if split:
         return _response(
             "error", **scope, mode="bytes", original_bytes=size,
@@ -328,7 +316,7 @@ def _clip_line(line: str, budget: int, focus: int | None = None) -> tuple[str, i
         return line, 0
     focus_byte = len(line[:focus].encode("utf-8")) if focus and focus > 0 else 0
     start = max(0, min(len(raw) - budget, focus_byte - budget // 3))
-    start = _utf8_start_at_or_after(raw, start)
+    start = utf8.start_at_or_after(raw, start)
     return raw[start:start + budget].decode("utf-8", "ignore"), start
 
 
