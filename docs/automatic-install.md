@@ -57,7 +57,7 @@ inline"). Larger output is persisted by Claude Code; the hook receives a
 ```json
 {
   "persistedOutputPath": "/…/<session>/tool-results/<id>.txt",
-  "persistedOutputSize": 70885
+  "persistedOutputSize": 70888
 }
 ```
 
@@ -80,7 +80,7 @@ This is a real host constraint, not a SUTRA preference. Claude Code versions tha
 persist output differently, or a tool that does not set these fields, fall back
 to the old behaviour: only the text the hook actually received is eligible.
 
-### Live-host evidence (2026-10-29)
+### Live-host evidence (2026-10-29, reproduced 2026-10-30)
 
 Environment: Claude Code **2.1.268** on Linux, an isolated `HOME` and
 `CLAUDE_CONFIG_DIR`, and a local Anthropic-compatible endpoint that scripts one
@@ -88,11 +88,11 @@ Bash tool call. No provider was contacted and no live model was called.
 
 1. `sutra install --client claude` wrote the hook and MCP entry; Claude Code
    reported `✔ Connected`.
-2. The scripted turn ran a Bash command that emitted **70,885 bytes** and buried
+2. The scripted turn ran a Bash command that emitted **70,888 bytes** and buried
    a `CLUE` token in the middle.
 3. Claude Code persisted the full result and gave the hook a 29,999-character
    preview plus the path. The hook read the file, compressed the full text, and
-   returned **18,642 bytes**.
+   returned **18,645 bytes** (18,641 characters) in the model-facing result.
 4. The next model request contained the marker and the id, with **no**
    `<persisted-output>` pointer and no clue (the clue was in the omitted middle).
 5. `sutra_restore(id=…, mode="search", query=…)` returned `status: ok` and the
