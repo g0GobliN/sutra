@@ -145,11 +145,14 @@ python3 scripts/sutra-cli.py config
 `--case-sensitive` and `--ignore-case` are mutually exclusive. Omitting both
 keeps the recovery protocol's default, which is case-sensitive.
 
-Exit codes: `0` a result was produced (including explicit recovery statuses);
-`1` internal failure, input above 64 MiB, or input that is not valid UTF-8
-(JSON error on stdout); `2` usage error. Invalid bytes are rejected, never
-replaced with U+FFFD. Uninstall: delete the scripts; retained originals live
-under `HERMES_HOME` (see [troubleshooting](troubleshooting.md#removing-it)).
+Exit codes: `0` a result was produced (including explicit recovery statuses,
+and a `--file` the engine refuses to rewrite as too large); `1` internal
+failure, stdin above 64 MiB, or input that is not valid UTF-8 (JSON error on
+stdout); `2` usage error. Invalid bytes are rejected, never replaced with
+U+FFFD. Only stdin is size-checked by the CLI: a larger `--file` is read and
+returned unchanged by the engine (`too-large-kept`) with exit 0. Uninstall:
+delete the scripts; retained originals live under `HERMES_HOME` (see
+[troubleshooting](troubleshooting.md#removing-it)).
 
 ### MCP server
 
