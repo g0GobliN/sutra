@@ -137,19 +137,27 @@ surface.
 
 `search` is a literal substring scan over lines. There is no regular
 expression surface: a retrieval request cannot ask for work proportional to
-anything but the file size.
+anything but the file size. `case_sensitive=false` still matches the query
+literally — it is escaped before the case-insensitive comparison, never
+treated as a pattern. Semantic ranking is deliberately not part of this
+protocol; the decision and its evidence are in
+[semantic-retrieval.md](semantic-retrieval.md).
 
 ## 4. Modes
 
 | Mode | Range | Complete when | Pages with |
 |---|---|---|---|
-| `bytes` | `[start, end)` in UTF-8 bytes | the whole range was returned | `next = {mode:"bytes", start, end, field?}` |
+| `bytes` | `[start, end)` in UTF-8 bytes | the whole range was returned; both offsets are character boundaries | `next = {mode:"bytes", start, end, field?}` |
 | `lines` | `[start, end)`, 1-based | the whole range was returned | `next = {mode:"lines", start, end, field?}` |
 | `search` | up to `max_matches` hits with `context` lines around each | no truncation and no further matches | narrow the query, or raise `max_matches` |
 | `full` | the whole scope | always, if it fits under `max_bytes` | `bytes` / `lines` / `search` instead |
 
 `bytes` paging stops on a UTF-8 character boundary, so concatenating successive
-pages reproduces the original slice exactly — including multi-byte text.
+pages reproduces the original slice exactly — including multi-byte text. A
+requested `start` or `end` that falls inside a multi-byte character is an
+explicit `error`, not a page that quietly returns fewer bytes than its `range`
+claims. Move the offset to a boundary, or use the `next` range the previous page
+returned.
 
 `lines` and `search` render blocks with a header line:
 
@@ -281,6 +289,8 @@ Without supplied bytes, `verify(entry)` still reads the file once itself.
 | unknown id | `not_found` (after id validation) |
 | malformed id | `error` |
 | handler exception | `error` with the class name and a 200-character message; never raised into the agent loop |
+| byte range splits a UTF-8 character | `error`; no content is returned and the caller is told which offset is not a boundary |
+| search finds a query inside a clipped long line | the clip is centred on the original match, so the returned block contains the query |
 
 ## 7. Storage
 
@@ -349,7 +359,9 @@ difference is the contract, stated in the snapshot itself.
 
 1. Recovered text is **data**. It is returned with `content_note` and must never
    be treated as instructions, even if it looks like them.
-2. Retrieval is literal and bounded: no regex, no unbounded work, no execution.
+2. Retrieval is literal and bounded: no user-supplied regex, no unbounded
+   work, no execution. Case-insensitive search escapes the literal query
+   before matching it.
 3. Ids are unguessable and validated; no caller-supplied path reaches the
    filesystem.
 4. Entries are per-profile and readable only by the profile's user. There is no
