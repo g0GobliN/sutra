@@ -6,6 +6,7 @@ verified behavior — code plus the named tests — not intent. Where a guarante
 depends on the host (Hermes), the dependency is named.
 
 Related: [recovery.md](recovery.md) (the retrieval protocol in full),
+[semantic-retrieval.md](semantic-retrieval.md) (why ranked search is deferred),
 [benchmark.md](benchmark.md) (what is measured and what is not),
 [SECURITY.md](SECURITY.md) (the security model), [../README.md](../README.md)
 (operation and configuration).
@@ -71,7 +72,8 @@ Full protocol: [recovery.md](recovery.md). The guarantees:
 
 | Guarantee | Enforced by |
 |---|---|
-| Paged `mode=bytes` is byte-exact: concatenating successive pages reproduces the original slice, multi-byte text included; paging stops on UTF-8 boundaries. | `test_bytes_mode_pages_out_the_exact_original_slice` |
+| Paged `mode=bytes` is byte-exact: concatenating successive pages reproduces the original slice, multi-byte text included; paging stops on UTF-8 boundaries. A requested range whose `start` or `end` splits a character is an explicit `error`, never a short page that claims the whole range. | `test_bytes_mode_pages_out_the_exact_original_slice`, `test_byte_mode_rejects_ranges_that_split_a_character`, `test_byte_restore_rejects_a_range_that_splits_a_character` |
+| Search is literal, bounded and has no user-supplied regex surface. `case_sensitive=false` escapes the query before matching it, so metacharacters stay literal and a clipped long line is centred on the original match, not on a length-changing lowercase copy. | `test_search_is_literal_and_case_sensitive_by_default`, `test_search_treats_regex_metacharacters_literally`, `test_case_insensitive_search_keeps_the_match_in_a_clipped_line`, `test_case_insensitive_restore_keeps_a_match_inside_a_clipped_line` |
 | Every request returns an explicit status — `ok`, `not_found`, `expired`, `too_large`, `unavailable`, `error` — and never raises into the agent loop. | `test_restore_never_raises`, `test_missing_and_malformed_ids`, `test_invalid_mode_is_an_error` |
 | Responses are bounded: 8 KiB default, 64 KiB hard cap, ≤20 matches, ≤200-char literal query, no regex. | `test_lines_mode_is_bounded`, `test_search_respects_max_matches_and_reports_more`, `test_query_length_is_bounded` |
 | `mode=full` reports `sha256_verified` from the store's own digest check over exactly the bytes returned. | `test_full_mode_verifies_the_hash`, `test_full_mode_uses_the_store_verifier`, `test_full_mode_reports_a_corrupted_entry` |
@@ -122,6 +124,9 @@ Full model: [SECURITY.md](SECURITY.md). The guarantees:
 - **Host-dependent visibility.** Whether the model sees `sutra_restore` depends
   on Hermes' toolset and Tool Search configuration (§6); SUTRA cannot force the
   host to surface it.
+- **Search is literal, not semantic.** A natural-language query does not find
+  related text. Ranked semantic retrieval is deferred with its evidence and
+  revisit conditions in [semantic-retrieval.md](semantic-retrieval.md).
 
 ## Verification status
 
