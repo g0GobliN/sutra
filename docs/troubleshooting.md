@@ -9,7 +9,7 @@ model see [../SECURITY.md](../SECURITY.md).
 | Symptom | Likely cause | What to do |
 |---|---|---|
 | `status: expired` | TTL or quota cleanup removed the original | re-run the tool narrowly; raise `SUTRA_STORE_TTL_HOURS` before the fact |
-| `status: too_large` | the scope is above the 8 KiB response cap | ask for `mode="bytes"` or `mode="lines"` with a range, or a literal `search`; `max_bytes` may rise to 65,536 |
+| `status: too_large` | `mode="full"` scope is above `max_bytes` (default 8 KiB; hard cap 65,536) | narrow it with `mode="bytes"` or `mode="lines"` and a range, or a literal `search`; or raise `max_bytes` up to 65,536 |
 | `status: unavailable` | `SUTRA_STORE=0`, or the store path is not a plain directory | re-enable the store; use a normal directory for `SUTRA_STORE_DIR` |
 | `status: not_found` | wrong, expired or pruned id, or a corrupt entry deleted on lookup | re-run the tool; do not invent ids |
 | `status: error` | malformed field pointer, range, or query | read `error`; fix the argument |

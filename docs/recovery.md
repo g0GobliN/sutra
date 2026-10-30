@@ -385,6 +385,10 @@ difference is the contract, stated in the snapshot itself.
   smaller result.
 - The tool name, argument names and response keys above are the stable surface.
   New response keys may be added; existing keys keep their meaning.
-- Old ids remain readable across plugin upgrades as long as the store format
-  version (`version: 1` in the metadata) is supported. A format change ships
-  with a reader for the previous version.
+- Old ids remain readable across plugin upgrades that keep the store layout: a
+  `su_<32 hex>.txt` data file plus its `.json` metadata with `created_at`,
+  `original_bytes`, and `sha256`. The metadata records `version: 1`, but the
+  reader does not branch on that field — today it is informational, not a
+  compatibility gate. An incompatible format change would break old ids; no
+  previous-format reader exists, so the version field alone cannot make such a
+  change safe.
