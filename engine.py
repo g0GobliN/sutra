@@ -132,6 +132,20 @@ def _parses_as_json(text: str) -> bool:
         return False
 
 
+def utf8_byte_length(text: str) -> int | None:
+    """The exact UTF-8 length, or None when ``text`` is not UTF-8 encodable.
+
+    A Python ``str`` can contain a lone surrogate (for example, a JSON client
+    can send ``\\ud800``). Encoding that with ``errors="replace"`` invents a
+    ``?`` and silently changes the payload. Callers treat ``None`` as a reason
+    to return the text untouched.
+    """
+    try:
+        return len(text.encode("utf-8"))
+    except UnicodeEncodeError:
+        return None
+
+
 def classify(text: str) -> Classification:
     """Name the payload's kind. Conservative: unknown text is ``text``."""
     return _classify_work(strip_ansi(text))
@@ -630,9 +644,19 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
 
     If the input was a JSON document and the output no longer parses, the
     original text is returned untouched. A broken payload is never worth the
-    bytes saved.
+    bytes saved. Text that is not UTF-8 encodable (a lone surrogate) is also
+    returned untouched: replacing it would silently change the visible copy.
     """
-    original_bytes = len(text.encode("utf-8", "replace"))
+    original_bytes = utf8_byte_length(text)
+    if original_bytes is None:
+        return text, {
+            "original_bytes": 0,
+            "compressed_bytes": 0,
+            "changed": False,
+            "rule": "invalid-utf8-kept",
+            "omitted_bytes": 0,
+            "partial": False,
+        }
     try:
         out, stats = _compress_impl(text, cfg=cfg, max_bytes=max_bytes, head_bytes=head_bytes,
                                     tail_bytes=tail_bytes, json_items=json_items, ref=ref,
