@@ -8,17 +8,7 @@ output replacement is installed or working.
 
 ## Current matrix
 
-| Host | Automatic interception | `sutra install` | `sutra doctor` | Evidence |
-|---|---|---|---|---|
-| **Hermes Agent** | **Yes** — native `tool_execution` middleware | **Yes** — copies the plugin into `$HERMES_HOME/plugins/sutra`, runs `hermes plugins validate`, then `hermes plugins enable sutra` | `plugin`, `enabled`, and host validation; the separate `scripts/e2e/run.sh` exercises a real gateway, terminal tool, middleware, retention, Tool Search bridge, and recovery | Real gateway E2E on Hermes 0.22.5 (2026-10-31): 38,925 B → 22,597 B, marker present, clue hidden, Tool Search found the tool, bridge restore returned `ok: true`; the optional live test covers the plugin validate/enable round trip |
-| **Claude Code** | **Yes** — native `PostToolUse` hook returning `hookSpecificOutput.updatedToolOutput`, plus MCP recovery | **Yes** — user settings hook and user-scope MCP entry; verifies MCP connection and runs the hook probe | Hook presence, MCP connection, a synthetic persisted-output event, and recovery through the shared seam | Live Claude Code 2.1.268 scripted-provider proof in [automatic-install.md](automatic-install.md); hook-level tests run against the current CLI |
-| **OpenCode** | **Yes (native tools)** — generated `tool.execute.after` plugin mutating `output.output`; native `sutra_restore` tool | **Yes** — generated plugin plus the MCP recovery entry when a config exists | Generated plugin, embedded interpreter/import, real CLI compress/restore, protected diff, and the Node hook contract | Live OpenCode 1.19.5 scripted-provider proof; Node tests invoke the real Python CLI |
-| **Codex CLI** | **No — host limitation** | **MCP only** — `codex mcp add sutra -- <python> -m sutra.mcp`; no automatic output replacement is claimed | MCP entry/command/enabled state; reports `status=limited`, `automatic=no` | Codex 0.166.0 real `mcp add/list/remove` round trip against an isolated `CODEX_HOME` |
-
-The important distinction: **MCP registration is not interception**. Codex
-officially supports MCP servers, so SUTRA can install the recovery/compress
-tools there, but Codex does not expose a documented post-tool result rewrite.
-The installer says so instead of pretending the user has automatic compression.
+The authoritative per-client matrix — mechanism, automatic or explicit, install, verification and limits — lives in [integrations.md](integrations.md). This page records the host-API evidence behind those labels and does not maintain a second copy.
 
 ## Host API evidence
 

@@ -1,5 +1,7 @@
 # Automatic installation and the client audit
 
+The authoritative per-client matrix and status definitions are in [integrations.md](integrations.md). This page records what `sutra install` changes, how it rolls back, and the evidence for each host.
+
 The target is one command, then normal agent work:
 
 ```bash
