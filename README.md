@@ -128,7 +128,7 @@ The guarantees, stated once:
 
 ## Proof, not a promise
 
-![Horizontal bar chart: bytes before and after SUTRA on eight real payload shapes. 12,000-line command output 60.9 kB → 18.6 kB; JSON tool envelope 85.9 kB → 19.2 kB; test run of 2,000 cases 99.8 kB → 18.6 kB; 3,000-frame traceback 359.4 kB → 10.3 kB; 600 KB patch 432.1 kB → unchanged (safety case); 900-row SQL result 46.6 kB → 18.5 kB; 8,000-line build log 334.9 kB → 18.6 kB; 8,000-item JSON array 206.9 kB → unchanged (shape preserved). Total 1.6 MB → 742.7 kB, 54.3% saved.](bench/savings.svg)
+![Horizontal bar chart: bytes before and after SUTRA on eight real payload shapes. 12,000-line command output 60.9 kB → 18.6 kB; JSON tool envelope 85.9 kB → 19.2 kB; test run of 2,000 cases 99.8 kB → 18.6 kB; 3,000-frame traceback 359.4 kB → 10.3 kB; 432 kB patch 432.1 kB → unchanged (safety case); 900-row SQL result 46.6 kB → 18.5 kB; 8,000-line build log 334.9 kB → 18.6 kB; 8,000-item JSON array 206.9 kB → unchanged (shape preserved). Total 1.6 MB → 742.7 kB, 54.3% saved.](bench/savings.svg)
 
 | payload | rule | bytes before → after | o200k tokens before → after | saved |
 |---|---|---:|---:|---:|
@@ -136,7 +136,7 @@ The guarantees, stated once:
 | JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 26,012 → 5,670 | 78.2% |
 | test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 29,998 → 5,529 | 81.6% |
 | 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 126,015 → 3,680 | 97.1% |
-| 600 KB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
+| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
 | 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 18,906 → 7,543 | 60.1% |
 | 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 127,005 → 6,905 | 94.6% |
 | 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 103,002 → 103,002 | 0.0% |
@@ -224,7 +224,7 @@ Originals live under `$HERMES_HOME/cache/sutra-store/` — local, per-profile, e
 - **JSON re-encoding normalises the document**: indentation and whitespace inside the payload are not preserved, and duplicate keys collapse to the last value. The original bytes remain in the store, so nothing is lost, but the visible copy is not byte-identical to what the tool printed.
 - **Large JSON arrays with no large string fields are not compressed at all** — that is the price of not changing their shape.
 - **A JSON field whose pointer cannot be quoted is left uncompressed**: pointers are capped at 256 UTF-8 bytes, and a key containing a quote, backslash, newline, `]` or `)` would make the marker ambiguous. Such a field is returned whole, with no omission marker claiming it.
-- **Retrieval is bounded**: one entry ≤32 MiB, one response ≤64 KiB, at most 20 matches, literal search; `full` refuses above the cap and a single line longer than the response cap is returned clipped. A 32 MiB restore costs hundreds of milliseconds on an idle machine, with multi-second outliers under contention; the benchmark artifact records the platform and load instead of publishing one figure (see [docs/recovery.md](docs/recovery.md#execution-time-envelope)).
+- **Retrieval is bounded**: one entry ≤32 MiB and one response ≤8 KiB by default (hard cap 64 KiB), at most 20 matches, literal search; `full` refuses above the cap and a single line longer than the response cap is returned clipped. A restore near the 32 MiB cap costs hundreds of milliseconds on an idle machine, with multi-second outliers under contention; the benchmark artifact records the platform and load instead of publishing one figure (see [docs/recovery.md](docs/recovery.md#execution-time-envelope)).
 - **One extra compression pass** when the original is retained.
 - **`plugins.isolation: host`**: the middleware runs in Hermes's plugin host process, so each rewrite crosses that boundary.
 
@@ -249,13 +249,13 @@ For copied/symlinked installs, retained output, and the stats log, see [docs/tro
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest tests -q           # 251 tests, no Hermes runtime needed
+.venv/bin/python -m pytest tests -q           # no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
-.venv/bin/python bench/retrieval.py           # worst-case restore at the 32 MiB cap
+.venv/bin/python bench/retrieval.py           # worst-case restore near the 32 MiB cap
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
-The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the 32 MiB cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
+The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the entry cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
 
 **SUTRA in other agents**: the same deterministic core is exposed through a native Claude Code `PostToolUse` hook (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
 
