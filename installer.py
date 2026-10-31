@@ -19,8 +19,9 @@ __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured"
            "uninstall"]
 
 # Clients with a verified configuration path. ``claude`` is the automatic
-# interceptor (native PostToolUse hook); ``opencode`` registers the MCP server
-# only, because its tool hook is still a spike and is not shipped.
+# interceptor (native PostToolUse hook); ``opencode`` gets a generated plugin
+# that replaces tool output before the model reads it, plus the MCP recovery
+# entry when an OpenCode config already exists.
 CLIENTS = ("claude", "opencode")
 
 

@@ -7,7 +7,9 @@ It parses the arguments, then hands each command to its owner: `install`,
 
 `install` configures every client it can verify. Claude Code gets the native
 PostToolUse hook (automatic replacement) plus the MCP recovery server; OpenCode
-gets the MCP server only, because its tool hook is still a spike.
+gets the generated automatic plugin plus, when its config exists, the MCP
+recovery entry. The OpenCode plugin runs the Python core per oversized result;
+there is no daemon or network listener.
 """
 
 from __future__ import annotations
@@ -70,13 +72,18 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print("sutra: claude is not installed; skipped")
             return 0
         return claude_code.install(dry_run=args.dry_run)
+    from . import opencode
+    status = opencode.install(dry_run=args.dry_run, config_path=args.config)
+    if status:
+        return status
     path = installer.opencode_config(args.config)
-    if not path.exists() and not args.dry_run:
-        if required:
-            print(f"sutra: {path} does not exist; open OpenCode once so it writes "
-                  f"its config, or pass --config", file=sys.stderr)
+    if not path.exists():
+        if args.config:
+            print(f"sutra: {path} does not exist; pass a path that exists",
+                  file=sys.stderr)
             return 1
-        print(f"sutra: {path} does not exist; skipped OpenCode")
+        print("sutra: no OpenCode config found; the automatic plugin is installed, "
+              "MCP recovery entry skipped")
         return 0
     return installer.install(path, dry_run=args.dry_run)
 
@@ -91,8 +98,12 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
             print("sutra: claude is not installed; skipped")
             return 0
         return claude_code.uninstall(dry_run=args.dry_run)
+    from . import opencode
+    status = opencode.uninstall(dry_run=args.dry_run, config_path=args.config)
     path = installer.opencode_config(args.config)
-    return installer.uninstall(path, dry_run=args.dry_run)
+    if path.exists():
+        status = max(status, installer.uninstall(path, dry_run=args.dry_run))
+    return status
 
 
 def _apply(action: str, args) -> int:
@@ -119,13 +130,16 @@ def _rows() -> list[dict]:
             rows.append(claude_code.status())
     except Exception as exc:  # a broken settings file is reported, not raised
         rows.append({"client": "claude", "error": str(exc)})
+    from . import opencode
     opencode_path = installer.opencode_config()
     rows.append({
         "client": "opencode",
         "binary": shutil.which("opencode"),
         "config": str(opencode_path),
         "mcp": "configured" if installer.opencode_configured(opencode_path) else "not configured",
-        "automatic": False,
+        "plugin": "installed" if opencode.configured() else "not installed",
+        "automatic": opencode.configured(),
+        "home": str(opencode.default_home()),
     })
     return rows
 
@@ -135,7 +149,8 @@ def _status(as_json: bool = False) -> int:
 
     rows = _rows()
     configured = any(
-        (row.get("hook") is True) or row.get("mcp") in ("connected", "configured")
+        row.get("hook") is True or row.get("automatic") is True
+        or row.get("mcp") in ("connected", "configured")
         for row in rows)
     if as_json:
         print(json.dumps(rows, indent=2))
@@ -152,7 +167,8 @@ def _status(as_json: bool = False) -> int:
                   f"settings={row.get('settings')}")
         else:
             print(f"opencode: binary={'yes' if row.get('binary') else 'no'} "
-                  f"mcp={row.get('mcp')} automatic=no (manual compression) "
+                  f"plugin={row.get('plugin')} mcp={row.get('mcp')} "
+                  f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"config={row.get('config')}")
     return 0 if configured else 1
 

@@ -45,4 +45,4 @@ sutra = "."
 version = { attr = "sutra.__version__" }
 
 [tool.setuptools.package-data]
-sutra = ["scripts/*.py", "plugin.yaml"]
+sutra = ["scripts/*.py", "plugin.yaml", "opencode_plugin.js"]

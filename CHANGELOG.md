@@ -4,6 +4,17 @@
 
 ### Added
 
+- **OpenCode automatic adapter**: `sutra install --client opencode` generates
+  `~/.config/opencode/plugins/sutra.js` with the installing interpreter and a
+  dedicated `~/.sutra` store home baked in. The plugin replaces oversized
+  string results through `tool.execute.after` using a short-lived Python
+  subprocess (no daemon, port, or token), registers `sutra_restore`, and fails
+  open. Generated files are mode 0600, reinstall is idempotent, updates keep a
+  timestamped backup, and a foreign file is refused. Verified on OpenCode
+  1.19.5 with a real Bash tool and scripted provider: 48,436 B → 18,649 B in
+  the model-facing request, marker present, clue recovered through the host's
+  tool dispatch. Adapter tests run the generated plugin under Node against the
+  real Python CLI; OpenCode itself is not run in CI.
 - **Host-agnostic adapter seam** (`core.py`): `Outcome`, `process_text`,
   `process_result`, `restore`, `outcome_json`, and the evidence-tool bypass
   list. The Hermes middleware, CLI, MCP server and Claude Code hook translate

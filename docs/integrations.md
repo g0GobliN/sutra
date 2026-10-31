@@ -7,8 +7,8 @@ re-implement compression, eligibility, size, safety, retention or recovery;
 they translate a host's tool result into `core.process_result` and write the
 returned value back into the field that host uses.
 
-Automatic installation, the per-client audit, and the live Claude Code evidence
-are in [automatic-install.md](automatic-install.md).
+Automatic installation, the per-client audit, and the live Claude Code and
+OpenCode evidence are in [automatic-install.md](automatic-install.md).
 
 ## Automatic or manual?
 
@@ -22,7 +22,7 @@ explicitly; the original tool result has already reached the model.
 | Claude Code | **Yes, with the `PostToolUse` hook installed** | The hook returns `hookSpecificOutput.updatedToolOutput`, which Claude Code uses in place of the tool result. Hook-level tested; a live authenticated Claude Code session has not been run here. |
 | MCP clients (Claude Code without the hook, Cursor, Codex, …) | **No** | MCP has no server-side hook for another server's result. A server sees only requests addressed to itself. The agent must call `sutra_compress`, or the host must provide a client-side hook/proxy. |
 | CLI | **No** | It is a subprocess filter. A shell pipeline compresses a stream, not an agent's tool result. |
-| OpenCode | **Spike only** | The verified `tool.execute.after` hook mutates the result in place, but the production adapter, bridge lifecycle and packaging are deliberately unbuilt. |
+| OpenCode | **Yes, with the generated plugin** | The `tool.execute.after` plugin runs the Python core in a short-lived subprocess and mutates `output.output` in place; the model receives the compressed copy and the same plugin registers `sutra_restore`. |
 | Cursor | **No adapter** | Cursor's documented `postToolUse` hook can replace MCP tool output (`updated_mcp_tool_output`) and nothing else. No adapter is written or claimed. |
 
 The short rule: **MCP tool registration is not interception.** The MCP server
@@ -69,7 +69,7 @@ theoretical grounds.
 | Claude Code | native `PostToolUse` hook (`updatedToolOutput`) + the MCP server for `sutra_restore` | **Yes, installed automatically** | **Live host tested** — Claude Code 2.1.268, isolated config, real Bash tool, scripted local provider: 70,888 B compressed to 18,645 B (18,641 characters) in the model-facing request and restored through MCP; `sutra doctor` passes | `sutra install --client claude` (or `sutra install` with auto-detection) writes the user settings and MCP entry, backs up first, and verifies with `sutra doctor`; manual snippet below remains for a checkout | `tests/test_claude_code_hook.py`: replacement, persisted-file reading and its refusals, marker, recovery through MCP, pass-through, second pass, fail-open, and the installed `sutra-hook` command; `tests/test_claude_installer.py`: idempotent install, backup, refusal, uninstall, live CLI, doctor | Needs Claude Code's documented all-tools `updatedToolOutput` (verified on 2.1.268); `bashOutputMaxChars` caps the inline preview at 30,000 by default, so the hook reads `persistedOutputPath` or leaves the result untouched; Windows untested |
 | Any MCP client (Claude Code without the hook, Cursor, Codex-style agents, OpenCode, …) | MCP stdio server (shipped as `sutra-mcp` / `python -m sutra.mcp`, same code as `scripts/sutra-mcp-server.py`), JSON-RPC 2.0, protocol `2024-11-05`, no SDK dependency | **No — manual `sutra_compress`** | **Tested with actual clients** — OpenCode 1.19.0's MCP client discovered the tools, compressed a 48,449-byte output through `sutra_compress`, and recovered the buried clue via `sutra_restore` (`status: ok`; verdict in `spikes/opencode-poc/evidence/verdict-mcp-client.json`); the official `@modelcontextprotocol/inspector` reference client completed tools/list, compress and restore; Claude Code 2.1.268 reports `✔ Connected` for the same command | `sutra install` (OpenCode config, backup beside it, `--dry-run` writes nothing), or add the entry by hand: `python3 /path/to/sutra/scripts/sutra-mcp-server.py`. Codex (`~/.codex/config.toml`), Cursor (`~/.cursor/mcp.json`) and Windsurf/Cascade (`mcp_config.json`) are manual; see [automatic-install.md](automatic-install.md) | protocol tests: initialize/tools list/compress/restore round-trip, isError semantics, parse and method errors, EOF shutdown; OpenCode 1.19.0 end-to-end; Claude Code 2.1.268 health check, quota-free | MCP cannot intercept another server's result; the installer does not auto-write the three manual client configs; Cursor / Codex / Windsurf hosts were not exercised; tools/call only; no resources/prompts; one server process per profile |
 | Any subprocess-capable agent | CLI (`scripts/sutra-cli.py`), JSON on stdout, exit codes 0/1/2 | **No — manual** | **Implemented and locally tested** | call directly; no installation beyond the checkout | `tests/test_cli_adapter.py`: round-trip, statuses-as-results, usage errors, size cap, config | one process per invocation (no daemon); stdin capped at 64 MiB |
-| OpenCode | native plugin hook (`tool.execute.after` + tool registry) | **Spike only** | **Implemented as a verified spike** — real-host proof on OpenCode 1.19.0 (output replacement + recovery + fail-open); production adapter deliberately not built | see [the spike](../spikes/opencode-poc/README.md) | two independent real-host investigations + hardened PoC, full test suite | bridge auth token lifecycle is spike-grade; use the MCP server or the Claude Code hook for a supported path today |
+| OpenCode | generated native plugin (`tool.execute.after` + tool registry) | **Yes, installed automatically** | **Live host tested** — OpenCode 1.19.5, isolated config, real Bash tool, scripted local provider: 48,436 B compressed to 18,649 B in the model-facing request (marker + id), then `sutra_restore` returned the buried clue with statuses `error`, `not_found`, `ok` | `sutra install --client opencode` writes `~/.config/opencode/plugins/sutra.js` and, when an OpenCode config exists, the MCP recovery entry; restart OpenCode | `tests/test_opencode_adapter.py`: installer, private file, idempotence, backup, foreign-file refusal, uninstall, Node syntax, Node→real CLI compression/recovery; real-host proof in [automatic-install.md](automatic-install.md#opencode) | Tested on OpenCode 1.19.5 only; one short-lived Python process per oversized result (2.5 s timeout, fail-open); the configuring interpreter must remain available; the plugin is global for that config tree; Windows untested |
 | Cursor | native `postToolUse` hook (`updated_mcp_tool_output`) | **No adapter** | **Audited from official docs, not implemented** | MCP entry only, by hand (`~/.cursor/mcp.json`) | — | Cursor fires `postToolUse` for all tools but only replaces MCP tool output; built-in tool output cannot be replaced. No SUTRA hook is claimed. |
 
 ## Adapter usage
@@ -181,9 +181,11 @@ server entry from the client config.
   terminal tool, real middleware, real store and recovery through the host's
   Tool Search bridge — `scripts/e2e/run.sh`; recorded 8/8 lifetime and 2/2 on
   2026-10-24. This harness is manual (it needs a Hermes installation), not CI.
-- **Real host (OpenCode spike)**: OpenCode 1.19.0 with a scripted provider;
-  the model-facing request log is the evidence ([runtime proof](../spikes/opencode-poc/evidence/runtime-proof.md)).
-  Prior pass; not rerun here.
+- **Real host (OpenCode)**: OpenCode 1.19.5 with a scripted provider; the
+  model-facing request log is the evidence (48,436 B → 18,649 B, marker seen,
+  clue recovered; see [automatic-install.md](automatic-install.md#opencode)).
+  The earlier 1.19.0 spike proof remains in
+  [runtime-proof.md](../spikes/opencode-poc/evidence/runtime-proof.md).
 - **Live host (Claude Code)**: Claude Code 2.1.268, isolated `HOME` and
   `CLAUDE_CONFIG_DIR`, a local scripted Anthropic-compatible provider and a real
   Bash tool call. The model-facing request carried the compressed 18,645-byte

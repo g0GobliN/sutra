@@ -20,7 +20,7 @@ It runs as a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin, or as
 
 Two ways in: as a Hermes plugin, or as a Python package whose MCP server any MCP client can call. Both run the same deterministic core.
 
-Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The matrix and the hook setup are in [docs/integrations.md](docs/integrations.md).
+Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; OpenCode gets it with the generated plugin installed by `sutra install`; MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The matrix and the setup are in [docs/integrations.md](docs/integrations.md).
 
 ### Hermes Agent
 
@@ -47,9 +47,9 @@ python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/sutra install
 ```
 
-`sutra install` edits the config as text, so comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode; `opencode mcp list` reports `sutra` connected (verified with OpenCode 1.19.0), and Claude Code 2.1.268 reports `✔ Connected` for the same server command.
+`sutra install` writes the automatic OpenCode plugin to `~/.config/opencode/plugins/sutra.js` and, when the config exists, adds the MCP recovery entry by editing the config as text. Comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode. The automatic path was verified with OpenCode 1.19.5 (48,436 B → 18,649 B model-facing, clue restored); Claude Code 2.1.268 reports `✔ Connected` for the same MCP server command.
 
-Today the installer targets OpenCode; other MCP clients register the server themselves. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
+`sutra install` auto-detects Claude Code and OpenCode; other MCP clients register the server themselves. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
 
 For any other MCP client, register the same server yourself:
 
@@ -255,11 +255,11 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
-The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the entry cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the benchmark's own claims, and the A/B protocol's scorers. The spike tests under `spikes/opencode-poc/` separately cover the OpenCode bridge and hook. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
+The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the entry cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the generated OpenCode plugin through Node against the real Python CLI, the benchmark's own claims, and the A/B protocol's scorers. The original bridge spike tests remain under `spikes/opencode-poc/`. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
 
-**SUTRA in other agents**: the same deterministic core is exposed through a native Claude Code `PostToolUse` hook (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
+**SUTRA in other agents**: the same deterministic core is exposed through native Claude Code and OpenCode integrations (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
 
-Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery protocol](docs/recovery.md) · [the correctness contract](docs/contract.md) · [security model](SECURITY.md) · [troubleshooting](docs/troubleshooting.md) · [the frozen A/B protocol](docs/ab-benchmark.md) · [the OpenCode feasibility spike](spikes/opencode-poc/README.md)
+Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery protocol](docs/recovery.md) · [the correctness contract](docs/contract.md) · [security model](SECURITY.md) · [troubleshooting](docs/troubleshooting.md) · [the frozen A/B protocol](docs/ab-benchmark.md) · [the OpenCode adapter tests](tests/test_opencode_adapter.py) · [the OpenCode production proof](docs/automatic-install.md#opencode)
 
 ## Compatibility
 
@@ -267,10 +267,10 @@ Verified against **Hermes Agent v0.22.2+3030.g4d04303 (2026.9.24)** with
 `hermes plugins validate .` (host Python 3.14.7). The test suite and the
 benchmarks run on Python 3.13.5 in `.venv`. Newer Hermes versions are not
 claimed; the middleware contract has its own test so a mismatch should fail
-there before it reaches a model. The Claude Code integration is a `PostToolUse`
-hook tested at the hook-protocol level; no live authenticated Claude Code
-session was run. The OpenCode integration is feasibility-only, verified against
-OpenCode 1.19.0 ([spike report](spikes/opencode-poc/README.md)).
+there before it reaches a model. The Claude Code and OpenCode integrations have
+live-host proof with scripted local providers, not live-model sessions. OpenCode
+automatic interception was verified against OpenCode 1.19.5; details are in
+[automatic-install.md](docs/automatic-install.md#opencode).
 
 ## Contributing
 

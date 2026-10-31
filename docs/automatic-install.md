@@ -17,7 +17,7 @@ added, and every edit is backed up first.
 |---|---|---|---|
 | **Claude Code** | **Yes** — native `PostToolUse` hook replacing `updatedToolOutput` | **Yes** — user settings + user-scope MCP entry, then a doctor probe | Live Claude Code 2.1.268 with a scripted provider; real Bash tool execution; marker seen by the model; retained original restored through MCP |
 | **Hermes Agent** | **Yes** — native `tool_execution` middleware | Existing plugin install | Real gateway E2E, recorded in `docs/mission-log.md` |
-| **OpenCode** | Hook verified in a spike; production adapter deferred | **MCP only** — `sutra install` registers the server | OpenCode 1.19.0 real-host spike; the model saw the replacement and restored the clue |
+| **OpenCode** | **Yes** — generated plugin replaces `tool.execute.after` output | **Yes** — plugin + MCP recovery entry when a config exists | Live OpenCode 1.19.5 with a scripted provider; real Bash tool; 48,436 B → 18,649 B model-facing; clue restored through the plugin's `sutra_restore` |
 | **Codex CLI** | **No** — `PostToolUse` has no transparent output replacement | Not auto-configured | Official hooks and MCP documentation read; no host run |
 | **Cursor** | **No** — `postToolUse` replaces MCP tool output only | Not auto-configured | Official hooks and MCP documentation read; no host run |
 | **Windsurf / Cascade** | **No** — no documented output-replacement hook | Not auto-configured | Official MCP documentation read; no host run |
@@ -124,17 +124,36 @@ billing measurement.
 
 ### OpenCode
 
-The MCP server is installed by `sutra install` (`~/.config/opencode/opencode.jsonc`
-or `.json`, comments preserved). That is **manual compression**: OpenCode must
-call `sutra_compress`.
+`sutra install --client opencode` writes one generated plugin to
+`~/.config/opencode/plugins/sutra.js` (or `$XDG_CONFIG_HOME/opencode/plugins/`).
+OpenCode loads that directory automatically. The plugin runs the installed
+Python core as a short-lived subprocess for each string tool result above the
+threshold and mutates `output.output` in place. It does not run a daemon, open a
+port, or hold a token. The interpreter and a dedicated `~/.sutra` store home are
+baked into the generated file. If OpenCode's config already exists, the
+installer also adds the `sutra` MCP recovery entry; if it does not, the automatic
+plugin is still installed and the MCP entry is skipped (the plugin has its own
+`sutra_restore` tool).
 
-An automatic adapter is possible: OpenCode's `tool.execute.after` hook can mutate
-`output.output` in place, and the spike in `spikes/opencode-poc/` verified the
-replacement, recovery, and fail-open behavior on OpenCode 1.19.0. It is not part
-of this installer because it needs a long-lived local bridge (the plugin cannot
-hold the Python core in-process), plus packaging, lifecycle, token, and version
-coupling that the spike documents. Shipping a half-managed bridge would violate
-the same "configuration is not functionality" rule as a hook that never fires.
+Restart OpenCode after installation. The plugin is global for that config tree
+and loads on the next start. `SUTRA_MAX_BYTES` overrides the 24,576-byte
+threshold; `SUTRA_OPENCODE_HOME` overrides the store home. A second install is a
+no-op; a changed interpreter rewrites the plugin with a timestamped backup, and
+an existing file without SUTRA's generated marker is refused, not overwritten.
+
+Real-host evidence (2026-10-31, OpenCode 1.19.5): an isolated config loaded the
+generated plugin; a real Bash tool produced 48,436 bytes with a buried clue at
+line 750; the model-facing request contained 18,649 bytes with the marker and no
+clue; the model called `sutra_restore` with a malformed id (`error`), an unknown
+id (`not_found`), and the marker's id (`ok`), which returned the exact buried
+lines. The session completed normally. The adapter's Node tests use the real
+Python CLI and cover install, idempotence, backup, foreign-file refusal,
+uninstall, and recovery; OpenCode itself is not run in CI.
+
+Limitations: tested on OpenCode 1.19.5 only; a plugin process failure is
+fail-open (the original result reaches the model), so no compression is
+guaranteed if the interpreter disappears; the 2.5 s subprocess timeout bounds
+each oversized result; Windows was not exercised.
 
 ### Codex CLI
 
@@ -174,9 +193,9 @@ auto-configured.
 MCP is a tool protocol, not an interception layer. Registering `sutra` gives the
 model two tools; it does not make another server's results pass through SUTRA.
 Only a host hook that replaces the result before the model reads it is automatic.
-That is why Claude Code is the only client this installer configures for
-automatic use today, and why the other rows say "manual" even when their MCP
-entry is one command away.
+That is why Claude Code and OpenCode are the only clients this installer
+configures for automatic use today, and why the other rows say "manual" even
+when their MCP entry is one command away.
 
 ## Diagnostic
 
@@ -194,3 +213,7 @@ entries and stats. Exit status is `0` only when all three checks pass.
 If it fails, the report names the failing layer: missing hook, unconnected MCP,
 hook left the result unchanged, or restore status. It does not report a
 configuration file as working when the command cannot actually replace output.
+
+`doctor` currently probes the Claude Code hook. `sutra status` reports the
+OpenCode plugin and MCP state; OpenCode's automatic path is covered by the
+adapter tests and the real-host proof above, not by a doctor subprocess.
