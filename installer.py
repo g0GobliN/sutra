@@ -18,11 +18,10 @@ from . import jsonc
 __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured",
            "uninstall"]
 
-# Clients with a verified configuration path. ``claude`` is the automatic
-# interceptor (native PostToolUse hook); ``opencode`` gets a generated plugin
-# that replaces tool output before the model reads it, plus the MCP recovery
-# entry when an OpenCode config already exists.
-CLIENTS = ("claude", "opencode")
+# Clients with a verified configuration path. ``hermes`` is native middleware;
+# ``claude`` is the native PostToolUse hook; ``opencode`` gets a generated
+# plugin; ``codex`` is MCP-only because its hook cannot replace tool output.
+CLIENTS = ("hermes", "claude", "opencode", "codex")
 
 
 def opencode_config(explicit: str | None = None) -> pathlib.Path:
@@ -48,6 +47,12 @@ def detect_clients() -> list[str]:
     """
     found: list[str] = []
     try:
+        from . import hermes
+        if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():
+            found.append("hermes")
+    except Exception:  # a detection failure must not make install unusable
+        pass
+    try:
         from . import claude_code
         if claude_code.binary():
             found.append("claude")
@@ -55,6 +60,12 @@ def detect_clients() -> list[str]:
         pass
     if shutil.which("opencode") or opencode_config().is_file():
         found.append("opencode")
+    try:
+        from . import codex
+        if codex.binary() or codex.config_path().exists():
+            found.append("codex")
+    except Exception:  # a detection failure must not make install unusable
+        pass
     return found
 
 

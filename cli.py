@@ -22,11 +22,11 @@ from . import __version__, installer, runner
 USAGE = """sutra {version}
 
 usage:
-  sutra install [--client claude|opencode]... [--all] [--config PATH] [--dry-run]
-  sutra uninstall [--client claude|opencode]... [--all] [--config PATH] [--dry-run]
+  sutra install [--client hermes|claude|opencode|codex]... [--all] [--config PATH] [--dry-run]
+  sutra uninstall [--client hermes|claude|opencode|codex]... [--all] [--config PATH] [--dry-run]
   sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
-  sutra doctor [--client claude|opencode]... [--json]  (prove installed hooks)
+  sutra doctor [--client hermes|claude|opencode|codex]... [--json]  (prove integrations)
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
@@ -73,6 +73,24 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print("sutra: claude is not installed; skipped")
             return 0
         return claude_code.install(dry_run=args.dry_run)
+    if client == "hermes":
+        from . import hermes
+        if not hermes.binary():
+            if required:
+                print("sutra: hermes is not installed", file=sys.stderr)
+                return 1
+            print("sutra: hermes is not installed; skipped")
+            return 0
+        return hermes.install(dry_run=args.dry_run)
+    if client == "codex":
+        from . import codex
+        if not codex.binary():
+            if required:
+                print("sutra: codex is not installed", file=sys.stderr)
+                return 1
+            print("sutra: codex is not installed; skipped")
+            return 0
+        return codex.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
     if status:
@@ -103,6 +121,15 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
             print("sutra: claude is not installed; skipped")
             return 0
         return claude_code.uninstall(dry_run=args.dry_run)
+    if client == "hermes":
+        from . import hermes
+        if not hermes.binary():
+            print("sutra: hermes is not installed; skipped")
+            return 0
+        return hermes.uninstall(dry_run=args.dry_run)
+    if client == "codex":
+        from . import codex
+        return codex.uninstall(dry_run=args.dry_run)
     from . import opencode
     status = opencode.uninstall(dry_run=args.dry_run, config_path=args.config)
     path = installer.opencode_config(args.config)
@@ -115,7 +142,7 @@ def _apply(action: str, args) -> int:
     clients = _selected(args)
     if not clients:
         print("sutra: no supported client detected; name one with --client "
-              "(claude, opencode)", file=sys.stderr)
+              "(hermes, claude, opencode, codex)", file=sys.stderr)
         return 1
     required = bool(args.client)
     status = 0
@@ -146,6 +173,18 @@ def _rows() -> list[dict]:
         "automatic": opencode.configured(),
         "home": str(opencode.default_home()),
     })
+    try:
+        from . import hermes
+        if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():
+            rows.append(hermes.status())
+    except Exception as exc:
+        rows.append({"client": "hermes", "error": str(exc)})
+    try:
+        from . import codex
+        if codex.binary() or codex.config_path().exists():
+            rows.append(codex.status())
+    except Exception as exc:
+        rows.append({"client": "codex", "error": str(exc)})
     return rows
 
 
@@ -170,6 +209,16 @@ def _status(as_json: bool = False) -> int:
                   f"hook={hook} mcp={row.get('mcp')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"settings={row.get('settings')}")
+        elif row["client"] == "hermes":
+            print(f"hermes: binary={'yes' if row.get('binary') else 'no'} "
+                  f"plugin={'installed' if row.get('installed') else 'not installed'} "
+                  f"enabled={'yes' if row.get('enabled') is True else 'no'} "
+                  f"automatic={'yes' if row.get('automatic') else 'no'} "
+                  f"plugin_path={row.get('plugin')}")
+        elif row["client"] == "codex":
+            print(f"codex: binary={'yes' if row.get('binary') else 'no'} "
+                  f"mcp={row.get('mcp')} automatic=no tier=mcp-only "
+                  f"reason={row.get('host_limit')}")
         else:
             print(f"opencode: binary={'yes' if row.get('binary') else 'no'} "
                   f"plugin={row.get('plugin')} mcp={row.get('mcp')} "
@@ -190,34 +239,63 @@ def _detect(as_json: bool = False, clients: list[str] | None = None) -> int:
     return 0
 
 
+def _not_installed(client: str) -> dict:
+    return {
+        "client": client,
+        "status": "not-installed",
+        "ok": True,
+        "automatic": False,
+        "probe": "client is not installed",
+    }
+
+
 def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     import shutil
 
-    from . import claude_code, opencode
+    from . import claude_code, codex, hermes, opencode
 
-    selected = clients or ["claude", "opencode"]
+    selected = clients or ["claude", "opencode", "hermes", "codex"]
     reports = []
-    if "claude" in selected and (claude_code.binary()
-                                 or claude_code.settings_path().exists()):
-        reports.append(claude_code.doctor())
-    if "opencode" in selected and (shutil.which("opencode")
-                                   or opencode.plugin_path().exists()):
-        reports.append(opencode.doctor())
-    if not reports:
-        print("sutra: no supported client detected; nothing to diagnose",
-              file=sys.stderr)
-        return 1
+    for client in selected:
+        if client == "claude":
+            reports.append(claude_code.doctor() if (
+                claude_code.binary() or claude_code.settings_path().exists())
+                else _not_installed(client))
+        elif client == "opencode":
+            reports.append(opencode.doctor() if (
+                shutil.which("opencode") or opencode.plugin_path().exists())
+                else _not_installed(client))
+        elif client == "hermes":
+            reports.append(hermes.doctor() if (
+                hermes.binary() or hermes.plugin_dir().exists()
+                or hermes.config_path().exists()) else _not_installed(client))
+        elif client == "codex":
+            reports.append(codex.doctor() if (
+                codex.binary() or codex.config_path().exists())
+                else _not_installed(client))
     if as_json:
         import json
         print(json.dumps(reports, indent=2))
     else:
         for report in reports:
-            formatter = (claude_code.format_doctor
-                         if report.get("client") == "claude"
-                         else opencode.format_doctor)
+            client = report.get("client")
+            if report.get("status") == "not-installed":
+                print(f"{client}: not installed")
+                continue
+            if client == "claude":
+                formatter = claude_code.format_doctor
+            elif client == "opencode":
+                formatter = opencode.format_doctor
+            elif client == "hermes":
+                formatter = hermes.format_doctor
+            else:
+                formatter = codex.format_doctor
             print(formatter(report))
-    failed = any(report.get("ok") is False or report.get("status") == "fail"
-                 for report in reports)
+    failed = any(
+        report.get("status") == "fail"
+        or (report.get("ok") is False
+            and report.get("status") not in ("not-installed", "limited"))
+        for report in reports)
     return 1 if failed else 0
 
 
@@ -248,7 +326,8 @@ def main(argv: list[str] | None = None) -> int:
         parser = argparse.ArgumentParser(
             prog="sutra doctor",
             description="Prove the installed automatic integrations work.")
-        parser.add_argument("--client", action="append", choices=["claude", "opencode"],
+        parser.add_argument("--client", action="append",
+                            choices=["hermes", "claude", "opencode", "codex"],
                             help="limit the probe to this client (repeatable)")
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
