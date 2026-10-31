@@ -16,9 +16,12 @@ Tool contract (shared with the MCP adapter; see docs/integrations.md):
               derived values and local paths only)
 
 Exit codes: 0 the operation produced a result (including an explicit
-recovery status — the status IS the contract); 1 internal failure or input
-above the size cap; 2 usage error. Failures are never silent: a non-zero exit
-is accompanied by a JSON error object on stdout and a message on stderr.
+recovery status — the status IS the contract — and a payload the engine
+declined to rewrite, such as an oversized ``--file`` returned as
+``too-large-kept``); 1 internal failure, unreadable or non-UTF-8 input, or
+stdin above the 64 MiB cap; 2 usage error. Failures are never silent: a
+non-zero exit is accompanied by a JSON error object on stdout and a message on
+stderr.
 
 Deterministic: no timestamps, no random values in any output. Storage is
 isolated per ``HERMES_HOME`` (or ``SUTRA_STORE_DIR``), exactly like the
