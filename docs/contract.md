@@ -8,7 +8,7 @@ depends on the host (Hermes), the dependency is named.
 Related: [recovery.md](recovery.md) (the retrieval protocol in full),
 [semantic-retrieval.md](semantic-retrieval.md) (why ranked search is deferred),
 [benchmark.md](benchmark.md) (what is measured and what is not),
-[SECURITY.md](SECURITY.md) (the security model), [../README.md](../README.md)
+[SECURITY.md](../SECURITY.md) (the security model), [../README.md](../README.md)
 (operation and configuration).
 
 ## 1. Scope and pass-through
@@ -83,7 +83,7 @@ Full protocol: [recovery.md](recovery.md). The guarantees:
 
 ## 7. Storage and security
 
-Full model: [SECURITY.md](SECURITY.md). The guarantees:
+Full model: [SECURITY.md](../SECURITY.md). The guarantees:
 
 | Guarantee | Enforced by |
 |---|---|

@@ -11,7 +11,9 @@ vulnerability**). Please do not file a public issue for anything that can expose
 stored output, escape the store directory, or make a protected payload
 (diff, patch, traceback) lose content.
 
-Supported versions: the latest `0.2.x` release. Older versions are not patched.
+Supported versions: the latest published release. At the time of writing that is
+the `0.2.x` line; `0.3.0` is prepared but not yet published. Older lines are not
+patched.
 
 ## What is stored, and where
 

@@ -47,6 +47,34 @@ jobs:
       - run: pip install ruff==0.17.2
       - run: ruff check .
 
+  # The wheel is what a user installs, so build it on every change: metadata
+  # can pass `twine check` while the archive is missing bundled files.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install build twine
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Validate metadata
+        run: python -m twine check --strict dist/*
+      - name: Validate artifact contents
+        run: python scripts/verify_dist.py dist
+      - name: Install the wheel and run it
+        env:
+          HOME: ${{ runner.temp }}/home
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME"
+          python -m venv venv
+          ./venv/bin/pip install --quiet dist/*.whl
+          ./venv/bin/sutra --version
+          ./venv/bin/python -c "import sutra; print(sutra.__version__, sutra.__file__)"
+          ./venv/bin/sutra config > /dev/null
+
   # Guards the fix for pytest >= 9 importing the root package's __init__.py:
   # the suite must pass in a checkout whose directory name is not a valid
   # Python module name (GitHub tarballs and zip archives extract to

@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased (since v0.2.0)
+## 0.3.0 (unreleased)
+
+0.3.0 is prepared in this tree and has not been published to PyPI. Entries
+describe the changes prepared for that release.
 
 ### Added
 
@@ -106,6 +109,12 @@
 
 ### Fixed
 
+- The production release job could start without a TestPyPI rehearsal:
+  `publish-pypi` needed only `build` and `smoke`. It now needs
+  `verify-testpypi`, downloads the single checksummed build artifact,
+  re-verifies `SHA256SUMS`, and publishes those exact files without a checkout
+  or a rebuild. `docs/release.md` describes the promotion path and
+  `tests/test_release_workflow.py` enforces it.
 - The test suite failed entirely (collection errors) in checkouts whose
   directory name is not a valid Python module name — the default for GitHub
   tarballs and zip archives. The repository root is the plugin package, and
