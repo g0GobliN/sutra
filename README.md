@@ -116,7 +116,7 @@ hermes tools list             # toolset:     "sutra  ✓ enabled" under Plugin t
 
 The middleware is active the moment the plugin is enabled — run any tool whose output exceeds `SUTRA_MAX_BYTES` (24,576 B by default) and the result the model sees carries a `[sutra: …]` marker. The recovery tool needs the toolset enabled ([troubleshooting](docs/troubleshooting.md) covers the Tool Search deferral case).
 
-Current release: [v0.2.0](https://github.com/g0GobliN/sutra/releases/tag/v0.2.0). Verified against Hermes Agent `v0.22.2+3030.g4d04303`.
+Current release: [v0.2.0](https://github.com/g0GobliN/sutra/releases/tag/v0.2.0). Verified against Hermes Agent `v0.22.5 (2026.9.24)`.
 
 ## How it works
 
@@ -282,18 +282,18 @@ Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery pro
 
 ## Compatibility
 
-Verified against **Hermes Agent v0.22.2+3030.g4d04303 (2026.9.24)** with
-`hermes plugins validate .` (host Python 3.14.7). The test suite and the
-benchmarks run on Python 3.13.5 in `.venv`. Newer Hermes versions are not
-claimed; the middleware contract has its own test so a mismatch should fail
+Verified against **Hermes Agent v0.22.5 (2026.9.24)** with
+`hermes plugins validate` on its Python 3.14.9 staged runtime. The test suite
+and the benchmarks run on Python 3.13.5 in `.venv`. Newer Hermes versions are
+not claimed; the middleware contract has its own test so a mismatch should fail
 there before it reaches a model. The Claude Code and OpenCode integrations have
 live-host proof with scripted local providers, not live-model sessions. OpenCode
 automatic interception was verified against OpenCode 1.19.5; details are in
 [automatic-install.md](docs/automatic-install.md#opencode). Codex 0.166.0 has
 no supported post-tool output replacement, so it is intentionally MCP-only;
 the Codex MCP round trip is tested against the real CLI but no automatic claim
-is made. Hermes' installer is tested against the documented host commands, and
-the real-gateway proof remains recorded for Hermes 0.22.2+3030.g4d04303.
+is made. Hermes' installer and the real-gateway evidence loop are verified
+against Hermes 0.22.5; the gateway proof is in `scripts/e2e/README.md`.
 
 ## Contributing
 
