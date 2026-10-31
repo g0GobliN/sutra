@@ -25,7 +25,7 @@ turn 3   ── tool output 60.9 kB ──► model   (re-sent)
          ...                               cost compounds with the session
 ```
 
-On one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context. The agent rarely needs the whole result: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
+The agent rarely needs the whole result: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
 
 ## How SUTRA handles a tool result
 

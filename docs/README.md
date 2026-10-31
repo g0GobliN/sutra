@@ -41,7 +41,7 @@ need the detail behind a claim.
 
 ## Historical prototypes
 
-The `prototypes/` directory records how the OpenCode integration was proven
+The `docs/prototypes/` directory records how the OpenCode integration was proven
 before it shipped, and `../spikes/opencode-poc/` holds the original bridge spike
 and its evidence. They are kept as engineering evidence, not as supported
 entry points.
