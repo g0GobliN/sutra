@@ -1,0 +1,5 @@
+# The wheel carries the runtime package; the sdist carries the same files plus
+# packaging metadata. The development test suite is not installed with the
+# package (its conftest is what makes the checkout layout importable), so
+# shipping half of it in the sdist is worse than shipping none.
+prune tests

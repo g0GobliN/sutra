@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -10,13 +10,13 @@ dynamic = ["version"]
 description = "Deterministic tool-output reduction for AI agents, preserving the evidence that matters."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "Vishal Gurung" }]
 keywords = ["ai-agents", "context-compression", "tool-output", "mcp"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -36,7 +36,10 @@ sutra-hook = "sutra.hook:main"
 
 [tool.setuptools]
 packages = ["sutra"]
-include-package-data = true
+# The wheel is the runtime package only. Naming every bundled file explicitly
+# keeps development-only scripts (which share the `scripts/` directory with the
+# adapters) out of an install; `include-package-data` would add them back.
+include-package-data = false
 
 [tool.setuptools.package-dir]
 sutra = "."
@@ -45,4 +48,11 @@ sutra = "."
 version = { attr = "sutra.__version__" }
 
 [tool.setuptools.package-data]
-sutra = ["scripts/*.py", "plugin.yaml", "opencode_plugin.js"]
+sutra = [
+    "plugin.yaml",
+    "opencode_plugin.js",
+    "scripts/_sutra.py",
+    "scripts/sutra-cli.py",
+    "scripts/sutra-mcp-server.py",
+    "scripts/sutra-claude-code-hook.py",
+]
