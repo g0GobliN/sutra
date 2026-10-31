@@ -1,0 +1,251 @@
+name: Release
+
+# Publishing is a manual, approved action. The build never sees a PyPI token:
+# each publish job exchanges a GitHub OIDC identity for a short-lived upload
+# credential, which PyPI accepts only from the registered publisher below.
+#
+#   PyPI      owner g0GobliN · repo sutra · workflow release.yml · env pypi
+#   TestPyPI  owner g0GobliN · repo sutra · workflow release.yml · env testpypi
+#
+# The environment names are part of the trust decision, so keep them in sync
+# with the publisher entries on the index and with docs/release.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to build and publish, e.g. v0.3.0"
+        required: true
+        type: string
+      target:
+        description: "Where to publish"
+        required: true
+        type: choice
+        default: testpypi
+        options:
+          - testpypi
+          - pypi
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build and validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Install build tools
+        run: pip install build twine
+      - name: Tag and declared versions agree
+        run: python scripts/check_version.py "${{ inputs.tag }}"
+      - name: Record the version
+        id: version
+        env:
+          TAG: ${{ inputs.tag }}
+        run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Validate metadata
+        run: python -m twine check --strict dist/*
+      - name: Validate artifact contents
+        run: python scripts/verify_dist.py dist --version "${{ steps.version.outputs.version }}"
+      - name: Refuse to republish an existing version
+        run: python scripts/verify_dist.py dist --check-index
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  smoke:
+    name: Install the artifacts (Python ${{ matrix.python }})
+    needs: build
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      # Both artifacts are installed, because an sdist that cannot build a
+      # working wheel is exactly the failure `twine check` does not see.
+      - name: Install the sdist and exercise the console scripts
+        env:
+          HOME: ${{ runner.temp }}/home
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME"
+          python -m venv venv
+          ./venv/bin/pip install --quiet --upgrade pip
+          ./venv/bin/pip install --quiet dist/*.tar.gz
+          ./venv/bin/sutra --version
+          ./venv/bin/python -c "import sutra; print(sutra.__version__, sutra.__file__)"
+          ./venv/bin/sutra config > /dev/null
+          printf 'line %s\n' $(seq 1 20000) > big.log
+          ./venv/bin/sutra compress --file big.log > compressed.json
+          ./venv/bin/python - <<'PY'
+          import json
+          payload = json.load(open("compressed.json"))
+          assert payload["changed"] and payload["marker"], payload
+          assert payload["compressed_bytes"] < payload["original_bytes"], payload
+          print("compress:", payload["original_bytes"], "->", payload["compressed_bytes"])
+          PY
+          id=$(./venv/bin/python -c 'import json; print(json.load(open("compressed.json"))["id"])')
+          ./venv/bin/sutra restore --id "$id" --mode search --query "line 19999" > restored.json
+          ./venv/bin/python - <<'PY'
+          import json
+          payload = json.load(open("restored.json"))
+          assert payload["status"] == "ok", payload
+          assert "line 19999" in payload.get("content", ""), payload
+          print("restore: ok,", payload.get("matches", "search"), "match(es)")
+          PY
+          echo '{"tool_name":"Bash","tool_response":{"stdout":"short"}}' | ./venv/bin/sutra-hook
+          ./venv/bin/sutra status --json > status.json || true
+          ./venv/bin/python -c 'import json; print("status:", len(json.load(open("status.json"))), "client row(s)")'
+      - name: Install the wheel
+        env:
+          HOME: ${{ runner.temp }}/home
+        run: |
+          set -euo pipefail
+          python -m venv wheel-venv
+          ./wheel-venv/bin/pip install --quiet dist/*.whl
+          ./wheel-venv/bin/sutra --version
+          ./wheel-venv/bin/python -c "import sutra; print(sutra.__version__)"
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: [build, smoke]
+    if: inputs.target == 'testpypi' && (github.ref == 'refs/heads/main' || github.ref == format('refs/tags/{0}', inputs.tag))
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/sutra-agent
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: dist/
+          attestations: false
+          print-hash: true
+
+  verify-testpypi:
+    name: Verify the TestPyPI release
+    needs: [build, publish-testpypi]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Wait until TestPyPI serves the release
+        run: |
+          python - <<'PY'
+          import json, os, sys, time, urllib.request
+          version = os.environ["VERSION"]
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen(
+                          "https://test.pypi.org/pypi/sutra-agent/json", timeout=20) as r:
+                      data = json.load(r)
+                  if version in data.get("releases", {}):
+                      print("testpypi serves", version)
+                      break
+              except Exception as exc:
+                  print("not yet:", exc)
+              time.sleep(20)
+          else:
+              sys.exit(f"testpypi did not serve {version} within 10 minutes")
+          PY
+      - name: Install from TestPyPI and run it
+        run: |
+          set -euo pipefail
+          python -m venv venv
+          ./venv/bin/pip install --quiet --no-deps \
+            --index-url https://test.pypi.org/simple/ "sutra-agent==${VERSION}"
+          ./venv/bin/sutra --version
+          ./venv/bin/python -c "import sutra; print(sutra.__version__)"
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: [build, smoke]
+    if: inputs.target == 'pypi' && (github.ref == 'refs/heads/main' || github.ref == format('refs/tags/{0}', inputs.tag))
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/sutra-agent
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          attestations: true
+          print-hash: true
+
+  verify-pypi:
+    name: Verify the PyPI release
+    needs: [build, publish-pypi]
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+    steps:
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Wait until PyPI serves the release
+        run: |
+          python - <<'PY'
+          import json, os, sys, time, urllib.request
+          version = os.environ["VERSION"]
+          for attempt in range(30):
+              try:
+                  with urllib.request.urlopen(
+                          "https://pypi.org/pypi/sutra-agent/json", timeout=20) as r:
+                      data = json.load(r)
+                  if version in data.get("releases", {}):
+                      print("pypi serves", version)
+                      break
+              except Exception as exc:
+                  print("not yet:", exc)
+              time.sleep(20)
+          else:
+              sys.exit(f"pypi did not serve {version} within 10 minutes")
+          PY
+      - name: Install the published release
+        run: |
+          set -euo pipefail
+          python -m venv venv
+          ./venv/bin/pip install --quiet "sutra-agent==${VERSION}"
+          ./venv/bin/sutra --version
+          ./venv/bin/sutra config > /dev/null
