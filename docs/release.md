@@ -52,6 +52,13 @@ release tag to build and the target index (`testpypi` or `pypi`). It builds from
 the tag, never from a moving branch tip, and the build refuses to continue when
 the tag, `__init__.py` and `plugin.yaml` disagree.
 
+A run builds once. `build` produces `dist/` and a `SHA256SUMS` manifest, uploads
+them as one immutable workflow artifact, and every later job downloads that
+artifact. Production is a promotion of those same bytes: `publish-pypi` needs
+`verify-testpypi`, so a dispatch cannot reach PyPI without publishing to
+TestPyPI, installing from it and comparing the served files with the manifest.
+There is no workflow input that skips the rehearsal.
+
 ## Trusted publisher registration
 
 Both indexes need an entry for this repository. The entries are identical except
@@ -102,8 +109,9 @@ commit.
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) style:
 entries accumulate under `## Unreleased`, and a release moves them under a
-`## <version> (YYYY-MM-DD)` heading. Describe user-visible behaviour, not the
-internal sequence of commits.
+`## <version> (unreleased)` heading. The heading keeps `(unreleased)` until the
+version is actually on PyPI; only then does it take the publication date.
+Describe user-visible behaviour, not the internal sequence of commits.
 
 ## Preparing a release
 
@@ -132,6 +140,8 @@ python -m build
 python -m twine check --strict dist/*
 python scripts/verify_dist.py dist --version X.Y.Z
 python scripts/verify_dist.py dist --check-index
+sha256sum dist/*.whl dist/*.tar.gz > SHA256SUMS
+sha256sum -c SHA256SUMS
 ```
 
 `verify_dist.py` inspects the archives rather than their metadata. It requires
@@ -162,14 +172,21 @@ In GitHub: **Actions → Release → Run workflow**, with `tag=vX.Y.Z` and
 `target=testpypi`. The run:
 
 1. checks out the tag and verifies the tag and declared versions agree;
-2. builds the sdist and wheel, runs `twine check --strict`, validates the archive
-   contents and refuses a version PyPI already serves;
-3. installs the **sdist** in clean environments on Python 3.11, 3.12 and 3.13,
+2. builds the sdist and wheel **once**, runs `twine check --strict`, validates
+   the archive contents and refuses a version PyPI already serves;
+3. records `SHA256SUMS` over those exact files and uploads `dist/` plus that
+   manifest as one immutable workflow artifact;
+4. installs the **sdist** in clean environments on Python 3.11, 3.12 and 3.13,
    then exercises `sutra --version`, `sutra config`, `sutra compress`,
    `sutra restore`, `sutra-hook` and `sutra status --json`;
-4. publishes to TestPyPI through OIDC;
-5. waits for TestPyPI to serve the version, installs it there, and runs
-   `sutra --version`.
+5. re-verifies the checksums and publishes that artifact to TestPyPI through
+   OIDC;
+6. waits for TestPyPI to serve the version, installs it there, runs
+   `sutra --version`, downloads the served files and compares their SHA-256
+   values with `SHA256SUMS`.
+
+Steps 1–6 also run when the target is `pypi`; no dispatch reaches production
+without them.
 
 Verify the artifact the way a user would, in a fresh environment:
 
@@ -188,10 +205,23 @@ resolve dependencies from PyPI.
 ## Production publication
 
 Run **Actions → Release → Run workflow** again with the same tag and
-`target=pypi`. The build and smoke jobs repeat, then `publish-pypi` waits for
-approval of the `pypi` environment. Approval is the final human authorization
-step; the workflow then uploads the wheel, the sdist and a signed attestation
-through OIDC.
+`target=pypi`. Production is a promotion, not a second build:
+
+- the build, smoke, TestPyPI publication and TestPyPI verification jobs run
+  again, in that order; `skip-existing: true` lets the TestPyPI upload succeed
+  when the rehearsal already published the version, and the served-file
+  comparison still fails the run if TestPyPI serves different bytes;
+- `publish-pypi` requires `verify-testpypi`, so a failed or skipped rehearsal
+  blocks production — there is no dispatch input that bypasses it;
+- `publish-pypi` has no checkout and no build step. It downloads the `dist`
+  artifact, runs `sha256sum -c SHA256SUMS`, and only then uploads;
+- the job targets the protected `pypi` environment, so it pauses for a required
+  reviewer. Approval is the final human authorization step; the workflow then
+  uploads the wheel, the sdist and a signed attestation through OIDC.
+
+`tests/test_release_workflow.py` reads the workflow and fails if the production
+job stops depending on `verify-testpypi`, starts rebuilding, or loses the
+checksum verification.
 
 The final job installs `sutra-agent==X.Y.Z` from PyPI into a clean environment
 and runs `sutra --version` and `sutra config`, so a release that uploaded
@@ -238,6 +268,13 @@ silently.
   names the missing or unexpected file. A new runtime module or bundled asset
   must be added to `RUNTIME_MODULES` or `PACKAGE_DATA` in that script and to
   `[tool.setuptools.package-data]` in `pyproject.toml` in the same change.
+- **Production refuses to start.** `publish-pypi` needs `verify-testpypi`; a
+  failed or skipped TestPyPI job (including a ref that is neither `main` nor the
+  release tag) leaves it unstarted. Re-run the dispatch from the release ref and
+  fix the TestPyPI failure rather than editing the job graph.
+- **`sha256sum -c` fails on a promotion candidate.** The downloaded artifact is
+  not the one that was verified. Stop; do not upload. Rebuild from the same tag
+  and investigate why the artifact changed.
 - **The TestPyPI install cannot find the package.** Confirm the run reached
   `verify-testpypi` and that the version exists on TestPyPI; index propagation can
   take a short time, and the verification job polls for up to ten minutes.
@@ -255,6 +292,9 @@ silently.
 - [ ] TestPyPI rehearsal passed, including install-back verification.
 - [ ] `pip install --no-deps --index-url https://test.pypi.org/simple/
       sutra-agent==X.Y.Z` reports the expected version.
-- [ ] Production run approved for the `pypi` environment.
+- [ ] Workflow artifact checksums verified before the TestPyPI upload and again
+      before production.
+- [ ] Production run approved for the `pypi` environment, promoting the same
+      `dist` artifact without a rebuild.
 - [ ] PyPI page renders and the published version installs and runs.
 - [ ] Install instructions in the README updated if they changed.
