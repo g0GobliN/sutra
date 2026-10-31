@@ -9,6 +9,12 @@ name: Release
 #
 # The environment names are part of the trust decision, so keep them in sync
 # with the publisher entries on the index and with docs/release.md.
+#
+# One build, one artifact, two indexes. `build` produces `dist/` and
+# `SHA256SUMS` once; every later job downloads that artifact. Production is a
+# promotion: `publish-pypi` needs `verify-testpypi`, has no checkout and no
+# build step, and re-verifies the checksums before it uploads the same bytes.
+# tests/test_release_workflow.py enforces both properties.
 
 on:
   workflow_dispatch:
@@ -18,7 +24,7 @@ on:
         required: true
         type: string
       target:
-        description: "Where to publish"
+        description: "Where to publish (production always rehearses on TestPyPI first)"
         required: true
         type: choice
         default: testpypi
@@ -35,7 +41,7 @@ concurrency:
 
 jobs:
   build:
-    name: Build and validate
+    name: Build and validate once
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -63,11 +69,21 @@ jobs:
         run: python scripts/verify_dist.py dist --version "${{ steps.version.outputs.version }}"
       - name: Refuse to republish an existing version
         run: python scripts/verify_dist.py dist --check-index
+      - name: Record SHA-256 checksums of the exact upload
+        run: |
+          set -euo pipefail
+          sha256sum dist/*.whl dist/*.tar.gz > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          cat SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: |
+            dist/
+            SHA256SUMS
           if-no-files-found: error
+          overwrite: false
+          retention-days: 7
 
   smoke:
     name: Install the artifacts (Python ${{ matrix.python }})
@@ -81,7 +97,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+      - name: Verify the downloaded files are the built files
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
@@ -132,8 +151,11 @@ jobs:
 
   publish-testpypi:
     name: Publish to TestPyPI
+    # This job runs for a production dispatch too. Conditioning it on
+    # `inputs.target` is the bypass this workflow must not have: production
+    # depends on the verification below, so a rehearsal is never optional.
     needs: [build, smoke]
-    if: inputs.target == 'testpypi' && (github.ref == 'refs/heads/main' || github.ref == format('refs/tags/{0}', inputs.tag))
+    if: github.ref == 'refs/heads/main' || github.ref == format('refs/tags/{0}', inputs.tag)
     runs-on: ubuntu-latest
     environment:
       name: testpypi
@@ -145,13 +167,20 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+      - name: Verify the promotion candidate before uploading
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           packages-dir: dist/
           attestations: false
           print-hash: true
+          # A rehearsal may already have uploaded this version. The check below
+          # compares the files TestPyPI serves with SHA256SUMS, so a different
+          # upload under the same version still fails the run.
+          skip-existing: true
 
   verify-testpypi:
     name: Verify the TestPyPI release
@@ -160,6 +189,9 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
@@ -190,10 +222,35 @@ jobs:
             --index-url https://test.pypi.org/simple/ "sutra-agent==${VERSION}"
           ./venv/bin/sutra --version
           ./venv/bin/python -c "import sutra; print(sutra.__version__)"
+      - name: TestPyPI serves the exact built files
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, sys, urllib.request
+
+          expected = {}
+          for line in pathlib.Path("SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              digest, name = line.split()
+              expected[pathlib.PurePosixPath(name).name] = digest
+
+          url = f"https://test.pypi.org/pypi/sutra-agent/{os.environ['VERSION']}/json"
+          with urllib.request.urlopen(url, timeout=60) as response:
+              data = json.load(response)
+          served = {item["filename"]: item["digests"]["sha256"]
+                    for item in data.get("urls", [])}
+          if set(served) != set(expected):
+              sys.exit(f"testpypi serves {sorted(served)}, the build is {sorted(expected)}")
+          for name, digest in sorted(served.items()):
+              if digest != expected[name]:
+                  sys.exit(f"{name}: testpypi sha256 {digest} != built {expected[name]}")
+          print("testpypi serves the exact built files:", ", ".join(sorted(served)))
+          PY
 
   publish-pypi:
     name: Publish to PyPI
-    needs: [build, smoke]
+    # Production is a promotion, not a rebuild. This job cannot start unless
+    # `verify-testpypi` succeeded, it checks out nothing, and it uploads the
+    # same `dist` artifact after re-verifying its SHA-256 manifest.
+    needs: [build, verify-testpypi]
     if: inputs.target == 'pypi' && (github.ref == 'refs/heads/main' || github.ref == format('refs/tags/{0}', inputs.tag))
     runs-on: ubuntu-latest
     environment:
@@ -206,7 +263,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: dist
-          path: dist
+      - name: Verify the promoted files are the verified files
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
+          ls -l dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
