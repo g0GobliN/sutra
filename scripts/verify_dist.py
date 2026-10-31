@@ -36,6 +36,7 @@ RUNTIME_MODULES = frozenset({
 })
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",
+    "sutra-codex-hook.py",
 })
 # `scripts/check_version.py` is release tooling. The wheel excludes it (it ships
 # only what an install needs); the sdist includes it explicitly through

@@ -1,15 +1,23 @@
-"""Codex CLI integration: MCP registration, never a false automatic claim.
+"""Codex CLI integration: PostToolUse feedback replacement plus MCP recovery.
 
-Codex 0.166.0's documented ``PostToolUse`` hook can block or add context, but
-it cannot replace a tool result. ``updatedMCPToolOutput`` is parsed and then
-rejected as unsupported. SUTRA therefore configures Codex's official MCP
-server for explicit ``sutra_compress`` and ``sutra_restore`` calls, and reports
-the host limitation instead of pretending that registration intercepts output.
+Codex 0.166.0 supports lifecycle hooks. A ``PostToolUse`` command hook can
+return ``continue: false`` with a ``stopReason``: Codex replaces the tool result
+with that text, marks the hook run ``Stopped`` and continues the turn. SUTRA
+uses that contract to put the compressed copy (and its recovery marker) in front
+of the model. The MCP server stays registered for ``sutra_restore``; the hook
+and MCP server share one store.
 
-The installer uses Codex's own ``codex mcp add``/``remove`` commands, so the
-user's ``config.toml`` keeps its comments and other servers. Every read is
-bounded, and a different existing ``sutra`` entry is refused rather than
-overwritten.
+Codex rejects ``updatedMCPToolOutput`` explicitly, so the feedback contract is
+the only supported replacement path. The installer writes a user-level
+``hooks.json`` entry, using Codex's own ``codex mcp add``/``remove`` commands for
+MCP, so the user's ``config.toml`` keeps its comments and other servers. Every
+read is bounded; a malformed file or a different existing SUTRA entry is refused
+rather than overwritten.
+
+Codex requires a one-time trust review for a user hook. The installer cannot
+record that trust without bypassing Codex's security model, so it prints the
+``/hooks`` instruction and ``doctor`` reports ``limited`` until the hook is
+trusted. No claim of automatic interception is made before that review.
 """
 
 from __future__ import annotations
@@ -17,15 +25,24 @@ from __future__ import annotations
 import json
 import os
 import pathlib
+import re
+import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
+import tomllib
 
 CLIENT = "codex"
 SERVER_NAME = "sutra"
+HOOK_MARKER = "sutra-codex-hook.py"
+HOOK_MATCHER = "Bash|exec_command"
+HOOK_TIMEOUT_SECONDS = 60
+DOCTOR_CLUE = "SUTRA-CODEX-DOCTOR-CLUE"
+ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 HOST_LIMIT = (
-    "Codex 0.166.0 PostToolUse cannot replace tool output; "
-    "MCP registration is manual compression/recovery only"
+    "Codex replaces the model-visible result with PostToolUse feedback; "
+    "the hook needs one-time trust in /hooks and Codex records the run as Stopped"
 )
 
 
@@ -43,6 +60,18 @@ def config_home() -> pathlib.Path:
 
 def config_path() -> pathlib.Path:
     return config_home() / "config.toml"
+
+
+def hooks_path() -> pathlib.Path:
+    return config_home() / "hooks.json"
+
+
+def hook_script() -> pathlib.Path:
+    return pathlib.Path(__file__).with_name("scripts") / HOOK_MARKER
+
+
+def _hook_command(python: str) -> str:
+    return f"{shlex.quote(python)} {shlex.quote(str(hook_script()))}"
 
 
 def _run(args: list[str], timeout: int = 45):
@@ -94,35 +123,181 @@ def _matches(entry: dict, python: str) -> bool:
     )
 
 
-def status() -> dict:
-    """Read-only report; ``automatic`` is always false for Codex."""
-    report = {
-        "client": CLIENT,
-        "binary": binary(),
-        "config": str(config_path()),
-        "mcp": "not configured",
-        "automatic": False,
-        "tier": "mcp-only",
-        "host_limit": HOST_LIMIT,
+# -- hooks.json --------------------------------------------------------------
+
+def _load_hooks(path: pathlib.Path) -> dict:
+    if not path.is_file():
+        return {"hooks": {}}
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"{path} is not valid JSON: {exc}") from None
+    if not isinstance(document, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    hooks = document.setdefault("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError(f"{path}: 'hooks' is not an object")
+    groups = hooks.get("PostToolUse", [])
+    if not isinstance(groups, list):
+        raise ValueError(f"{path}: 'hooks.PostToolUse' is not an array")
+    return document
+
+
+def _locate_hook(document: dict) -> tuple[int, int] | None:
+    groups = document.get("hooks", {}).get("PostToolUse", [])
+    for group_index, group in enumerate(groups):
+        if not isinstance(group, dict):
+            continue
+        handlers = group.get("hooks")
+        if not isinstance(handlers, list):
+            continue
+        for handler_index, handler in enumerate(handlers):
+            if (isinstance(handler, dict)
+                    and HOOK_MARKER in str(handler.get("command", ""))):
+                return group_index, handler_index
+    return None
+
+
+def _group(command: str) -> dict:
+    return {
+        "matcher": HOOK_MATCHER,
+        "hooks": [{
+            "type": "command",
+            "command": command,
+            "timeout": 30,
+            "statusMessage": "Compressing tool output with SUTRA",
+        }],
     }
-    if report["binary"] is None or not config_home().is_dir():
-        return report
-    entries, error = _list()
-    if entries is None:
-        report["mcp"] = f"error: {error}"
-        return report
-    entry = _entry(entries)
-    if entry is not None:
-        report["mcp"] = "configured" if entry.get("enabled", True) else "configured, disabled"
-    return report
 
 
-def install(*, python: str | None = None, dry_run: bool = False) -> int:
-    """Register the MCP server with Codex's official CLI."""
-    if binary() is None:
-        print("sutra: codex is not installed; nothing to configure", file=sys.stderr)
-        return 1
-    python = python or sys.executable
+def _write_hooks(path: pathlib.Path, document: dict) -> pathlib.Path | None:
+    from . import installer
+
+    text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        return installer._write(path, text)
+    temporary = path.with_name(path.name + ".sutra-tmp")
+    temporary.write_text(text, encoding="utf-8")
+    os.chmod(temporary, 0o600)
+    os.replace(temporary, path)
+    return None
+
+
+def _installed_hook() -> dict:
+    """Read-only hook state: command, indices and Codex's recorded trust."""
+    state: dict = {"installed": False, "path": str(hooks_path()),
+                   "command": None, "trusted": None}
+    try:
+        document = _load_hooks(hooks_path())
+    except ValueError as exc:
+        state["error"] = str(exc)
+        return state
+    located = _locate_hook(document)
+    if located is None:
+        return state
+    group_index, handler_index = located
+    handler = document["hooks"]["PostToolUse"][group_index]["hooks"][handler_index]
+    state.update({
+        "installed": True,
+        "command": handler.get("command"),
+        "group_index": group_index,
+        "handler_index": handler_index,
+    })
+    trust_path = config_path()
+    if not trust_path.is_file():
+        return state
+    try:
+        config = tomllib.loads(trust_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return state
+    hooks = config.get("hooks")
+    table = hooks.get("state") if isinstance(hooks, dict) else None
+    if not isinstance(table, dict):
+        return state
+    key = f"{hooks_path()}:post_tool_use:{group_index}:{handler_index}"
+    state["trusted"] = key in table
+    return state
+
+
+def hook_installed() -> bool:
+    """Read-only: is a SUTRA PostToolUse handler present in hooks.json?"""
+    return bool(_installed_hook()["installed"])
+
+
+def _install_hook(python: str, *, dry_run: bool) -> tuple[int, bool]:
+    path = hooks_path()
+    try:
+        document = _load_hooks(path)
+    except ValueError as exc:
+        print(f"sutra: could not read Codex hooks: {exc}", file=sys.stderr)
+        return 1, False
+    command = _hook_command(python)
+    located = _locate_hook(document)
+    if located is not None:
+        handler = document["hooks"]["PostToolUse"][located[0]]["hooks"][located[1]]
+        if handler.get("command") == command and handler.get("type") == "command":
+            print("sutra: Codex already has the SUTRA PostToolUse hook; nothing to do")
+            return 0, False
+        if dry_run:
+            print(f"sutra: dry run, would update the SUTRA Codex hook in {path}")
+            return 0, False
+        handler["command"] = command
+        handler.setdefault("type", "command")
+        handler.setdefault("timeout", 30)
+        backup = _write_hooks(path, document)
+        print(f"sutra: updated the SUTRA PostToolUse hook in {path}")
+        if backup:
+            print(f"sutra: backup at {backup}")
+        print("sutra: run /hooks in Codex and trust the SUTRA hook")
+        return 0, True
+    if dry_run:
+        print(f"sutra: dry run, would add the SUTRA PostToolUse hook to {path}")
+        return 0, False
+    document.setdefault("hooks", {}).setdefault("PostToolUse", []).append(
+        _group(command))
+    backup = _write_hooks(path, document)
+    print(f"sutra: installed the SUTRA PostToolUse hook in {path}")
+    if backup:
+        print(f"sutra: backup at {backup}")
+    print("sutra: Codex requires one-time trust: run /hooks and trust the SUTRA hook")
+    return 0, True
+
+
+def _remove_hook(*, dry_run: bool) -> tuple[int, bool]:
+    path = hooks_path()
+    try:
+        document = _load_hooks(path)
+    except ValueError as exc:
+        print(f"sutra: could not read Codex hooks: {exc}", file=sys.stderr)
+        return 1, False
+    located = _locate_hook(document)
+    if located is None:
+        print("sutra: Codex has no SUTRA PostToolUse hook; nothing to do")
+        return 0, False
+    if dry_run:
+        print(f"sutra: dry run, would remove the SUTRA PostToolUse hook from {path}")
+        return 0, False
+    group_index, handler_index = located
+    groups = document["hooks"]["PostToolUse"]
+    del groups[group_index]["hooks"][handler_index]
+    if not groups[group_index].get("hooks"):
+        del groups[group_index]
+    if not groups:
+        document["hooks"].pop("PostToolUse", None)
+    if document == {"hooks": {}}:
+        path.unlink(missing_ok=True)
+    else:
+        backup = _write_hooks(path, document)
+        if backup:
+            print(f"sutra: backup at {backup}")
+    print(f"sutra: removed the SUTRA PostToolUse hook from {path}")
+    return 0, True
+
+
+# -- MCP ---------------------------------------------------------------------
+
+def _install_mcp(python: str, *, dry_run: bool) -> int:
     if config_home().is_dir():
         entries, error = _list()
     else:
@@ -134,7 +309,6 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
     if entry is not None:
         if _matches(entry, python):
             print("sutra: Codex already has the sutra MCP entry; nothing to do")
-            print("sutra: Codex remains MCP-only; no automatic output replacement")
             return 0
         print("sutra: a different sutra MCP entry already exists in Codex; "
               "run `sutra uninstall --client codex` first", file=sys.stderr)
@@ -142,7 +316,6 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
     command = ["mcp", "add", SERVER_NAME, "--", python, "-m", "sutra.mcp"]
     if dry_run:
         print(f"sutra: dry run, would run: codex {' '.join(command)}")
-        print("sutra: Codex is MCP-only; this does not make output replacement automatic")
         return 0
     config_home().mkdir(parents=True, exist_ok=True)
     result = _run(command, timeout=60)
@@ -158,12 +331,10 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
         _run(["mcp", "remove", SERVER_NAME], timeout=45)
         return 1
     print("sutra: registered the sutra MCP server with Codex")
-    print("sutra: Codex is MCP-only; no automatic output replacement is available")
     return 0
 
 
-def uninstall(*, dry_run: bool = False) -> int:
-    """Remove only the Codex MCP entry SUTRA owns."""
+def _remove_mcp(*, dry_run: bool) -> int:
     if binary() is None:
         print("sutra: codex is not installed; nothing to uninstall")
         return 0
@@ -190,12 +361,126 @@ def uninstall(*, dry_run: bool = False) -> int:
     return 0
 
 
-def doctor(*, python: str | None = None) -> dict:
-    """Report the real Codex state; never claim automatic interception."""
+# -- public operations -------------------------------------------------------
+
+def status() -> dict:
+    """Read-only report; ``automatic`` requires an installed, trusted hook."""
+    hook = _installed_hook()
     report = {
         "client": CLIENT,
         "binary": binary(),
         "config": str(config_path()),
+        "hook": "installed" if hook["installed"] else "not installed",
+        "hook_path": hook["path"],
+        "trusted": hook.get("trusted"),
+        "mcp": "not configured",
+        "automatic": bool(hook["installed"] and hook.get("trusted") is True),
+        "tier": "automatic" if hook["installed"] else "mcp-only",
+        "host_limit": HOST_LIMIT,
+    }
+    if report["binary"] is None:
+        return report
+    if config_home().is_dir():
+        entries, error = _list()
+        if entries is None:
+            report["mcp"] = f"error: {error}"
+        else:
+            entry = _entry(entries)
+            if entry is not None:
+                report["mcp"] = ("configured" if entry.get("enabled", True)
+                                 else "configured, disabled")
+    return report
+
+
+def install(*, python: str | None = None, dry_run: bool = False) -> int:
+    """Install the PostToolUse hook and the MCP recovery server."""
+    if binary() is None:
+        print("sutra: codex is not installed; nothing to configure", file=sys.stderr)
+        return 1
+    python = python or sys.executable
+    code, hook_added = _install_hook(python, dry_run=dry_run)
+    if code:
+        return code
+    code = _install_mcp(python, dry_run=dry_run)
+    if code and hook_added:
+        _remove_hook(dry_run=False)
+    return code
+
+
+def uninstall(*, dry_run: bool = False) -> int:
+    """Remove only the hook and MCP entry SUTRA owns.
+
+    The hook is removed even when the Codex binary has since disappeared; a
+    leftover hooks.json entry must not outlive the integration.
+    """
+    code, _ = _remove_hook(dry_run=dry_run)
+    return max(code, _remove_mcp(dry_run=dry_run))
+
+
+def _probe(command: str, python: str) -> tuple[bool, str]:
+    """Run the configured hook on a synthetic Bash event and restore its id."""
+    text = "\n".join(
+        [f"line {index} nominal" for index in range(3000)]
+        + [f"{DOCTOR_CLUE}"] + [f"line {index} tail" for index in range(1000)])
+    payload = {
+        "hook_event_name": "PostToolUse",
+        "session_id": "sutra-doctor",
+        "tool_name": "Bash",
+        "tool_response": text,
+    }
+    with tempfile.TemporaryDirectory(prefix="sutra-codex-doctor-") as temporary:
+        root = pathlib.Path(temporary)
+        store = root / "store"
+        env = dict(os.environ)
+        env.update({"SUTRA_ENABLED": "1", "SUTRA_STORE": "1",
+                    "SUTRA_STORE_DIR": str(store),
+                    "HERMES_HOME": str(root),
+                    "SUTRA_STATS_FILE": str(root / "stats.jsonl")})
+        try:
+            argv = shlex.split(command)
+            if not argv:
+                argv = [python, str(hook_script())]
+            result = subprocess.run(
+                argv, input=json.dumps(payload), capture_output=True, text=True,
+                timeout=HOOK_TIMEOUT_SECONDS, env=env)
+            response = json.loads(result.stdout or "{}")
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return False, f"hook did not answer: {exc}"
+        output = response.get("stopReason")
+        if response.get("continue") is not False or not isinstance(output, str):
+            return False, "hook left the synthetic large result unchanged"
+        match = ID_RE.search(output)
+        if "[sutra:" not in output or match is None:
+            return False, "hook did not return a recovery marker"
+        keys = ("SUTRA_ENABLED", "SUTRA_STORE", "SUTRA_STORE_DIR",
+                "HERMES_HOME", "SUTRA_STATS_FILE")
+        saved = {key: os.environ.get(key) for key in keys}
+        os.environ.update({key: env[key] for key in keys})
+        try:
+            from . import core
+            raw = core.restore({"id": match.group(1), "mode": "search",
+                                "query": DOCTOR_CLUE, "context": 1})
+            restored = json.loads(raw)
+        finally:
+            for key, value in saved.items():
+                if value is None:
+                    os.environ.pop(key, None)
+                else:
+                    os.environ[key] = value
+        if restored.get("status") != "ok" or DOCTOR_CLUE not in restored.get("content", ""):
+            return False, "the marker's id did not restore the original clue"
+    return True, "hook compressed and restored the synthetic result"
+
+
+def doctor(*, python: str | None = None) -> dict:
+    """Report the real Codex state; trust and a live probe are required."""
+    hook = _installed_hook()
+    report = {
+        "client": CLIENT,
+        "binary": binary(),
+        "config": str(config_path()),
+        "hook": bool(hook["installed"]),
+        "trusted": hook.get("trusted"),
         "mcp": "not configured",
         "automatic": False,
         "tier": "mcp-only",
@@ -207,16 +492,27 @@ def doctor(*, python: str | None = None) -> dict:
     if report["binary"] is None:
         report["status"] = "not-installed"
         return report
-    if not config_home().is_dir():
-        report["probe"] = "Codex has no config directory; register the MCP server first"
+    if hook.get("error"):
+        report["probe"] = f"could not read hooks.json: {hook['error']}"
+        return report
+    if not hook["installed"]:
+        report["probe"] = "the SUTRA PostToolUse hook is not installed"
         return report
     entries, error = _list()
     if entries is None:
         report["probe"] = f"could not read MCP config: {error}"
         return report
     entry = _entry(entries)
+    if entry is not None:
+        report["mcp"] = ("configured" if entry.get("enabled", True)
+                         else "configured, disabled")
+    passed, detail = _probe(str(hook.get("command") or ""),
+                            python or sys.executable)
+    if not passed:
+        report["probe"] = detail
+        return report
     if entry is None:
-        report["probe"] = "the sutra MCP server is not registered with Codex"
+        report["probe"] = "the hook works, but sutra_restore is not registered"
         return report
     if not _matches(entry, python or sys.executable):
         report["mcp"] = "different command"
@@ -226,17 +522,24 @@ def doctor(*, python: str | None = None) -> dict:
         report["mcp"] = "configured, disabled"
         report["probe"] = "the sutra MCP server is disabled in Codex"
         return report
-    report.update({
-        "mcp": "configured",
-        "ok": True,
-        "status": "limited",
-        "probe": "MCP recovery is configured; automatic output replacement is unavailable",
-    })
+    report["automatic"] = bool(hook.get("trusted") is True)
+    if report["automatic"]:
+        report.update({"ok": True, "status": "ok",
+                       "tier": "automatic",
+                       "probe": "hook compressed and restored; hook is trusted"})
+    else:
+        report.update({"ok": True, "status": "limited", "tier": "hook-untrusted",
+                       "probe": "hook compressed and restored; run /hooks in "
+                                "Codex to trust it before automatic use"})
     return report
 
 
 def format_doctor(report: dict) -> str:
     if "error" in report:
         return f"codex: error: {report['error']}"
-    return (f"codex: mcp={report.get('mcp')} automatic=no "
+    trusted = report.get("trusted")
+    trusted_text = "unknown" if trusted is None else ("yes" if trusted else "no")
+    return (f"codex: hook={'yes' if report.get('hook') else 'no'} "
+            f"trusted={trusted_text} mcp={report.get('mcp')} "
+            f"automatic={'yes' if report.get('automatic') else 'no'} "
             f"status={report.get('status')} probe={report.get('probe')}")

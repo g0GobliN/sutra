@@ -6,10 +6,12 @@ installed only when there is concrete evidence: an executable on PATH, or a
 known configuration file. An empty directory with a familiar name is not
 evidence.
 
-The capability tier is deliberately separate from installation. Cursor, Codex
-and Windsurf have no documented transparent result-replacement path today, so
-they are reported as `mcp-only`; detecting their binary must never imply that
-SUTRA can intercept their tool output.
+The capability tier is deliberately separate from installation. Cursor and
+Windsurf have no documented transparent result-replacement path today, so they
+are reported as `mcp-only`. Codex gained a PostToolUse feedback contract that
+replaces the model-visible result; it is reported as `automatic` only when the
+SUTRA hook is actually installed, and `mcp-only` otherwise. Detecting a binary
+never implies that SUTRA can intercept its output.
 """
 
 from __future__ import annotations
@@ -29,9 +31,10 @@ _AUTOMATIC = {
 }
 _MCP_ONLY = {
     "cursor": "MCP server; built-in tool output cannot be replaced",
-    "codex": "MCP server; documented hooks do not replace tool output",
+    "codex": "MCP server; SUTRA PostToolUse hook is not installed",
     "windsurf": "MCP server; no documented output-replacement hook",
 }
+_CODEX_HOOK = "PostToolUse feedback replacement + MCP recovery"
 _VERSION_RE = re.compile(
     r"(?<![0-9A-Za-z_.-])v?(\d+\.\d+(?:\.\d+){0,2}(?:[-+][0-9A-Za-z.-]+)?)")
 
@@ -127,6 +130,15 @@ def _codex_config() -> pathlib.Path | None:
                        _config_home() / "codex" / "config.toml")
 
 
+def _codex_hook() -> bool:
+    """True when Codex's user hooks.json carries the SUTRA handler."""
+    try:
+        from . import codex
+        return codex.hook_installed()
+    except Exception:
+        return False
+
+
 def _windsurf_config() -> pathlib.Path | None:
     home = _home()
     appdata = pathlib.Path(os.environ.get("APPDATA") or home / "AppData" / "Roaming")
@@ -151,6 +163,8 @@ def _spec(name: str) -> tuple[tuple[str, ...], pathlib.Path | None, str, str]:
         return (("cursor", "cursor-agent"), _cursor_config(), "mcp-only",
                 _MCP_ONLY["cursor"])
     if name == "codex":
+        if _codex_hook():
+            return (("codex",), _codex_config(), "automatic", _CODEX_HOOK)
         return (("codex",), _codex_config(), "mcp-only", _MCP_ONLY["codex"])
     if name == "windsurf":
         return (("windsurf",), _windsurf_config(), "mcp-only",

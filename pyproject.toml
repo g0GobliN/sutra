@@ -58,4 +58,5 @@ sutra = [
     "scripts/sutra-cli.py",
     "scripts/sutra-mcp-server.py",
     "scripts/sutra-claude-code-hook.py",
+    "scripts/sutra-codex-hook.py",
 ]

@@ -216,9 +216,14 @@ def _status(as_json: bool = False) -> int:
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"plugin_path={row.get('plugin')}")
         elif row["client"] == "codex":
+            trusted = row.get("trusted")
+            trusted_text = ("unknown" if trusted is None
+                            else ("yes" if trusted else "no"))
             print(f"codex: binary={'yes' if row.get('binary') else 'no'} "
-                  f"mcp={row.get('mcp')} automatic=no tier=mcp-only "
-                  f"reason={row.get('host_limit')}")
+                  f"hook={row.get('hook', 'not installed')} "
+                  f"trusted={trusted_text} mcp={row.get('mcp')} "
+                  f"automatic={'yes' if row.get('automatic') else 'no'} "
+                  f"tier={row.get('tier')} reason={row.get('host_limit')}")
         else:
             print(f"opencode: binary={'yes' if row.get('binary') else 'no'} "
                   f"plugin={row.get('plugin')} mcp={row.get('mcp')} "
