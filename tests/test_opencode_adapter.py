@@ -103,6 +103,16 @@ def test_dry_run_writes_nothing(paths, capsys):
     assert "dry run" in capsys.readouterr().out
 
 
+def test_dry_run_without_a_config_does_not_claim_an_install(paths, capsys):
+    _, config = paths
+    config.unlink()
+    assert cli.main(["install", "--client", "opencode", "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "dry run" in output
+    assert "plugin is installed" not in output
+    assert not opencode.plugin_path(config).exists()
+
+
 def test_cli_install_without_a_config_still_installs_the_plugin(paths, capsys):
     root, config = paths
     config.unlink()  # no config file; the plugin does not need one

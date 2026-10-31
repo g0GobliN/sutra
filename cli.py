@@ -82,8 +82,12 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print(f"sutra: {path} does not exist; pass a path that exists",
                   file=sys.stderr)
             return 1
-        print("sutra: no OpenCode config found; the automatic plugin is installed, "
-              "MCP recovery entry skipped")
+        if args.dry_run:
+            print("sutra: no OpenCode config found; dry run would skip the MCP "
+                  "recovery entry")
+        else:
+            print("sutra: no OpenCode config found; the automatic plugin is "
+                  "installed, MCP recovery entry skipped")
         return 0
     return installer.install(path, dry_run=args.dry_run)
 
