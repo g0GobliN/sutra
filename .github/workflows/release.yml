@@ -15,6 +15,12 @@ name: Release
 # promotion: `publish-pypi` needs `verify-testpypi`, has no checkout and no
 # build step, and re-verifies the checksums before it uploads the same bytes.
 # tests/test_release_workflow.py enforces both properties.
+#
+# Builds are not byte-reproducible across runner toolchain revisions (archive
+# timestamps differ), so a production dispatch that rebuilds after a separate
+# TestPyPI rehearsal can produce different files and fail the served-file
+# comparison. Pass `artifact_run_id` with the successful rehearsal run to
+# download and promote that exact checksummed artifact instead.
 
 on:
   workflow_dispatch:
@@ -31,9 +37,15 @@ on:
         options:
           - testpypi
           - pypi
+      artifact_run_id:
+        description: "Optional Release run id whose verified dist artifact to promote instead of rebuilding"
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: release
@@ -61,7 +73,39 @@ jobs:
         env:
           TAG: ${{ inputs.tag }}
         run: echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+      - name: Reuse the verified artifact from an earlier rehearsal
+        if: inputs.artifact_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_RUN_ID: ${{ inputs.artifact_run_id }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          case "$ARTIFACT_RUN_ID" in
+            ''|*[!0-9]*)
+              echo "artifact_run_id must be numeric, got '$ARTIFACT_RUN_ID'" >&2
+              exit 1
+              ;;
+          esac
+          head_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN_ID" --jq .head_sha)
+          head_branch=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$ARTIFACT_RUN_ID" --jq .head_branch)
+          expected=$(git rev-parse HEAD)
+          if [ "$head_sha" != "$expected" ]; then
+            echo "run $ARTIFACT_RUN_ID built $head_sha, but $TAG is $expected" >&2
+            exit 1
+          fi
+          if [ "$head_branch" != "$TAG" ]; then
+            echo "run $ARTIFACT_RUN_ID was dispatched for $head_branch, not $TAG" >&2
+            exit 1
+          fi
+          rm -rf dist SHA256SUMS
+          gh run download "$ARTIFACT_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name dist --dir .
+          test -f SHA256SUMS
+          ls -l dist
+          sha256sum -c SHA256SUMS
       - name: Build sdist and wheel
+        if: inputs.artifact_run_id == ''
         run: python -m build
       - name: Validate metadata
         run: python -m twine check --strict dist/*

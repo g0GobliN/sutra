@@ -47,10 +47,11 @@ the publisher registration on the index and requires it to be registered again.
 - Contributors can prepare, test and review a release change, but cannot publish
   it without environment approval and a valid Trusted Publishing registration.
 
-The workflow is started manually (`workflow_dispatch`) with two inputs: the
-release tag to build and the target index (`testpypi` or `pypi`). It builds from
-the tag, never from a moving branch tip, and the build refuses to continue when
-the tag, `__init__.py` and `plugin.yaml` disagree.
+The workflow is started manually (`workflow_dispatch`) with the release tag to
+build, the target index (`testpypi` or `pypi`) and an optional
+`artifact_run_id`. It builds from the tag, never from a moving branch tip, and
+the build refuses to continue when the tag, `__init__.py` and `plugin.yaml`
+disagree.
 
 A run builds once. `build` produces `dist/` and a `SHA256SUMS` manifest, uploads
 them as one immutable workflow artifact, and every later job downloads that
@@ -58,6 +59,16 @@ artifact. Production is a promotion of those same bytes: `publish-pypi` needs
 `verify-testpypi`, so a dispatch cannot reach PyPI without publishing to
 TestPyPI, installing from it and comparing the served files with the manifest.
 There is no workflow input that skips the rehearsal.
+
+Builds are not byte-reproducible across every runner toolchain revision: the
+archives carry timestamps, so a rebuild of the same tag can differ. A separate
+rehearsal therefore records the bytes that TestPyPI serves, and a later
+production dispatch must reuse that exact artifact rather than build again. Set
+`artifact_run_id` to the successful rehearsal run's id; `build` then verifies the
+run belongs to this repository, was dispatched for this tag, and built the tag's
+commit, downloads its `dist` artifact and checks `SHA256SUMS`, instead of
+running `python -m build`. The rest of the run is unchanged, so the checksum,
+TestPyPI served-file comparison and protected production approval still apply.
 
 ## Trusted publisher registration
 
@@ -204,13 +215,19 @@ resolve dependencies from PyPI.
 
 ## Production publication
 
-Run **Actions → Release → Run workflow** again with the same tag and
-`target=pypi`. Production is a promotion, not a second build:
+Run **Actions → Release → Run workflow** again with the same tag,
+`target=pypi` and `artifact_run_id` set to the successful rehearsal run's id
+(the number in its URL). Production is a promotion, not a second build:
 
-- the build, smoke, TestPyPI publication and TestPyPI verification jobs run
-  again, in that order; `skip-existing: true` lets the TestPyPI upload succeed
-  when the rehearsal already published the version, and the served-file
-  comparison still fails the run if TestPyPI serves different bytes;
+- `build` downloads the rehearsal's `dist` artifact, confirms that run was
+  dispatched for this tag and built its commit, and re-checks `SHA256SUMS`;
+  it does not run `python -m build`. Without `artifact_run_id` it builds again,
+  which is only safe when TestPyPI does not already serve the version — a
+  rebuild that differs from the rehearsal fails the next step by design;
+- the smoke, TestPyPI publication and TestPyPI verification jobs still run,
+  in that order; `skip-existing: true` lets the TestPyPI upload succeed when
+  the rehearsal already published the version, and the served-file comparison
+  still fails the run if TestPyPI serves different bytes;
 - `publish-pypi` requires `verify-testpypi`, so a failed or skipped rehearsal
   blocks production — there is no dispatch input that bypasses it;
 - `publish-pypi` has no checkout and no build step. It downloads the `dist`
@@ -273,8 +290,13 @@ silently.
   release tag) leaves it unstarted. Re-run the dispatch from the release ref and
   fix the TestPyPI failure rather than editing the job graph.
 - **`sha256sum -c` fails on a promotion candidate.** The downloaded artifact is
-  not the one that was verified. Stop; do not upload. Rebuild from the same tag
-  and investigate why the artifact changed.
+  not the one that was verified. Stop; do not upload. Re-check `artifact_run_id`
+  and the tag it was built from; never upload bytes that failed the manifest.
+- **TestPyPI already serves a different build of this version.** The run built
+  again instead of promoting the rehearsal artifact. Re-dispatch with
+  `artifact_run_id` from the run whose files TestPyPI serves; a rebuild cannot
+  replace an existing version on the index. Publish a new version if the
+  rehearsal itself was wrong.
 - **The TestPyPI install cannot find the package.** Confirm the run reached
   `verify-testpypi` and that the version exists on TestPyPI; index propagation can
   take a short time, and the verification job polls for up to ten minutes.

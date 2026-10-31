@@ -137,6 +137,22 @@ def test_production_uses_oidc_and_the_protected_environment():
     assert "inputs.target == 'pypi'" in production
 
 
+def test_a_rehearsal_artifact_can_be_promoted_without_rebuilding():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert "artifact_run_id:" in text, (
+        "production must be able to reuse the exact artifact a separate "
+        "TestPyPI rehearsal verified; a rebuild can differ byte for byte")
+    build = _job_blocks()["build"]
+    assert "if: inputs.artifact_run_id != ''" in build
+    assert "gh run download" in build
+    assert "--name dist" in build
+    assert "sha256sum -c SHA256SUMS" in build
+    assert "head_sha" in build and "head_branch" in build, (
+        "a reused artifact must come from a run for this tag's commit")
+    assert "if: inputs.artifact_run_id == ''" in build, (
+        "the build step must not run when a verified artifact is reused")
+
+
 def test_the_build_uploads_one_checksummed_artifact():
     build = _job_blocks()["build"]
     assert build.count("upload-artifact") == 1
@@ -155,5 +171,7 @@ def test_the_release_document_describes_the_same_path():
     assert "SHA256SUMS" in text
     assert "verify-testpypi" in text
     assert "promotion" in text, "production must be documented as a promotion"
+    assert "artifact_run_id" in text, (
+        "the release guide must explain how to promote the rehearsal artifact")
     assert "The build and smoke jobs repeat" not in text, (
         "the documentation still claims production rebuilds the distribution")
