@@ -1,19 +1,61 @@
 # Releasing SUTRA
 
-Publishing runs from `.github/workflows/release.yml` through PyPI Trusted
-Publishing: the build job never sees a credential, and each publish job
-exchanges a GitHub OIDC identity for a single-use upload token. There is no
-long-lived PyPI API token in a repository secret, a workflow file, or a
-maintainer's shell history.
+SUTRA is published to PyPI as **`sutra-agent`**. The import package and the
+console commands remain `sutra`; the name `sutra` on PyPI belongs to an unrelated
+project, which is why the distribution carries a suffix.
 
-The distribution is **`sutra-agent`**. The import package and the commands stay
-`sutra` (`sutra`, `sutra-mcp`, `sutra-hook`); `sutra` on PyPI is an unrelated
-package.
+Releases are built and uploaded by GitHub Actions through
+[PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/). The build
+job never holds an upload credential: each publish job exchanges a GitHub OIDC
+identity for a short-lived token that PyPI accepts only from the publisher
+registered for this repository, workflow and environment. No long-lived PyPI
+API token is stored in the repository, in a workflow file, or on a maintainer's
+machine.
 
-## Trusted publisher configuration
+This document describes the process any authorized maintainer can follow. It is
+not a grant of permission: production publishing is restricted to maintainers
+who can approve the protected `pypi` environment (see
+[Publication model](#publication-model)).
 
-Both entries point at the same repository and workflow and differ only in the
-index and the environment:
+## Distribution identity
+
+| | Value |
+|---|---|
+| Distribution name | `sutra-agent` |
+| Import package | `sutra` |
+| Console commands | `sutra`, `sutra-mcp`, `sutra-hook` |
+| Repository | [`g0GobliN/sutra`](https://github.com/g0GobliN/sutra) |
+| Publishing workflow | `.github/workflows/release.yml` |
+| Production environment | `pypi` |
+| Rehearsal environment | `testpypi` |
+
+These values are part of the trust configuration. Changing the distribution
+name, the workflow filename, the repository, or an environment name invalidates
+the publisher registration on the index and requires it to be registered again.
+
+## Publication model
+
+- **TestPyPI** (`https://test.pypi.org`) is a rehearsal index. Nothing published
+  there reaches users, and it is safe to publish the same version there while
+  validating a release.
+- **PyPI** (`https://pypi.org`) is production. A version published there is
+  visible to every user and cannot be reused.
+- The workflow's `publish-pypi` job targets the `pypi` environment. That
+  environment is protected by required reviewers in the repository settings, so
+  the job pauses until an authorized maintainer approves it. The `testpypi`
+  environment has no such protection, because a rehearsal cannot affect users.
+- Contributors can prepare, test and review a release change, but cannot publish
+  it without environment approval and a valid Trusted Publishing registration.
+
+The workflow is started manually (`workflow_dispatch`) with two inputs: the
+release tag to build and the target index (`testpypi` or `pypi`). It builds from
+the tag, never from a moving branch tip, and the build refuses to continue when
+the tag, `__init__.py` and `plugin.yaml` disagree.
+
+## Trusted publisher registration
+
+Both indexes need an entry for this repository. The entries are identical except
+for the index and the environment:
 
 | | PyPI | TestPyPI |
 |---|---|---|
@@ -23,94 +65,196 @@ index and the environment:
 | Workflow | `release.yml` | `release.yml` |
 | Environment | `pypi` | `testpypi` |
 
-Both indexes refuse to save a publisher until the account is in a publishable
-state: the primary email address must be verified, and TestPyPI additionally
-requires two-factor authentication before any account change. TestPyPI's 2FA
-cannot be turned off once enabled, so enable it deliberately and store the
-recovery codes first.
-
-Until the first upload the project does not exist on either index, so each
-entry is a **pending publisher**, added from the account sidebar rather than a
-project page:
+Register or inspect the entries from the account's publishing settings:
 
 - PyPI: <https://pypi.org/manage/account/publishing/>
 - TestPyPI: <https://test.pypi.org/manage/account/publishing/>
 
-A pending publisher is converted into a normal publisher the first time it is
-used, and the project is created in that same upload. A pending publisher does
-**not** reserve the name: if another account registers `sutra-agent` first, the
-pending entry is invalidated and the name is gone.
+Before an index accepts the entry, the account must meet that index's
+authentication requirements. PyPI requires a verified primary email address;
+TestPyPI additionally requires two-factor authentication before account changes.
+Authorized maintainers are responsible for enabling the security features their
+accounts require and for retaining recovery credentials in the team's approved
+secret storage. Recovery codes and passwords are never committed to this
+repository or pasted into issues, pull requests or chat.
 
-Both environments already exist on the repository. `pypi` has a required
-reviewer, so publishing pauses for an approval; `testpypi` has no protection.
-Keep the environment names exactly as above — they are part of the identity
-PyPI checks, and renaming one means re-registering the publisher.
+Until the project's first upload, the project does not exist on the index, so
+the registration is a **pending publisher** created from the account's
+publishing settings rather than from a project page. Using it for the first time
+creates the project and converts the pending entry into a regular publisher in
+the same upload. A pending publisher does **not** reserve the name: if another
+account publishes `sutra-agent` first, the pending entry becomes unusable.
+
+Keep the environment names exactly as listed. They are part of the identity PyPI
+verifies, and renaming an environment means registering the publisher again.
+
+## Versioning and changelog
+
+A release version is declared in two files and must agree everywhere:
+
+- `__init__.py` — `__version__`, which `sutra --version` and the built metadata
+  read;
+- `plugin.yaml` — `version`, which the Hermes plugin manifest reports.
+
+`scripts/check_version.py <tag>` compares both against a tag such as `v1.2.3`
+and is the first step of the release workflow. Bump both files in the same
+commit.
+
+`CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) style:
+entries accumulate under `## Unreleased`, and a release moves them under a
+`## <version> (YYYY-MM-DD)` heading. Describe user-visible behaviour, not the
+internal sequence of commits.
 
 ## Preparing a release
 
-1. Bump the version in **both** places that declare it: `__init__.py`
-   (`__version__`) and `plugin.yaml` (`version`). `sutra --version`, the plugin
-   manifest and the built artifact must agree; `scripts/check_version.py`
-   enforces the tag against both.
-2. Move the `CHANGELOG.md` entries from "Unreleased" under the new version.
-3. If the release changes what users install, update the `README.md` install
-   section.
-4. Merge to `main`. CI must be green: the suite on 3.11–3.13 and macOS,
-   `ruff check .`, `hermes plugins validate .`, and the packaging job that
-   builds the artifacts and installs them into a clean environment.
+1. Bump the version in `__init__.py` and `plugin.yaml`.
+2. Move the `CHANGELOG.md` entries from `Unreleased` under the new version.
+3. Update the `README.md` install section if what users install or run changed.
+4. Open a pull request and wait for CI. Every job must pass:
+   - the product suite on Python 3.11, 3.12 and 3.13, plus macOS;
+   - `ruff check .`;
+   - `hermes plugins validate .` at the pinned Hermes revision;
+   - the `package` job, which builds the sdist and wheel, runs
+     `twine check --strict`, validates the archive contents and installs the
+     wheel in a clean environment;
+   - the hyphen-checkout job, which proves the suite runs from a directory whose
+     name is not a valid Python module name (as GitHub tarballs extract).
+5. Merge the pull request. The release is built from a tag on the merged commit,
+   so the merged tree is what users receive.
 
-## Publishing
+## Building and validating locally
 
-The workflow builds from the release tag, not from a branch tip.
-
-1. Tag the merged commit: `git tag v0.3.0 && git push origin v0.3.0`.
-2. Run **Release** with `tag=v0.3.0`, `target=testpypi`. It builds, runs
-   `twine check --strict`, validates the artifact contents, refuses a version
-   that already exists, installs the built sdist on 3.11/3.12/3.13, exercises
-   `sutra compress`/`restore`, publishes to TestPyPI, and then installs the
-   published release back from that index.
-3. Rehearse the install the user will actually run:
-
-   ```bash
-   python3 -m venv /tmp/sutra-check
-   /tmp/sutra-check/bin/pip install --no-deps \
-       --index-url https://test.pypi.org/simple/ sutra-agent==0.3.0
-   /tmp/sutra-check/bin/sutra --version
-   ```
-
-4. Run **Release** again with `tag=v0.3.0`, `target=pypi`. Approve the `pypi`
-   environment when GitHub asks; the approval is the last human step. PyPI
-   receives the wheel, the sdist and a signed attestation, and the final job
-   installs `sutra-agent==0.3.0` from PyPI and runs it.
-
-TestPyPI and PyPI are independent: publishing a rehearsal there does not touch
-the real index, and TestPyPI files may be deleted to retry the same version.
-
-## After the first publication
-
-Once `sutra-agent` is live, the README's "not on PyPI yet" paragraph becomes
-wrong. Replace the checkout instructions with the published one:
+The same checks CI runs can be reproduced before tagging:
 
 ```bash
-python3 -m venv ~/.sutra-venv
-~/.sutra-venv/bin/pip install sutra-agent
-~/.sutra-venv/bin/sutra install
+python -m pip install build twine
+python -m build
+python -m twine check --strict dist/*
+python scripts/verify_dist.py dist --version X.Y.Z
+python scripts/verify_dist.py dist --check-index
 ```
 
-Publish that README change separately; it is a documentation edit, not a
-release step.
+`verify_dist.py` inspects the archives rather than their metadata. It requires
+every runtime module, bundled adapter script, `plugin.yaml` and
+`opencode_plugin.js` in the wheel; it rejects tests, caches, benchmark and probe
+trees, development scripts and absolute local paths; it checks that metadata
+declares `License-Expression: MIT`, that the distribution stays dependency-free
+and that the three console entry points exist. With `--check-index` it asks PyPI
+whether that version already exists and fails the build before an upload could be
+rejected halfway.
 
-## When something goes wrong
+A successful local run ends with:
 
-- **A version is already on the index.** The build job stops before upload.
-  Bump the version; PyPI never accepts the same version twice.
-- **The upload failed halfway.** PyPI keeps the files it accepted, and the
-  build job's existing-version guard then stops a re-run. Delete the incomplete
-  release on PyPI and run the workflow again for the same tag; do not change
-  the version to work around a transport error.
-- **A broken release is live.** Use *Yank* on the release page: it hides the
-  version from new resolutions without deleting it or breaking someone who
-  already pinned it. Publish a fixed version; never reuse the yanked number.
-- **Trusted publishing fails with a claim mismatch.** Compare the four fields
-  in the table above with the publisher on the index and with the workflow's
-  `environment:` value. The environment name is compared exactly.
+```text
+OK sutra_agent-X.Y.Z-py3-none-any.whl and sutra_agent-X.Y.Z.tar.gz are a sutra-agent X.Y.Z release
+```
+
+## TestPyPI rehearsal
+
+Tag the merged commit, then run the workflow against TestPyPI:
+
+```bash
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+In GitHub: **Actions → Release → Run workflow**, with `tag=vX.Y.Z` and
+`target=testpypi`. The run:
+
+1. checks out the tag and verifies the tag and declared versions agree;
+2. builds the sdist and wheel, runs `twine check --strict`, validates the archive
+   contents and refuses a version PyPI already serves;
+3. installs the **sdist** in clean environments on Python 3.11, 3.12 and 3.13,
+   then exercises `sutra --version`, `sutra config`, `sutra compress`,
+   `sutra restore`, `sutra-hook` and `sutra status --json`;
+4. publishes to TestPyPI through OIDC;
+5. waits for TestPyPI to serve the version, installs it there, and runs
+   `sutra --version`.
+
+Verify the artifact the way a user would, in a fresh environment:
+
+```bash
+python3 -m venv /tmp/sutra-check
+/tmp/sutra-check/bin/pip install --no-deps \
+    --index-url https://test.pypi.org/simple/ sutra-agent==X.Y.Z
+/tmp/sutra-check/bin/sutra --version
+```
+
+The expected output is `sutra X.Y.Z`. `--no-deps` is used because the
+distribution has no runtime dependencies and the rehearsal index is not a
+general-purpose package source; omit it only if you deliberately want pip to
+resolve dependencies from PyPI.
+
+## Production publication
+
+Run **Actions → Release → Run workflow** again with the same tag and
+`target=pypi`. The build and smoke jobs repeat, then `publish-pypi` waits for
+approval of the `pypi` environment. Approval is the final human authorization
+step; the workflow then uploads the wheel, the sdist and a signed attestation
+through OIDC.
+
+The final job installs `sutra-agent==X.Y.Z` from PyPI into a clean environment
+and runs `sutra --version` and `sutra config`, so a release that uploaded
+successfully but cannot be installed fails the workflow instead of passing
+silently.
+
+## Post-publication verification
+
+- Open <https://pypi.org/project/sutra-agent/> and confirm the long description
+  renders: headings, tables, links and the `how-it-works.svg` diagram should all
+  display. README links are absolute for this reason.
+- Confirm the release shows the wheel, the sdist and the attestation.
+- Install from PyPI in a clean environment:
+
+  ```bash
+  python3 -m venv ~/.sutra-venv
+  ~/.sutra-venv/bin/pip install sutra-agent
+  ~/.sutra-venv/bin/sutra --version
+  ~/.sutra-venv/bin/sutra install --dry-run
+  ```
+
+- If the README still describes installing from a checkout, update it to the
+  published instructions in a separate documentation pull request. That change
+  is documentation, not part of the release.
+
+## Troubleshooting
+
+- **The version already exists on the index.** The build job stops before any
+  upload. Choose a new version; an index never accepts the same version twice.
+  This is also why an interrupted upload is not repaired by re-tagging: publish
+  the next patch version instead.
+- **The upload failed partway through.** Keep the accepted files, investigate
+  the transport or permission error, and publish a new version. Do not delete
+  and re-upload files under the same name: PyPI blocks reuse of deleted
+  filenames as well.
+- **A broken release is live.** Use *Yank* on the PyPI release page. Yanking
+  hides the version from new resolutions without deleting it or breaking a pin;
+  publish a fixed version afterwards and never reuse the yanked number.
+- **Trusted Publishing fails with a claim mismatch.** Compare the five fields in
+  the table above with the publisher on the index and with the `environment:`
+  names in `.github/workflows/release.yml`. Environment names are compared
+  exactly, including case.
+- **The package job fails on contents.** Run `scripts/verify_dist.py` locally; it
+  names the missing or unexpected file. A new runtime module or bundled asset
+  must be added to `RUNTIME_MODULES` or `PACKAGE_DATA` in that script and to
+  `[tool.setuptools.package-data]` in `pyproject.toml` in the same change.
+- **The TestPyPI install cannot find the package.** Confirm the run reached
+  `verify-testpypi` and that the version exists on TestPyPI; index propagation can
+  take a short time, and the verification job polls for up to ten minutes.
+- **A release was started with the wrong tag.** Nothing is uploaded until the
+  build and smoke jobs pass; if a publish job already ran on TestPyPI, fix the
+  problem and publish the next version to production. Tags that were never
+  published can be deleted before they are used, but never move a tag that PyPI
+  has already served.
+
+## Release checklist
+
+- [ ] Version bumped in `__init__.py` and `plugin.yaml`, changelog updated.
+- [ ] Pull request merged with every CI job green, including `package`.
+- [ ] Tag pushed for the merged commit.
+- [ ] TestPyPI rehearsal passed, including install-back verification.
+- [ ] `pip install --no-deps --index-url https://test.pypi.org/simple/ ...`
+      reports the expected version.
+- [ ] Production run approved for the `pypi` environment.
+- [ ] PyPI page renders and the published version installs and runs.
+- [ ] Install instructions in the README updated if they changed.
