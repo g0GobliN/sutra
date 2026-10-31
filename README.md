@@ -6,17 +6,23 @@
 
 **Less output. More signal.**
 
-SUTRA is an agent-agnostic tool-output optimization layer for AI coding agents. It sits between a tool result and the model: it reduces eligible output before that output is re-sent through the rest of the session, and it keeps the original bytes locally behind a marker that can restore them on demand.
+SUTRA is a deterministic tool-output optimization layer for AI coding agents.
 
-It is not a prompt compressor and not a summarizer. It does not rewrite your instructions, shorten the model's replies, or ask a model to paraphrase a log. It processes the result a tool has already produced, after execution and before the model reads it. A tool result is read once and re-sent on every following turn, so a 2 MB log is 2 MB times the rest of the session (on one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context). SUTRA removes only redundant or oversized material, states in the result exactly what it removed, and fails open: an unexpected shape, parse error or internal exception leaves the host's original result untouched.
+It reduces unnecessary context consumption by processing tool results before they reach the model. Unlike prompt compression or model-generated summarization, SUTRA uses deterministic rules, preserves the original locally, and lets agents retrieve omitted information when needed.
 
-The same deterministic core powers native adapters for Hermes, Claude Code and OpenCode, an MCP registration for Codex, and a CLI plus MCP server for everything else — with no model calls in any path. Automatic replacement is a property of the host, not a slogan: Hermes, Claude Code and OpenCode expose a documented result-replacing hook; Codex does not, so there SUTRA is explicit `sutra_compress`/`sutra_restore` only.
+One core. Multiple agents. Recoverable output. No compression model calls.
 
-> **54.3%** fewer bytes · **55.2%** fewer o200k tokens · **8/8** planted clues recovered · **0** diffs touched
+> **In our eight-fixture benchmark, SUTRA cut payload size by 54.3% and o200k tokens by 55.2%.** All eight planted clues were recovered; diffs and shape-sensitive JSON arrays were left untouched.
 >
-> Eight generated tool-output shapes. The token column is `tiktoken o200k_base` on the payload text, not a provider bill. [Method and limits](#proof-not-a-promise).
+> The fixtures are generated tool-output shapes, and the token figure is a tokenizer count, not a provider bill. [Method and limits](#proof-not-a-promise).
 
-[Install](#install) · [How it works](#how-it-works) · [Comparison](#sutra-vs-prompt-and-context-optimization-tools) · [Proof](#proof-not-a-promise) · [Recovery](#how-recovery-works) · [What we don't claim](#what-we-dont-claim)
+[Install](#install) · [How it works](#how-it-works) · [Proof](#proof-not-a-promise) · [Comparison](#how-sutra-compares-with-prompt-and-context-tools) · [Recovery](#how-recovery-works) · [What we don't claim](#what-we-dont-claim)
+
+## Why tool output is the expensive part
+
+A tool result is read once and then re-sent on every following turn. A 2 MB log is not 2 MB of cost; it is 2 MB multiplied by the rest of the session. On one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context, and tool output is the part that grows without bound as an agent works.
+
+Prompt compression shaves an instruction once. Tool-output growth compounds with every command. The agent rarely needs all of it: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
 
 ## What SUTRA does — and where it sits
 
@@ -57,47 +63,16 @@ The scope is deliberately narrow:
 - **Fail-open.** Any unexpected input or internal error returns the original result, so the agent continues as if SUTRA were not there.
 - **Host-specific integration, shared behaviour.** Automatic only where the host documents a result-replacing hook; explicit tools or MCP registration everywhere else.
 
-### SUTRA vs. prompt and context optimization tools
+What that buys you:
 
-SUTRA is often mentioned next to tools such as Caveman and Ponytail because all three try to reduce what an AI coding agent consumes. They intervene at different points, and they are better understood as complementary than as substitutes.
-
-- **[Caveman](https://github.com/JuliusBrussee/caveman)** is a skill plus CLI/proxy that, in its own description, makes the agent "say less and read less". Its 4.0 release bundles reply brevity, compression of logs/JSON/CSV/test output, model and effort routing, reusable code blocks, and web-page compression. It states that prompts are never rewritten, and that every original stays on disk and can be pulled back.
-- **[Ponytail](https://github.com/DietrichGebert/ponytail)** is a skill/plugin that changes how much code the agent writes: a ladder of "do we even need this?" questions applied after the agent understands the task. Its savings come from code that is never generated, not from shrinking a tool result that already exists.
-
-| Dimension | SUTRA | Caveman | Ponytail |
-|---|---|---|---|
-| Primary focus | Eligible agent tool output | Agent brevity plus the inputs it reads (files, logs, web pages) | How much code the agent writes |
-| Where it acts | Between a tool result and the model, through host adapters | Agent instructions/skill and a CLI/proxy around the agent | Agent instructions/skill before code is generated |
-| What it transforms | Logs, JSON documents, tracebacks and other tool results; diffs untouched | Model replies, tool-readable files, web pages; routing and reusable scripts in 4.0 | The agent's plan and implementation choices |
-| Original content recovery | Local bounded store, marker with id, `sutra_restore` modes | Docs state originals stay on disk and the agent can pull them back | Not a compression layer; no recovery surface is claimed |
-| Compression model calls | None; deterministic rules | No separate compression model for the voice; effect depends on the host model, with tooling for the file compressors | No separate compression model; effect depends on the host model following the rules |
-| Prompt rewriting | No | Docs state prompts are never rewritten | It is a prompt/rules layer: it changes agent behaviour rather than compressing a prompt |
-| Agent support | Four first-class adapters plus MCP/CLI; automatic only on hosts with a result hook | 30+ agents through a skill/installer | Many agents through a skill/plugin |
-| Deterministic, byte-exact guarantees | Yes for eligibility, rewrite and recovery; diffs always byte-identical | Reply style is model behaviour; file compression is tooling | Behavioural, not a byte-level transform |
-
-The overlap is real: Caveman's "read less" compressors and SUTRA both shrink what the model reads, and both keep originals retrievable. The difference is the object and the guarantee. SUTRA is not a voice, a code-writing philosophy or a router; it is a deterministic, reversible transform on the tool-result path, with the same rules behind every adapter. It also does not claim automatic interception where the host has none — Codex is MCP-only for exactly that reason.
-
-A concrete difference:
-
-```text
-Agent runs: pytest -q   →   12,000 lines (60.9 kB)
-
-SUTRA on Hermes, Claude Code or OpenCode:
-  the eligible result is rewritten before the model's next turn
-  60.9 kB → 18.6 kB; the marker names the elided bytes and an id
-  a diff in the same session is untouched, byte for byte
-  the model can call sutra_restore(id, mode="search", query="FAILED")
-
-SUTRA on Codex or a generic MCP client:
-  the model must call sutra_compress explicitly; nothing is replaced for it
-
-Caveman or Ponytail in the same session:
-  they change what the agent says, reads or writes — not that stored result
-```
-
-Measurements differ by tool and by workload, so compare published methods rather than a single number. Caveman's own README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and a case where its HTML compressor lost 9.9%; Ponytail's README reports 45% fewer tokens and 53% less code on its 39-task benchmark. SUTRA's numbers are payload-level tokenizer counts and byte savings on generated fixtures, not a provider bill — see [Proof](#proof-not-a-promise) and [What we don't claim](#what-we-dont-claim).
-
-Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Competitor details come from their published documentation and may change.
+| Capability | What it means in practice |
+|---|---|
+| Deterministic rules, no compression model | Your logs are never interpreted or paraphrased by another model |
+| Local original retention | Anything SUTRA omitted can be retrieved later, by id |
+| Native host adapters | No manual compression step on hosts with a result hook |
+| Diff and shape protection | Code changes are never silently rewritten; JSON stays JSON |
+| Fail-open behaviour | A malformed result leaves the agent running normally |
+| One shared core | The same rules, markers and recovery across every integration |
 
 ## Install
 
@@ -261,6 +236,35 @@ PY
 ```
 
 The honest test is a before/after on your own workload: run the same task with the plugin disabled and enabled and compare `input_tokens` in the session row.
+
+## How SUTRA compares with prompt and context tools
+
+SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context efficiency from different architectural directions. Both address unnecessary context consumption, but SUTRA specialises in deterministic, recoverable tool-output processing at the integration layer. [Ponytail](https://github.com/DietrichGebert/ponytail) pulls a third lever: how much code the agent writes at all.
+
+| Dimension | SUTRA | Caveman | Ponytail |
+|---|---|---|---|
+| Primary focus | Deterministic tool-output processing | Agent brevity plus the inputs it reads | How much code the agent writes |
+| Where it acts | Between a tool result and the model, through host adapters | Skill plus CLI/proxy around the agent | Skill/rules before code is generated |
+| What it transforms | Logs, JSON documents, tracebacks; diffs untouched | Replies, tool-readable files, web pages; routing and blocks in 4.0 | The agent's plan and implementation choices |
+| Original recovery | Local bounded store, id marker, `sutra_restore` | Docs state originals stay on disk and can be pulled back | Not a compression layer; no recovery surface claimed |
+| Model calls for compression | None — deterministic rules | No separate compression model for the voice; file compressors are tooling | None; the effect depends on the host model following the rules |
+| Prompt handling | Does not touch prompts or replies | Docs state prompts are never rewritten | A prompt/rules layer by design |
+| Agent support | Four first-class adapters plus MCP/CLI; automatic only where a result hook exists | 30+ agents via skill/installer | Many agents via skill/plugin |
+
+The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
+
+```text
+pytest -q → 12,000 lines (60.9 kB)
+SUTRA, on a host with a result hook: 60.9 kB → 18.6 kB before the next model turn;
+  the marker names the elided bytes and an id; a diff stays byte-identical;
+  sutra_restore(id, mode="search", query="FAILED") retrieves the failure.
+SUTRA, on Codex or a generic MCP client: sutra_compress is explicit; nothing is replaced.
+Caveman or Ponytail: they change what the agent says, reads or writes — not that stored result.
+```
+
+Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. SUTRA's are payload-level tokenizer counts and byte savings on generated fixtures, not a provider bill; see [Proof](#proof-not-a-promise).
+
+Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail).
 
 ## How recovery works
 
