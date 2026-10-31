@@ -137,7 +137,7 @@ python scripts/verify_dist.py dist --check-index
 `verify_dist.py` inspects the archives rather than their metadata. It requires
 every runtime module, bundled adapter script, `plugin.yaml` and
 `opencode_plugin.js` in the wheel; it rejects tests, caches, benchmark and probe
-trees, development scripts and absolute local paths; it checks that metadata
+trees, and absolute local paths; and it checks that metadata
 declares `License-Expression: MIT`, that the distribution stays dependency-free
 and that the three console entry points exist. With `--check-index` it asks PyPI
 whether that version already exists and fails the build before an upload could be

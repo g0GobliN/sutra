@@ -37,9 +37,10 @@ RUNTIME_MODULES = frozenset({
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",
 })
-# `scripts/check_version.py` is release tooling, not part of either artifact: the
-# wheel ships only what an install needs, and a clean sdist carries the same
-# runtime files plus packaging metadata.
+# `scripts/check_version.py` is release tooling. The wheel excludes it (it ships
+# only what an install needs); the sdist includes it explicitly through
+# `MANIFEST.in`, so its presence does not depend on the setuptools version.
+DEV_SCRIPTS = frozenset({"check_version.py"})
 PACKAGE_DATA = frozenset({"plugin.yaml", "opencode_plugin.js"})
 
 # A path fragment that means a development artifact reached the archive.
@@ -166,10 +167,10 @@ def check_sdist(sdist: pathlib.Path, version: str | None, problems: list[str]) -
 
         scripts = {p.split("/", 1)[1] for p in relative if p.startswith("scripts/")
                    and p.count("/") == 1}
-        if scripts != RUNTIME_SCRIPTS:
+        if scripts != RUNTIME_SCRIPTS | DEV_SCRIPTS:
             _fail(problems, f"sdist: scripts differ: missing "
-                            f"{sorted(RUNTIME_SCRIPTS - scripts)}, "
-                            f"unexpected {sorted(scripts - RUNTIME_SCRIPTS)}")
+                            f"{sorted((RUNTIME_SCRIPTS | DEV_SCRIPTS) - scripts)}, "
+                            f"unexpected {sorted(scripts - (RUNTIME_SCRIPTS | DEV_SCRIPTS))}")
 
         _check_forbidden(sorted(relative), problems, "sdist")
 
