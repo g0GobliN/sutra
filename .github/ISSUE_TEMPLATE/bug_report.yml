@@ -58,6 +58,6 @@ body:
     id: versions
     attributes:
       label: SUTRA and Hermes versions
-      placeholder: sutra 0.2.0, hermes 0.22.5
+      placeholder: sutra 0.3.0, hermes 0.22.5
     validations:
       required: true

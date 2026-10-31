@@ -1,6 +1,8 @@
 # Contributing to SUTRA
 
-Thanks for looking. This is a small, deliberately conservative plugin: it sits in front of a model's context and writes tool output to disk, so a rule that removes too much — or promises bytes it did not keep — is worse than a rule that removes nothing.
+Thanks for looking. By participating, you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+This is a small, deliberately conservative plugin: it sits in front of a model's context and writes tool output to disk, so a rule that removes too much — or promises bytes it did not keep — is worse than a rule that removes nothing.
 
 ## The rules that will not be relaxed
 
@@ -20,7 +22,7 @@ Thanks for looking. This is a small, deliberately conservative plugin: it sits i
 git clone https://github.com/<you>/sutra
 cd sutra
 python3 -m venv .venv
-.venv/bin/pip install pytest
+.venv/bin/pip install pytest ruff
 .venv/bin/python -m pytest tests -q
 .venv/bin/python bench/benchmark.py      # optional: refreshes every number in the README
 ```
@@ -30,6 +32,9 @@ If you have Hermes installed, also run the loader the way Hermes does:
 ```bash
 hermes plugins validate .
 ```
+
+The documentation map, including the authoritative integration matrix and the
+release runbook, is in [docs/README.md](docs/README.md).
 
 That check loads the plugin, calls `register()`, and verifies the manifest
 declares exactly the tools and middleware that were registered. A plugin that

@@ -1,32 +1,62 @@
 <p align="center">
-  <img src="public/logo/sutraThumb.png" alt="SUTRA" width="520">
+  <img src="https://raw.githubusercontent.com/g0GobliN/sutra/main/public/logo/sutraThumb.png" alt="SUTRA" width="520">
 </p>
 
 # SUTRA
 
 **Less output. More signal.**
 
-SUTRA is a deterministic tool-output optimization layer for AI coding agents.
-
-It reduces unnecessary context consumption by processing tool results before they reach the model. Unlike prompt compression or model-generated summarization, SUTRA uses deterministic rules, preserves the original locally, and lets agents retrieve omitted information when needed.
+SUTRA is a deterministic tool-output optimization and recovery layer for AI coding agents. It processes eligible tool results after a command runs and before the model reads them, so a large log costs less context on every following turn — without a model paraphrasing it.
 
 One core. Multiple agents. Recoverable output. No compression model calls.
 
-> **In our eight-fixture benchmark, SUTRA cut payload size by 54.3% and o200k tokens by 55.2%.** All eight planted clues were recovered; diffs and shape-sensitive JSON arrays were left untouched.
->
-> The fixtures are generated tool-output shapes, and the token figure is a tokenizer count, not a provider bill. [Method and limits](#proof-not-a-promise).
+> **Eight-fixture benchmark:** payload size reduced by **54.3%**, o200k tokenizer counts by **55.2%**; **8/8** planted clues recovered; **0** diffs touched. The fixtures are generated tool-output shapes and the token figure is not a provider bill — [method](#evidence-and-benchmarks).
 
-[Install](#install) · [How it works](#how-it-works) · [Proof](#proof-not-a-promise) · [Comparison](#how-sutra-compares-with-prompt-and-context-tools) · [Recovery](#how-recovery-works) · [What we don't claim](#what-we-dont-claim)
+[Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Comparison](#how-sutra-compares-with-caveman-and-ponytail) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
 
-## Why tool output is the expensive part
+## The problem: tool output is re-read all session
 
-A tool result is read once and then re-sent on every following turn. A 2 MB log is not 2 MB of cost; it is 2 MB multiplied by the rest of the session. On one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context, and tool output is the part that grows without bound as an agent works.
+An agent runs `pytest -q`, receives 12,000 lines, and needs one failure. The useful part may be twenty lines, but the tool result stays in context and is re-sent on every subsequent turn. Prompt compression shaves an instruction once; tool output grows with every command an agent runs.
 
-Prompt compression shaves an instruction once. Tool-output growth compounds with every command. The agent rarely needs all of it: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
+```text
+turn 1   ── tool output 60.9 kB ──► model
+turn 2   ── tool output 60.9 kB ──► model   (re-sent)
+turn 3   ── tool output 60.9 kB ──► model   (re-sent)
+         ...                               cost compounds with the session
+```
 
-## What SUTRA does — and where it sits
+On one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context. The agent rarely needs the whole result: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
 
-SUTRA has one agent-agnostic core: `core.py` (the host seam), `engine.py` (the ordered compression rules), `store.py` (local retention) and `recovery.py` (the retrieval protocol). Each adapter only translates a host's tool result into that seam and writes the result back. Nothing is reimplemented per client, so the same eligibility, safety, retention and recovery rules apply everywhere.
+## How SUTRA handles a tool result
+
+1. **The tool runs normally.** SUTRA does not wrap, delay or re-execute it.
+2. **The host adapter hands the result to the shared core.** The core decides whether the result is eligible: size, payload shape, evidence tools, diffs.
+3. **The core rewrites only what is safe to remove.** ANSI escapes, repeated lines and oversized middles are elided; diffs stay byte-identical, JSON keeps its shape, a traceback keeps its error end.
+4. **The original is retained locally** when storage is enabled, with a bounded lifetime.
+5. **The model sees a smaller result with a marker** naming what was removed, how much, and the exact `sutra_restore` call that returns it.
+6. **Nothing is generated.** No summariser, no model call, no interpretation, no invented content.
+
+If anything is unexpected — a malformed payload, a failed store write, an internal exception — SUTRA fails open and the host receives the original result unchanged.
+
+## What makes SUTRA different
+
+- **Deterministic, not probabilistic.** The same bytes produce the same rewrite and the same marker. No compression model decides what matters.
+- **Recoverable by construction.** An id is written only after the original is on disk. A marker never cites bytes that were not kept.
+- **Agent-agnostic core.** Hermes, Claude Code, OpenCode, Codex, MCP and the CLI all call the same eligibility, compression, storage and recovery code.
+- **Host-appropriate integration.** Automatic replacement only where the host documents a result-replacing hook; explicit tools or MCP registration where it does not.
+- **Safety boundaries that hold.** Diffs and patches are never rewritten, JSON is never byte-sliced, traceback tails are never dropped.
+- **Fail-open at every adapter.** A broken host payload or a missing interpreter leaves normal agent execution alone.
+
+| Capability | What it means in practice |
+|---|---|
+| Deterministic rules, no compression model | Logs are never interpreted or paraphrased by another model |
+| Local original retention | Anything SUTRA omitted can be retrieved later, by id |
+| Native host adapters | No manual compression step on hosts with a result hook |
+| Diff and shape protection | Code changes are never silently rewritten; JSON stays JSON |
+| Fail-open design | A malformed result leaves the agent running normally |
+| Shared core | The same rules, markers and recovery across every integration |
+
+## Architecture
 
 ```text
 AI coding agent
@@ -36,17 +66,17 @@ tool execution
       │  raw result
       ▼
 host adapter
-  ├─ Hermes: tool_execution middleware
-  ├─ Claude Code: PostToolUse hook
-  ├─ OpenCode: tool.execute.after plugin
-  ├─ Codex: MCP registration only (no result hook; explicit calls)
-  └─ other clients: CLI or MCP server (explicit calls)
+  ├─ Hermes: tool_execution middleware          automatic
+  ├─ Claude Code: PostToolUse hook              automatic
+  ├─ OpenCode: tool.execute.after plugin        automatic
+  ├─ Codex: MCP registration only               explicit calls
+  └─ other clients: CLI or MCP server           explicit calls
       │
       ▼
 shared SUTRA core
   ├─ eligibility: size, payload shape, evidence tools, diffs
-  ├─ deterministic rewrite plus a marker naming what was removed
-  └─ retain the original locally (TTL, quota, bounded reads)
+  ├─ deterministic rewrite + a marker naming what was removed
+  └─ local retention (TTL, quota, bounded reads)
       │
       ▼
 model reads the smaller result
@@ -55,189 +85,9 @@ model reads the smaller result
 original retrieved from the local store when needed
 ```
 
-The scope is deliberately narrow:
+The recovery path is separate from the compression path: compression can run with storage disabled, but then the marker says the original was not retained and the model can only re-run the command narrower. Recovery reads the local store by validated id and bounded mode.
 
-- **Tool output, not prompts.** SUTRA never edits the user's instructions or the model's reply, and it does not call a model.
-- **Eligible output only.** Results at or below `SUTRA_MAX_BYTES` (24,576 B by default) pass through; diffs and patches are always byte-identical; JSON keeps its shape; tracebacks keep their error end.
-- **Recoverable by construction.** Every rewrite names the bytes removed and, when retention succeeded, an id that restores them. A marker never claims an id for bytes that were not kept.
-- **Fail-open.** Any unexpected input or internal error returns the original result, so the agent continues as if SUTRA were not there.
-- **Host-specific integration, shared behaviour.** Automatic only where the host documents a result-replacing hook; explicit tools or MCP registration everywhere else.
-
-What that buys you:
-
-| Capability | What it means in practice |
-|---|---|
-| Deterministic rules, no compression model | Your logs are never interpreted or paraphrased by another model |
-| Local original retention | Anything SUTRA omitted can be retrieved later, by id |
-| Native host adapters | No manual compression step on hosts with a result hook |
-| Diff and shape protection | Code changes are never silently rewritten; JSON stays JSON |
-| Fail-open behaviour | A malformed result leaves the agent running normally |
-| One shared core | The same rules, markers and recovery across every integration |
-
-## Install
-
-One package with native adapters for Hermes, Claude Code, and OpenCode, plus an MCP server that any MCP client can register. All run the same deterministic core.
-
-Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; OpenCode gets it with the generated plugin installed by `sutra install`. Codex CLI 0.166.0 has no documented post-tool output replacement, so `sutra install` registers its MCP server but labels it MCP-only rather than claiming automatic compression. MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The full audit, install behavior, and host limits are in [docs/universal-integration.md](https://github.com/g0GobliN/sutra/blob/main/docs/universal-integration.md); the setup matrix is in [docs/integrations.md](https://github.com/g0GobliN/sutra/blob/main/docs/integrations.md).
-
-### Hermes Agent
-
-The supported path is the installer; it copies the native plugin, asks Hermes to validate it, then enables it:
-
-```bash
-sutra install --client hermes
-sutra doctor --client hermes
-```
-
-For a manual checkout install:
-
-```bash
-git clone https://github.com/g0GobliN/sutra ~/.hermes/plugins/sutra
-hermes plugins enable sutra
-hermes tools        # enable the SUTRA plugin toolset
-```
-
-Compression does not depend on the toolset. The recovery tool is gated by toolset like any other Hermes tool: if you skip `hermes tools`, the marker's `sutra_restore` call fails and the model falls back to re-running the tool. The marker says so. Restart the gateway after enabling so middleware loading is refreshed.
-
-### OpenCode, Codex, and other MCP clients
-
-SUTRA is not on PyPI yet (the `sutra` name there belongs to an unrelated package; the distribution is `sutra-agent`), so install from a checkout:
-
-```bash
-git clone https://github.com/g0GobliN/sutra
-python3 -m venv ~/.sutra-venv
-~/.sutra-venv/bin/pip install ./sutra
-~/.sutra-venv/bin/sutra --version    # sutra 0.3.0
-
-# show the config edit, then make it; a .bak is written beside the file
-~/.sutra-venv/bin/sutra install --dry-run
-~/.sutra-venv/bin/sutra install
-```
-
-`sutra install` writes the automatic OpenCode plugin to `~/.config/opencode/plugins/sutra.js` and, when the config exists, adds the MCP recovery entry by editing the config as text. Comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode. The automatic path was verified with OpenCode 1.19.5 (48,436 B → 18,649 B model-facing, clue restored); Claude Code 2.1.268 reports `✔ Connected` for the same MCP server command.
-
-`sutra install` auto-detects Hermes, Claude Code, OpenCode, and Codex. Codex is MCP-only: its official `codex mcp add` path is automated, but no automatic interception is claimed because the host cannot replace tool output. See what is present without changing anything with `sutra detect` (add `--json` for a machine-readable report), and prove installed paths with `sutra doctor` or focus one with `--client`. The matrix in [docs/integrations.md](https://github.com/g0GobliN/sutra/blob/main/docs/integrations.md) and the audit in [docs/universal-integration.md](https://github.com/g0GobliN/sutra/blob/main/docs/universal-integration.md) state what has and has not been exercised per client.
-
-For Codex specifically:
-
-```bash
-sutra install --client codex
-sutra doctor --client codex   # status=limited, automatic=no
-```
-
-This registers `sutra` for explicit `sutra_compress` and `sutra_restore` calls. It does not make Codex's Bash or `apply_patch` output automatic. For any other MCP client, register the same server yourself:
-
-```json
-{"mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
-                          "args": ["-m", "sutra.mcp"]}}}
-```
-
-### Claude Code (automatic)
-
-The hook replaces a tool result before the model reads it. An install ships it
-as the `sutra-hook` command; a checkout can run the script directly. Add one of
-them to project or user settings with an absolute path, and register the MCP
-server for recovery:
-
-```json
-{
-  "hooks": {
-    "PostToolUse": [
-      {"hooks": [{"type": "command",
-                  "command": "/home/you/.sutra-venv/bin/sutra-hook"}]}
-    ]
-  },
-  "mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
-                          "args": ["-m", "sutra.mcp"]}}
-}
-```
-
-From a checkout, use `python3 /path/to/sutra/scripts/sutra-claude-code-hook.py`
-and the script path for the server instead; both commands run the same files.
-The hook command must be absolute.
-
-Both must use the same store: set `SUTRA_STORE_DIR` (or `HERMES_HOME`) in both
-environments, or `sutra_restore` answers `not_found` for a marker the hook
-wrote. The hook is fail-open — a parse, import or internal error prints `{}`
-and leaves the original result untouched. This is hook-protocol tested; no live
-authenticated Claude Code session was run here.
-
-### Verify the Hermes plugin
-
-Three states, three checks:
-
-```bash
-hermes plugins show sutra     # plugin:      Status: enabled, version 0.3.0
-hermes plugins validate ~/.hermes/plugins/sutra   # loads it the way Hermes does
-hermes tools list             # toolset:     "sutra  ✓ enabled" under Plugin toolsets
-```
-
-The middleware is active the moment the plugin is enabled — run any tool whose output exceeds `SUTRA_MAX_BYTES` (24,576 B by default) and the result the model sees carries a `[sutra: …]` marker. The recovery tool needs the toolset enabled ([troubleshooting](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md) covers the Tool Search deferral case).
-
-Current release: [v0.2.0](https://github.com/g0GobliN/sutra/releases/tag/v0.2.0). The `main` tree declares 0.3.0, which is not published yet. Verified against Hermes Agent `v0.22.5 (2026.9.24)`.
-
-## How it works
-
-![How SUTRA works: the tool runs, five ordered rules decide what happens to its result — untouched when small, byte-identical for diffs, decoded and re-encoded when it is a JSON document, head+tail with the error end kept for a traceback, and ANSI strip plus repeat collapse plus head+tail for everything else — then the model sees a smaller result, with every rewrite recorded in a stats file](https://raw.githubusercontent.com/g0GobliN/sutra/main/docs/how-it-works.svg)
-
-The tool executes normally. SUTRA sees the result, applies one ordered set of rules, and hands the model a smaller result with a receipt:
-
-| Rule | Applies to | Effect |
-|---|---|---|
-| ANSI strip | any result | removes colour/control escapes |
-| Repeat collapse | runs of identical lines | keeps 2, replaces the rest with `[sutra: N identical line(s) omitted · id=…]` |
-| Head+tail elision | plain text results over `SUTRA_MAX_BYTES` | keeps the start and the end, inserts an explicit marker with the byte count, the id, and the exact offsets |
-| JSON field elision | a payload that *is* a JSON document | decodes it, runs the same rules on its string fields, re-encodes — never byte-sliced, never reshaped |
-| Traceback preservation | a payload containing a traceback | keeps the error end and elides only the middle |
-| Diff protection | diffs and patches | returned **byte-identical**, always |
-
-The guarantees, stated once:
-
-- **It only removes.** No summarising, no model calls, no rewriting, no invented content.
-- **It always says what it removed** — byte counts and item counts, in a marker the model can read and act on.
-- **It never touches diffs**, and never drops the tail of a traceback.
-- **It never breaks a payload's own format.** JSON in, same-shaped valid JSON out — byte 12,288 of a serialized document can land inside an escape, so documents are decoded and re-encoded rather than cut.
-- **It only cites bytes it actually kept.** No id, no promise.
-- **It fails open.** Any unexpected shape, any parse error, any internal exception returns the original result untouched.
-
-## Proof, not a promise
-
-![Horizontal bar chart: bytes before and after SUTRA on eight real payload shapes. 12,000-line command output 60.9 kB → 18.6 kB; JSON tool envelope 85.9 kB → 19.2 kB; test run of 2,000 cases 99.8 kB → 18.6 kB; 3,000-frame traceback 359.4 kB → 10.3 kB; 432 kB patch 432.1 kB → unchanged (safety case); 900-row SQL result 46.6 kB → 18.5 kB; 8,000-line build log 334.9 kB → 18.6 kB; 8,000-item JSON array 206.9 kB → unchanged (shape preserved). Total 1.6 MB → 742.7 kB, 54.3% saved.](https://raw.githubusercontent.com/g0GobliN/sutra/main/bench/savings.svg)
-
-| payload | rule | bytes before → after | o200k tokens before → after | saved |
-|---|---|---:|---:|---:|
-| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 35,000 → 10,149 | 71.0% |
-| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 26,012 → 5,670 | 78.2% |
-| test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 29,998 → 5,529 | 81.6% |
-| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 126,015 → 3,680 | 97.1% |
-| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
-| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 18,906 → 7,543 | 60.1% |
-| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 127,005 → 6,905 | 94.6% |
-| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 103,002 → 103,002 | 0.0% |
-| **total** | | **1.63 MB → 742.7 kB (54.3%)** | **585,977 → 262,517 (55.2%)** | |
-
-The patch row is the one to read twice. A compressor that also shrinks your diffs is a compressor that can hide a code change, so that row saves nothing on purpose. The JSON array row saves nothing because keeping the array an array leaves nothing safe to remove. And every buried clue came back: five fixtures needed one `sutra_restore` call (≈700 B each; the single-line JSON envelope cost 8.9 kB), three were already visible. The bytes and the tokens agree closely here — but they are different measurements, and neither is a line on your provider's bill; [What we don't claim](#what-we-dont-claim) has the boundary.
-
-Per-fixture recovery costs, processing timings, peak allocation, methodology and one-command reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). **No live model was called to produce any number in this repository.**
-
-Savings on your own machine, from the plugin's own log:
-
-```bash
-python3 - <<'PY'
-import json, pathlib
-p = pathlib.Path.home() / ".hermes/cache/sutra-stats.jsonl"
-rows = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
-changed = [r for r in rows if r.get("changed", True)]  # older logs have rewrites only
-before = sum(r["original_bytes"] for r in changed)
-after = sum(r["compressed_bytes"] for r in changed)
-stored = sum(1 for r in changed if r.get("stored"))
-print(f"{len(changed)} rewrites, {before:,} → {after:,} bytes ({1 - after / before:.1%} saved), {stored} recoverable")
-PY
-```
-
-The honest test is a before/after on your own workload: run the same task with the plugin disabled and enabled and compare `input_tokens` in the session row.
-
-## How SUTRA compares with prompt and context tools
+## How SUTRA compares with Caveman and Ponytail
 
 SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context efficiency from different architectural directions. Both address unnecessary context consumption, but SUTRA specialises in deterministic, recoverable tool-output processing at the integration layer. [Ponytail](https://github.com/DietrichGebert/ponytail) pulls a third lever: how much code the agent writes at all.
 
@@ -247,146 +97,140 @@ SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context e
 | Where it acts | Between a tool result and the model, through host adapters | Skill plus CLI/proxy around the agent | Skill/rules before code is generated |
 | What it transforms | Logs, JSON documents, tracebacks; diffs untouched | Replies, tool-readable files, web pages; routing and blocks in 4.0 | The agent's plan and implementation choices |
 | Original recovery | Local bounded store, id marker, `sutra_restore` | Docs state originals stay on disk and can be pulled back | Not a compression layer; no recovery surface claimed |
-| Model calls for compression | None — deterministic rules | No separate compression model for the voice; file compressors are tooling | None; the effect depends on the host model following the rules |
+| Model calls for compression | None — deterministic rules | No separate compression model for the voice; file compressors are tooling | None; the effect depends on the host model following its rules |
 | Prompt handling | Does not touch prompts or replies | Docs state prompts are never rewritten | A prompt/rules layer by design |
 | Agent support | Four first-class adapters plus MCP/CLI; automatic only where a result hook exists | 30+ agents via skill/installer | Many agents via skill/plugin |
 
 The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
 
+Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
+
+## Evidence and benchmarks
+
+![Horizontal bar chart: bytes before and after SUTRA on eight payload shapes. Total 1.63 MB → 742.7 kB, 54.3% saved; the patch and JSON-array rows are unchanged on purpose.](https://raw.githubusercontent.com/g0GobliN/sutra/main/bench/savings.svg)
+
+| Payload | Rule | Bytes before → after | o200k tokens before → after | Saved |
+|---|---|---:|---:|---:|
+| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 35,000 → 10,149 | 71.0% |
+| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 26,012 → 5,670 | 78.2% |
+| Test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 29,998 → 5,529 | 81.6% |
+| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 126,015 → 3,680 | 97.1% |
+| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
+| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 18,906 → 7,543 | 60.1% |
+| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 127,005 → 6,905 | 94.6% |
+| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 103,002 → 103,002 | 0.0% |
+| **Total** | | **1.63 MB → 742.7 kB (54.3%)** | **585,977 → 262,517 (55.2%)** | |
+
+The patch row saves nothing on purpose: a compressor that shrinks diffs can hide a code change. The JSON-array row saves nothing because keeping the array an array leaves nothing safe to remove. Five buried clues needed one `sutra_restore` call (about 700 B each; the single-line JSON envelope cost 8.9 kB); three were already visible.
+
+What the numbers are — and are not:
+
+- Payload bytes and `tiktoken o200k_base` tokenizer counts on the payload text.
+- Not provider input tokens, not prompt-cache effects, not an invoice, and not a live-agent task-success score. No model was called for any number here.
+- 8/8 proves the clue is retained and retrievable; it does not prove an agent will ask for it.
+
+Method, fixtures, per-phase timings, memory, recovery costs and reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). The frozen live-model A/B protocol is in [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md); it has not been run.
+
+## Safety, recovery and trust
+
+Every rewrite leaves a marker in place of the omitted bytes:
+
 ```text
-pytest -q → 12,000 lines (60.9 kB)
-SUTRA, on a host with a result hook: 60.9 kB → 18.6 kB before the next model turn;
-  the marker names the elided bytes and an id; a diff stays byte-identical;
-  sutra_restore(id, mode="search", query="FAILED") retrieves the failure.
-SUTRA, on Codex or a generic MCP client: sutra_compress is explicit; nothing is replaced.
-Caveman or Ponytail: they change what the agent says, reads or writes — not that stored result.
-```
-
-Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. SUTRA's are payload-level tokenizer counts and byte savings on generated fixtures, not a provider bill; see [Proof](#proof-not-a-promise).
-
-Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail).
-
-## How recovery works
-
-Every rewrite leaves a single-line marker in place of the omitted bytes. A top-level elision looks like this (one line, wrapping here for width):
-
-```
 … [sutra: partial · 133,522 bytes elided (large output) · id=su_3e72c41e… ·
    original 151,920 B retained 168h ·
    retrieve: sutra_restore(id="su_3e72c41e…", mode="bytes", start=12259, end=145781)] …
 ```
 
-It answers, in order: is this complete (no — `partial`), what is missing and why, is the original still available (yes, with a retention window), and exactly how to get it. The model can follow the quoted call verbatim, page through it, or search the retained original literally. If storage is off, full, or the write failed, the marker says "original not retained" and suggests re-running the tool narrower — it never claims an id for bytes that were not kept.
+The marker answers four questions: is this complete, what is missing and why, is the original still available, and exactly how to get it. `sutra_restore` supports exact byte ranges, line ranges, literal search and `full` when it fits, with paging that reproduces the original slice byte for byte.
 
-`sutra_restore` is a normal Hermes tool (toolset `sutra`) with four modes — `bytes` (exact offsets), `lines`, literal `search`, and `full` when it fits — plus optional `field` scoping into one JSON string field. Responses are JSON with an explicit status (`ok`, `not_found`, `expired`, `too_large`, `unavailable`, `error`), a `content_note` marking recovered text as untrusted data, and exact paging: concatenating successive `mode=bytes` pages reproduces the original slice byte for byte.
+Safety properties you can rely on:
 
-Marker grammar, every marker variant, the full argument table, response fields, failure matrix and execution-time envelope: [docs/recovery.md](https://github.com/g0GobliN/sutra/blob/main/docs/recovery.md). The correctness contract behind all of it, guarantee by guarantee with the test that enforces each: [docs/contract.md](https://github.com/g0GobliN/sutra/blob/main/docs/contract.md).
+- **Diffs and patches are byte-identical.** Always.
+- **JSON keeps its shape.** Documents are decoded and re-encoded, never byte-sliced; an array stays an array.
+- **Tracebacks keep their error end.** Only the middle is elided.
+- **An id means the bytes exist.** If storage is off, full or the write failed, the marker says "not retained" and quotes no id.
+- **Fail-open.** Any unexpected shape, parse error or internal exception leaves the original result untouched.
+- **Bounded storage.** Defaults: 32 MiB per entry, 128 MiB total, 2,000 entries, 7-day TTL, 8 KiB recovery response (64 KiB hard cap). The store is local and **not encrypted**; it is protected by filesystem permissions, and tool output can contain secrets. Set `SUTRA_STORE=0` to opt out.
+
+Read the full threat model in [SECURITY.md](https://github.com/g0GobliN/sutra/blob/main/SECURITY.md), the guarantees in [docs/contract.md](https://github.com/g0GobliN/sutra/blob/main/docs/contract.md), and the recovery protocol in [docs/recovery.md](https://github.com/g0GobliN/sutra/blob/main/docs/recovery.md).
+
+## Install
+
+**SUTRA 0.3.0 is not on PyPI yet.** The `sutra` name on PyPI belongs to an unrelated package; the distribution is `sutra-agent`. Until 0.3.0 is published, install from a checkout:
+
+```bash
+git clone https://github.com/g0GobliN/sutra
+python3 -m venv ~/.sutra-venv
+~/.sutra-venv/bin/pip install ./sutra
+~/.sutra-venv/bin/sutra --version        # sutra 0.3.0
+
+~/.sutra-venv/bin/sutra detect           # read-only: what is installed
+~/.sutra-venv/bin/sutra install --dry-run
+~/.sutra-venv/bin/sutra install          # configure every detected client
+~/.sutra-venv/bin/sutra doctor           # prove the installed paths
+```
+
+`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. Restart the host after installing a plugin or hook.
+
+```bash
+~/.sutra-venv/bin/sutra uninstall        # remove only SUTRA-owned entries
+```
+
+If you only want one client, use `--client hermes|claude|opencode|codex`. The installer's behaviour and evidence are recorded in [docs/automatic-install.md](https://github.com/g0GobliN/sutra/blob/main/docs/automatic-install.md).
+
+## Supported integrations
+
+| Host | Mode | Verified against | What to expect |
+|---|---|---|---|
+| **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
+| **Claude Code** | Automatic — `PostToolUse` hook + MCP recovery | 2.1.268 | Result replaced before the model reads it; start a new session; hook and MCP must share a store |
+| **OpenCode** | Automatic — generated `tool.execute.after` plugin + MCP recovery | 1.19.5 | Oversized string results replaced in place; restart OpenCode |
+| **Codex CLI** | **Explicit MCP only** | 0.166.0 | `sutra_compress`/`sutra_restore` are callable; Codex has no supported post-tool result replacement, so nothing is automatic |
+| **Any MCP client** | Explicit | protocol `2024-11-05` | Register `python -m sutra.mcp`; MCP registration is not interception |
+| **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.13 | `sutra compress` / `sutra restore` as JSON; one process per call |
+| **Cursor, Windsurf/Cascade** | No adapter | — | No generic built-in-tool result hook; MCP registration only, by hand |
+
+The authoritative, per-client matrix — mechanisms, install paths, evidence and known limits — is [docs/integrations.md](https://github.com/g0GobliN/sutra/blob/main/docs/integrations.md). The host-API audit is [docs/universal-integration.md](https://github.com/g0GobliN/sutra/blob/main/docs/universal-integration.md).
 
 ## Configuration
 
-Environment variables, read on every call:
+Common settings, read on every call:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `SUTRA_ENABLED` | `1` | `0` disables compression entirely (and retention) |
-| `SUTRA_MAX_BYTES` | `24576` | results at or below this are untouched; larger results are rewritten to fit it |
-| `SUTRA_HEAD_BYTES` | `12288` | bytes kept from the start |
-| `SUTRA_TAIL_BYTES` | `6144` | bytes kept from the end (scaled down proportionally if head+tail exceed the cap) |
-| `SUTRA_STATS_FILE` | `$HERMES_HOME/cache/sutra-stats.jsonl` | where savings are recorded |
-| `SUTRA_STATS_MAX_BYTES` | `5242880` | rotate the log at this size (keeps one `.1`) |
-| `SUTRA_STORE` | `1` | `0` stops retaining originals; markers then say "not retained" |
+| `SUTRA_ENABLED` | `1` | `0` disables compression and retention |
+| `SUTRA_MAX_BYTES` | `24576` | results at or below this are untouched |
+| `SUTRA_HEAD_BYTES` / `SUTRA_TAIL_BYTES` | `12288` / `6144` | bytes kept from the start and end |
+| `SUTRA_STORE` | `1` | `0` keeps compression but stops retaining originals |
 | `SUTRA_STORE_DIR` | `$HERMES_HOME/cache/sutra-store` | where originals live |
-| `SUTRA_STORE_TTL_HOURS` | `168` | how long an original is kept |
-| `SUTRA_STORE_MAX_BYTES` | `134217728` | total size of the store (128 MiB) |
-| `SUTRA_STORE_MAX_ENTRY_BYTES` | `33554432` | largest single original retained (32 MiB) |
-| `SUTRA_STORE_MAX_ENTRIES` | `2000` | most originals retained |
-| `SUTRA_RECOVERY_MAX_BYTES` | `8192` | default response cap for `sutra_restore` (hard max 64 KiB) |
-| `SUTRA_RECOVERY_MAX_MATCHES` | `5` | default matching lines per search (hard max 20) |
-| `SUTRA_JSON_ITEMS` | retired | ignored; warning logged if set |
+| `SUTRA_STORE_TTL_HOURS` | `168` | retention window |
+| `SUTRA_RECOVERY_MAX_BYTES` | `8192` | default response cap (64 KiB hard max) |
 
-Defaults are a disk commitment, not just a tuning knob: up to 128 MiB of tool output per profile, for seven days. Set `SUTRA_STORE=0` if that is not acceptable; compression keeps working, recovery does not. `sutra.configuration()` returns every resolved value as a frozen, inspectable object.
+The complete table, including store quotas, stats-log rotation and retrieval bounds, is in [docs/configuration.md](https://github.com/g0GobliN/sutra/blob/main/docs/configuration.md).
 
-## Storage, privacy, and operating it
+## Limitations
 
-Originals live under `$HERMES_HOME/cache/sutra-store/` — local, per-profile, expiring: directory `0700`, files `0600` written atomically, ids unguessable and validated before any path is built, everything bounded by the table above. Tool output can contain secrets: the store is **not encrypted**, and any process running as you can read it. Full threat model and guidance: [SECURITY.md](https://github.com/g0GobliN/sutra/blob/main/SECURITY.md).
+- **Automatic replacement depends on the host.** Codex, Cursor and Windsurf have no supported generic result-replacement hook; they get explicit tools only.
+- **JSON re-encoding normalises formatting.** Indentation and whitespace inside a re-encoded document are not preserved, and duplicate keys collapse to the last value. The original bytes remain recoverable, so nothing is lost, but the visible copy is not byte-identical.
+- **Large JSON arrays with no large string fields are not compressed at all** — the price of keeping their shape.
+- **Retrieval is bounded.** One entry ≤32 MiB, one response ≤8 KiB by default, at most 20 literal matches; a single line longer than the response cap is returned clipped.
+- **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
+- **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
+- **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made.
+- **Windows is untested.** CI covers Linux and macOS.
 
-`sutra.metrics_snapshot()` is the one read surface for runtime state — compression decisions, restore outcomes, cleanup, store size (process-scoped; the durable JSONL log holds rewrites only). Fields and semantics: [docs/recovery.md § Snapshot and log scope](https://github.com/g0GobliN/sutra/blob/main/docs/recovery.md#snapshot-and-log-scope).
-
-## What we don't claim
-
-- **No live-model A/B.** No provider was called, no input/output/cache token row was measured, no cost was computed, and no task success rate was scored. Those need a model endpoint, a task set and a budget — see [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). (The A/B protocol and harness exist and are frozen; see [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md).)
-- **The token column is a tokenizer count, not a bill.** `tiktoken o200k_base` on the payload text. Another model's tokenizer will produce different counts, prompt caching changes what is re-sent, and the host may truncate tool results on its own. Do not read 55.2% as "55.2% off your invoice".
-- **8/8 is retrievability, not task success.** It proves the clue is in the store and `sutra_restore` returns it. It does not prove an agent will think to ask.
-- **The fixtures are generated.** They are representative in shape, not in the distribution of your tool output.
-- **The timings are one machine.** They are scale, not a portability claim.
-- **The patch and array rows save 0% on purpose.** One protects a code change; the other protects a JSON shape.
-
-## Known limitations
-
-- **The toolset must be enabled** before the model can call `sutra_restore`; the marker then degrades to "re-run narrower".
-- **JSON re-encoding normalises the document**: indentation and whitespace inside the payload are not preserved, and duplicate keys collapse to the last value. The original bytes remain in the store, so nothing is lost, but the visible copy is not byte-identical to what the tool printed.
-- **Large JSON arrays with no large string fields are not compressed at all** — that is the price of not changing their shape.
-- **A JSON field whose pointer cannot be quoted is left uncompressed**: pointers are capped at 256 UTF-8 bytes, and a key containing a quote, backslash, newline, `]` or `)` would make the marker ambiguous. Such a field is returned whole, with no omission marker claiming it.
-- **Retrieval is bounded**: one entry ≤32 MiB and one response ≤8 KiB by default (hard cap 64 KiB), at most 20 matches, literal search; `full` refuses above the cap and a single line longer than the response cap is returned clipped. A restore near the 32 MiB cap costs hundreds of milliseconds on an idle machine, with multi-second outliers under contention; the benchmark artifact records the platform and load instead of publishing one figure (see [docs/recovery.md](https://github.com/g0GobliN/sutra/blob/main/docs/recovery.md#execution-time-envelope)).
-- **One extra compression pass** when the original is retained.
-- **`plugins.isolation: host`**: the middleware runs in Hermes's plugin host process, so each rewrite crosses that boundary.
-
-## Troubleshooting
-
-The full symptom table — restore statuses, markers without ids, Tool Search deferral, stale plugin copies, store growth — lives in [docs/troubleshooting.md](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md). The two most common:
-
-| Symptom | Likely cause | What to do |
-|---|---|---|
-| `sutra_restore` unknown / no tool | toolset `sutra` disabled — or Hermes' Tool Search deferred it | enable the toolset; with Tool Search active the model reaches the tool through `tool_search` ([details](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md)) |
-| plugin not loaded, or old code runs | disabled, not installed, or a stale copy shadows the checkout | `hermes plugins list`, `hermes plugins show sutra`, `hermes plugins validate .`; remove the stale copy |
-
-## Removing it
+## Development and contributing
 
 ```bash
-hermes plugins disable sutra && hermes plugins remove sutra
+python3 -m venv .venv && .venv/bin/pip install pytest ruff
+.venv/bin/python -m pytest tests -q
+.venv/bin/python -m pytest spikes -q
+.venv/bin/ruff check .
 ```
 
-For copied/symlinked installs, retained output, and the stats log, see [docs/troubleshooting.md](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md#removing-it). Removal never deletes retained originals on its own.
+Read [CONTRIBUTING.md](https://github.com/g0GobliN/sutra/blob/main/CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](https://github.com/g0GobliN/sutra/blob/main/CODE_OF_CONDUCT.md) before opening a pull request: one rule per change, a failing test first, and proof that the elided bytes are still recoverable. Bug reports are most useful with the smallest fixture, the result shape, the byte size and the `SUTRA_*` settings in force. Security issues go through a private advisory, not a public issue — see [SECURITY.md](https://github.com/g0GobliN/sutra/blob/main/SECURITY.md).
 
-## Development
-
-```bash
-python3 -m venv .venv && .venv/bin/pip install pytest
-.venv/bin/python -m pytest tests -q           # no Hermes runtime needed
-.venv/bin/python bench/benchmark.py           # compression + clue recovery
-.venv/bin/python bench/retrieval.py           # worst-case restore near the 32 MiB cap
-.venv/bin/sutra detect --json                 # read-only client discovery
-.venv/bin/sutra doctor                           # all four clients, with explicit limits
-.venv/bin/sutra doctor --client opencode         # executed automatic-path proof
-hermes plugins validate .                     # loads the plugin the way Hermes does
-```
-
-The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the entry cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the generated OpenCode plugin through Node against the real Python CLI, the benchmark's own claims, and the A/B protocol's scorers. The original bridge spike tests remain under `spikes/opencode-poc/`. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
-
-**SUTRA in other agents**: the same deterministic core is exposed through native Hermes, Claude Code, and OpenCode integrations (automatic when installed), a Codex MCP registration (explicit compression/recovery only; the host cannot rewrite tool output), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](https://github.com/g0GobliN/sutra/blob/main/docs/integrations.md) and [docs/universal-integration.md](https://github.com/g0GobliN/sutra/blob/main/docs/universal-integration.md).
-
-Documentation: [how the benchmark works](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md) · [the recovery protocol](https://github.com/g0GobliN/sutra/blob/main/docs/recovery.md) · [the correctness contract](https://github.com/g0GobliN/sutra/blob/main/docs/contract.md) · [security model](https://github.com/g0GobliN/sutra/blob/main/SECURITY.md) · [troubleshooting](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md) · [the frozen A/B protocol](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md) · [the OpenCode adapter tests](https://github.com/g0GobliN/sutra/blob/main/tests/test_opencode_adapter.py) · [the OpenCode production proof](https://github.com/g0GobliN/sutra/blob/main/docs/automatic-install.md#opencode)
-
-## Compatibility
-
-Verified against **Hermes Agent v0.22.5 (2026.9.24)** with
-`hermes plugins validate` on its Python 3.14.9 staged runtime. The test suite
-and the benchmarks run on Python 3.13.5 in `.venv`. Newer Hermes versions are
-not claimed; the middleware contract has its own test so a mismatch should fail
-there before it reaches a model. The Claude Code and OpenCode integrations have
-live-host proof with scripted local providers, not live-model sessions. OpenCode
-automatic interception was verified against OpenCode 1.19.5; details are in
-[automatic-install.md](https://github.com/g0GobliN/sutra/blob/main/docs/automatic-install.md#opencode). Codex 0.166.0 has
-no supported post-tool output replacement, so it is intentionally MCP-only;
-the Codex MCP round trip is tested against the real CLI but no automatic claim
-is made. Hermes' installer and the real-gateway evidence loop are verified
-against Hermes 0.22.5; the gateway proof is in `scripts/e2e/README.md`.
-
-## Contributing
-
-See [CONTRIBUTING.md](https://github.com/g0GobliN/sutra/blob/main/CONTRIBUTING.md). Bug reports with a reproducible result shape are the most useful contribution; a rule that removes more than it should is a security-grade bug, not a tuning issue.
-
-If SUTRA saves you a retry, star the repo. If it hides a byte it shouldn't, open an issue.
+Browse the documentation index at [docs/README.md](https://github.com/g0GobliN/sutra/blob/main/docs/README.md). Releases are prepared and published only by authorized maintainers, following [docs/release.md](https://github.com/g0GobliN/sutra/blob/main/docs/release.md).
 
 ## Licence
 

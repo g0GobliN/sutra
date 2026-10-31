@@ -28,6 +28,9 @@ dependencies = []
 [project.urls]
 Homepage = "https://sutra-alive.vercel.app/"
 Repository = "https://github.com/g0GobliN/sutra"
+Documentation = "https://github.com/g0GobliN/sutra/blob/main/docs/README.md"
+Changelog = "https://github.com/g0GobliN/sutra/blob/main/CHANGELOG.md"
+Issues = "https://github.com/g0GobliN/sutra/issues"
 
 [project.scripts]
 sutra = "sutra.cli:main"
