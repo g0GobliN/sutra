@@ -32,7 +32,14 @@ host made, for diffing a failure.
 ## Preconditions
 
 - Hermes Agent installed with the gateway available (`hermes gateway status`).
+  Use the `hermes` entry point from the same runtime as the gateway; a CLI
+  installed under a different Python minor version cannot load the runtime's
+  compiled extensions.
 - This plugin installed and **enabled**: `hermes plugins enable sutra`.
+- Hermes' first-run setup gate needs a non-empty provider key even though the
+  scripted endpoint is selected with `--provider custom`. `run.sh` supplies a
+  local placeholder unless `OPENAI_API_KEY` is already set; the model request
+  still goes only to `127.0.0.1`.
 - The `sutra` toolset enabled for `cli` (`hermes plugins enable` adds it).
 - No discovery wait is required. Measured on a cold gateway restart: the plugin
   registers in the first seconds of boot and the full loop below passed ~30 s
@@ -55,7 +62,7 @@ SUTRA_E2E_OUT=/tmp/myrun scripts/e2e/run.sh
 Environment: `SUTRA_E2E_PORT` (8907), `SUTRA_E2E_OUT` (/tmp/sutra-e2e),
 `SUTRA_E2E_QUERY`, `SUTRA_E2E_TIMEOUT` (240 s).
 
-Verified against Hermes Agent v0.22.2+3030.g4d04303 (2026-10-24): 2/2 runs,
-`ok: true` — compression, marker, deferred-tool discovery, and recovery all
-through the real gateway. The harness is deliberately not part of CI: it needs
-a live Hermes installation and is meaningless on a bare runner.
+Verified against Hermes Agent v0.22.5 (2026-09-24) on its Python 3.14 staged
+runtime: `ok: true` — compression, marker, deferred-tool discovery, and
+recovery through the real gateway. The harness is deliberately not part of CI:
+it needs a live Hermes installation and is meaningless on a bare runner.
