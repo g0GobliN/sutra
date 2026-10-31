@@ -4,6 +4,46 @@
 
 ### Added
 
+- **Hermes automatic installer**: `sutra install --client hermes` copies the
+  native plugin from the installed package into `$HERMES_HOME/plugins/sutra`,
+  validates it with `hermes plugins validate`, and enables it with `hermes
+  plugins enable sutra`. Existing SUTRA plugins are backed up; foreign plugins
+  and symlinks are refused. `sutra uninstall --client hermes` disables and
+  removes only the generated directory. The real-gateway E2E harness remains
+  `scripts/e2e/run.sh`.
+- **Codex CLI MCP integration**: `sutra install --client codex` uses the
+  official `codex mcp add` command, verifies the entry through `codex mcp list
+  --json`, refuses a different existing entry, and removes it with `codex mcp
+  remove`. This is explicitly **MCP-only**: Codex 0.166.0 parses but rejects
+  `updatedMCPToolOutput` and has no supported post-tool output replacement, so
+  no automatic-compression claim is made.
+- **All-client `sutra doctor`**: reports Claude Code, OpenCode, Hermes, and
+  Codex, including `not-installed` rows and Codex's `status=limited`,
+  `automatic=no` host limit. A real Codex MCP round trip is covered against an
+  isolated `CODEX_HOME`; Hermes' real-gateway proof remains separate.
+- **OpenCode automatic adapter**: `sutra install --client opencode` generates
+  `~/.config/opencode/plugins/sutra.js` with the installing interpreter and a
+  dedicated `~/.sutra` store home baked in. The plugin replaces oversized
+  string results through `tool.execute.after` using a short-lived Python
+  subprocess (no daemon, port, or token), registers `sutra_restore`, and fails
+  open. Generated files are mode 0600, reinstall is idempotent, updates keep a
+  timestamped backup, and a foreign file is refused. Verified on OpenCode
+  1.19.5 with a real Bash tool and scripted provider: 48,436 B → 18,649 B in
+  the model-facing request, marker present, clue recovered through the host's
+  tool dispatch. Adapter tests run the generated plugin under Node against the
+  real Python CLI; OpenCode itself is not run in CI.
+- **Read-only `sutra detect`**: discovers Hermes, Claude Code, OpenCode,
+  Cursor, Codex CLI, and Windsurf/Cascade from an executable (with a bounded
+  `--version` probe) or a known config file. Reports the concrete evidence,
+  selected mechanism, and an honest `automatic` / `mcp-only` / `not installed`
+  tier. It never writes, backs up, or installs anything; empty familiar
+  directories are not treated as evidence. Supports `--json` and `--client`.
+- **OpenCode `sutra doctor` probe**: verifies the generated plugin, the
+  embedded interpreter, a real CLI compression/restore round-trip through the
+  shared core, and a protected diff that stays byte-identical. When Node is
+  available it also exercises the generated `tool.execute.after` contract and
+  the plugin's `sutra_restore`. Checks report pass/fail/skip; skipped optional
+  checks are `partial` with exit 0, while real failures exit non-zero.
 - **Host-agnostic adapter seam** (`core.py`): `Outcome`, `process_text`,
   `process_result`, `restore`, `outcome_json`, and the evidence-tool bypass
   list. The Hermes middleware, CLI, MCP server and Claude Code hook translate

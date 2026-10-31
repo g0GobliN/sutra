@@ -21,6 +21,10 @@ for _ in $(seq 1 20); do
     sleep 0.25
 done
 
+# Hermes' first-run setup gate needs a non-empty provider key even when the
+# scripted provider is selected explicitly. Keep a real key when one is set.
+export OPENAI_API_KEY="${OPENAI_API_KEY:-e2e-local}"
+
 timeout "${SUTRA_E2E_TIMEOUT:-240}" hermes chat \
     --provider custom \
     --base-url "http://127.0.0.1:$PORT/v1" \
