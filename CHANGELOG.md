@@ -1,6 +1,9 @@
 # Changelog
 
-## 0.3.0 (2026-10-31)
+## 0.3.0 — unreleased (2026-10-31)
+
+0.3.0 is prepared in this tree and has not been published to PyPI. Entries
+describe the changes prepared for that release.
 
 ### Added
 

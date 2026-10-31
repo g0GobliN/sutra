@@ -19,7 +19,7 @@ This is a small, deliberately conservative plugin: it sits in front of a model's
 ## Development
 
 ```bash
-git clone https://github.com/<you>/sutra
+git clone https://github.com/g0GobliN/sutra
 cd sutra
 python3 -m venv .venv
 .venv/bin/pip install pytest ruff
