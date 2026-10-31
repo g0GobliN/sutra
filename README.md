@@ -32,7 +32,7 @@ hermes tools        # enable the SUTRA plugin toolset
 
 Compression does not depend on the toolset. The recovery tool is gated by toolset like any other Hermes tool: if you skip `hermes tools`, the marker's `sutra_restore` call fails and the model falls back to re-running the tool. The marker says so.
 
-### Any MCP client
+### OpenCode and other MCP clients
 
 SUTRA is not on PyPI yet (the `sutra` name there belongs to an unrelated package; the distribution is `sutra-agent`), so install from a checkout:
 
@@ -49,7 +49,7 @@ python3 -m venv ~/.sutra-venv
 
 `sutra install` writes the automatic OpenCode plugin to `~/.config/opencode/plugins/sutra.js` and, when the config exists, adds the MCP recovery entry by editing the config as text. Comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode. The automatic path was verified with OpenCode 1.19.5 (48,436 B → 18,649 B model-facing, clue restored); Claude Code 2.1.268 reports `✔ Connected` for the same MCP server command.
 
-`sutra install` auto-detects Claude Code and OpenCode; other MCP clients register the server themselves. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
+`sutra install` auto-detects Claude Code and OpenCode; other MCP clients register the server themselves. See what is present without changing anything with `sutra detect` (add `--json` for a machine-readable report), and prove an installed automatic path with `sutra doctor --client opencode` or `sutra doctor --client claude`. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
 
 For any other MCP client, register the same server yourself:
 
@@ -252,6 +252,8 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 .venv/bin/python -m pytest tests -q           # no Hermes runtime needed
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore near the 32 MiB cap
+.venv/bin/sutra detect --json                 # read-only client discovery
+.venv/bin/sutra doctor --client opencode      # executed automatic-path proof
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 

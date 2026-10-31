@@ -18,6 +18,9 @@ import importlib.resources
 import json
 import os
 import pathlib
+import re
+import shutil
+import subprocess
 import sys
 import tempfile
 
@@ -134,3 +137,270 @@ def status() -> dict:
         "automatic": configured(),
         "home": str(default_home()),
     }
+
+
+DOCTOR_CLUE = "sutra-opencode-doctor-7Q"
+DOCTOR_LINES = 3000
+DOCTOR_ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
+
+
+def _check(name: str, status: str, detail: str) -> dict:
+    return {"name": name, "status": status, "detail": detail}
+
+
+def _embedded(text: str, name: str) -> str:
+    match = re.search(rf"^const {re.escape(name)} = (.+)$", text, re.MULTILINE)
+    if match is None:
+        raise ValueError(f"the generated plugin has no {name} constant")
+    value = json.loads(match.group(1))
+    if not isinstance(value, str) or not value:
+        raise ValueError(f"the generated plugin's {name} is not a non-empty string")
+    return value
+
+
+def _cli_call(python: str, args: list[str], stdin: str, env: dict) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [python, "-m", "sutra.cli", *args], input=stdin, capture_output=True,
+        text=True, timeout=30, env=env)
+
+
+def _cli_probe(python: str, env: dict) -> list[dict]:
+    """Exercise the exact CLI path the plugin uses, including recovery."""
+    lines = [f"doctor line {index} padding" for index in range(DOCTOR_LINES)]
+    lines[len(lines) // 2] = f"CLUE: {DOCTOR_CLUE}"
+    payload = "\n".join(lines)
+    try:
+        result = _cli_call(python, ["compress", "--tool", "opencode-doctor"],
+                           payload, env)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return [_check("cli_roundtrip", "fail", f"compress did not run: {exc}"),
+                _check("protected_output", "skip", "compression probe failed")]
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no output").strip()[-300:]
+        return [_check("cli_roundtrip", "fail", f"compress exited {result.returncode}: {detail}"),
+                _check("protected_output", "skip", "compression probe failed")]
+    try:
+        outcome = json.loads(result.stdout)
+    except ValueError as exc:
+        return [_check("cli_roundtrip", "fail", f"compress returned invalid JSON: {exc}"),
+                _check("protected_output", "skip", "compression probe failed")]
+    output = outcome.get("output") if isinstance(outcome, dict) else None
+    match = DOCTOR_ID_RE.search(output) if isinstance(output, str) else None
+    if (not isinstance(outcome, dict) or outcome.get("changed") is not True
+            or not isinstance(output, str) or "[sutra:" not in output
+            or DOCTOR_CLUE in output or match is None):
+        return [_check("cli_roundtrip", "fail",
+                       "the CLI left the synthetic oversized result unchanged or without a usable id"),
+                _check("protected_output", "skip", "compression probe failed")]
+    try:
+        restored = _cli_call(
+            python, ["restore", "--id", match.group(1), "--mode", "search",
+                     "--query", DOCTOR_CLUE, "--context", "1"], "", env)
+        recovered = json.loads(restored.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return [_check("cli_roundtrip", "fail", f"restore did not run: {exc}"),
+                _check("protected_output", "skip", "compression probe failed")]
+    content = recovered.get("content", "") if isinstance(recovered, dict) else ""
+    if (restored.returncode != 0 or not isinstance(recovered, dict)
+            or recovered.get("status") != "ok" or DOCTOR_CLUE not in content):
+        return [_check("cli_roundtrip", "fail",
+                       "retained output did not restore through the shared core"),
+                _check("protected_output", "skip", "compression probe failed")]
+
+    diff = "\n".join(
+        f"diff --git a/f{index}.ts b/f{index}.ts\n"
+        f"--- a/f{index}.ts\n+++ b/f{index}.ts\n@@ -1 +1 @@\n"
+        f"+const x{index} = 1;"
+        for index in range(2000))
+    try:
+        protected = _cli_call(python, ["compress", "--tool", "opencode-doctor"],
+                              diff, env)
+        protected_outcome = json.loads(protected.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return [_check("cli_roundtrip", "pass", "compressed and restored"),
+                _check("protected_output", "fail", f"protected probe did not run: {exc}")]
+    protected_output = (protected_outcome.get("output")
+                        if isinstance(protected_outcome, dict) else None)
+    if (protected.returncode != 0 or not isinstance(protected_output, str)
+            or protected_output != diff
+            or protected_outcome.get("changed") is not False
+            or "[sutra:" in protected_output):
+        return [_check("cli_roundtrip", "pass", "compressed and restored"),
+                _check("protected_output", "fail", "a diff was rewritten")]
+    return [_check("cli_roundtrip", "pass", "compressed and restored"),
+            _check("protected_output", "pass", "diff returned byte-identical")]
+
+
+def _node_probe(python: str, home: pathlib.Path, env: dict,
+                node: str | None) -> dict:
+    """Run the generated plugin's hook in Node, when Node is available."""
+    node_path = node if node is not None else shutil.which("node")
+    if not node_path:
+        return _check("plugin_hook", "skip", "node is not installed")
+    with tempfile.TemporaryDirectory(prefix="sutra-opencode-hook-") as temporary:
+        root = pathlib.Path(temporary)
+        plugin = root / "sutra.js"
+        plugin.write_text(render(python=python, home=home), encoding="utf-8")
+        probe = root / "probe.mjs"
+        script = r'''import assert from "node:assert/strict"
+const plugin = await import(__PLUGIN__)
+const hooks = await plugin.Sutra({})
+const clue = __CLUE__
+const lines = Array.from({length: 3000}, (_, i) => "line " + i + " padding padding")
+lines[1500] = "CLUE: " + clue
+const output = {title: "bash", output: lines.join("\n"), metadata: {exit: 0}}
+await hooks["tool.execute.after"]({tool: "bash"}, output)
+assert.match(output.output, /\[sutra:/)
+assert.ok(!output.output.includes(clue))
+assert.equal(output.title, "bash")
+assert.deepEqual(output.metadata, {exit: 0})
+const match = output.output.match(/id=(su_[0-9a-f]{32})/)
+assert.ok(match, "marker must carry an id")
+const restored = JSON.parse(await hooks.tool.sutra_restore.execute(
+  {id: match[1], mode: "search", query: clue, context: 1}))
+assert.equal(restored.status, "ok")
+assert.ok(restored.content.includes(clue))
+const diff = Array.from({length: 2000}, (_, i) =>
+  "diff --git a/f" + i + ".ts b/f" + i + ".ts\n" +
+  "--- a/f" + i + ".ts\n+++ b/f" + i + ".ts\n@@ -1 +1 @@\n" +
+  "+const x" + i + " = 1;").join("\n")
+const protectedOutput = {title: "bash", output: diff, metadata: {exit: 0}}
+await hooks["tool.execute.after"]({tool: "bash"}, protectedOutput)
+assert.equal(protectedOutput.output, diff)
+assert.ok(!protectedOutput.output.includes("[sutra:"))
+console.log("opencode doctor hook ok")
+'''
+        script = (script
+                  .replace("__PLUGIN__", json.dumps(plugin.as_uri()))
+                  .replace("__CLUE__", json.dumps(DOCTOR_CLUE)))
+        probe.write_text(script, encoding="utf-8")
+        try:
+            result = subprocess.run([node_path, str(probe)], cwd=root, env=env,
+                                    capture_output=True, text=True, timeout=45)
+        except (OSError, subprocess.SubprocessError) as exc:
+            return _check("plugin_hook", "fail", f"hook probe did not run: {exc}")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no output").strip()[-300:]
+        return _check("plugin_hook", "fail", f"hook probe failed: {detail}")
+    return _check("plugin_hook", "pass", "hook replaced and restored through OpenCode contract")
+
+
+def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -> dict:
+    """Prove the installed OpenCode plugin and its Python path end to end.
+
+    The installed file is only read. The protocol probe renders the same
+    generated contract into a temporary directory with a temporary store, so
+    a doctor run never writes the user's recovery entries.
+    """
+    plugin = pathlib.Path(path) if path is not None else plugin_path()
+    checks: list[dict] = []
+    report: dict = {"client": "opencode", "plugin": str(plugin),
+                    "checks": checks, "ok": False, "status": "fail"}
+    try:
+        text = plugin.read_text(encoding="utf-8")
+    except OSError as exc:
+        checks.append(_check("plugin", "fail", f"not readable: {exc}"))
+        checks.extend([
+            _check("interpreter", "skip", "plugin is not present"),
+            _check("cli_roundtrip", "skip", "plugin is not present"),
+            _check("protected_output", "skip", "plugin is not present"),
+            _check("plugin_hook", "skip", "plugin is not present"),
+        ])
+        report["probe"] = "plugin is not installed"
+        return report
+    if MARKER not in text:
+        checks.append(_check("plugin", "fail", "file was not generated by SUTRA"))
+        checks.extend([
+            _check("interpreter", "skip", "plugin is foreign"),
+            _check("cli_roundtrip", "skip", "plugin is foreign"),
+            _check("protected_output", "skip", "plugin is foreign"),
+            _check("plugin_hook", "skip", "plugin is foreign"),
+        ])
+        report["probe"] = "foreign plugin; refusing to execute it"
+        return report
+    checks.append(_check("plugin", "pass", f"generated plugin at {plugin}"))
+    try:
+        python = _embedded(text, "PYTHON")
+        home = pathlib.Path(_embedded(text, "SUTRA_HOME"))
+    except (ValueError, json.JSONDecodeError) as exc:
+        checks.append(_check("interpreter", "fail", str(exc)))
+        checks.extend([
+            _check("cli_roundtrip", "skip", "interpreter is not known"),
+            _check("protected_output", "skip", "interpreter is not known"),
+            _check("plugin_hook", "skip", "interpreter is not known"),
+        ])
+        report["interpreter"] = None
+        report["probe"] = "generated plugin has no usable interpreter"
+        return report
+    report["interpreter"] = python
+    report["home"] = str(home)
+    if not pathlib.Path(python).is_file():
+        checks.append(_check("interpreter", "fail", f"{python} does not resolve"))
+        checks.extend([
+            _check("cli_roundtrip", "skip", "interpreter does not resolve"),
+            _check("protected_output", "skip", "interpreter does not resolve"),
+            _check("plugin_hook", "skip", "interpreter does not resolve"),
+        ])
+        report["probe"] = "the configuring interpreter no longer exists"
+        return report
+    try:
+        imported = subprocess.run(
+            [python, "-c", "import sutra.cli"], stdin=subprocess.DEVNULL,
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError) as exc:
+        imported = None
+        import_detail = str(exc)
+    else:
+        import_detail = (imported.stderr or imported.stdout or "").strip()[-300:]
+    if imported is None or imported.returncode != 0:
+        checks.append(_check("interpreter", "fail",
+                             f"{python} cannot import sutra.cli: {import_detail}"))
+        checks.extend([
+            _check("cli_roundtrip", "skip", "sutra.cli is not importable"),
+            _check("protected_output", "skip", "sutra.cli is not importable"),
+            _check("plugin_hook", "skip", "sutra.cli is not importable"),
+        ])
+        report["probe"] = "the generated interpreter cannot import sutra.cli"
+        return report
+    checks.append(_check("interpreter", "pass", python))
+
+    with tempfile.TemporaryDirectory(prefix="sutra-opencode-doctor-") as temporary:
+        root = pathlib.Path(temporary)
+        store = root / "store"
+        probe_home = root / "home"
+        probe_home.mkdir()
+        env = dict(os.environ)
+        env.update({
+            "SUTRA_ENABLED": "1", "SUTRA_STORE": "1",
+            "SUTRA_STORE_DIR": str(store),
+            "HERMES_HOME": str(probe_home),
+            "SUTRA_STATS_FILE": str(root / "stats.jsonl"),
+        })
+        checks.extend(_cli_probe(python, env))
+        checks.append(_node_probe(python, probe_home, env, node))
+    failed = any(check["status"] == "fail" for check in checks)
+    skipped = any(check["status"] == "skip" for check in checks)
+    report["status"] = "fail" if failed else ("partial" if skipped else "pass")
+    report["ok"] = not failed
+    report["probe"] = {
+        "pass": "automatic integration verified",
+        "partial": "core verified; one or more optional checks were skipped",
+        "fail": "automatic integration failed a required check",
+    }[report["status"]]
+    return report
+
+
+def format_doctor(report: dict) -> str:
+    if "error" in report:
+        return f"opencode: error: {report['error']}"
+    checks = report.get("checks") or []
+    summary = " ".join(f"{check['name']}={check['status']}" for check in checks)
+    if not summary:
+        summary = "probe=not run"
+    failed = next((check for check in checks if check["status"] == "fail"), None)
+    skipped = next((check for check in checks if check["status"] == "skip"), None)
+    status = report.get("status", "fail")
+    automatic = "yes" if status == "pass" else ("partial" if status == "partial" else "no")
+    detail = failed or skipped
+    suffix = f" detail={detail['detail']}" if detail else ""
+    return f"opencode: {summary} automatic={automatic}{suffix}"

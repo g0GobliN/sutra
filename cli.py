@@ -24,8 +24,9 @@ USAGE = """sutra {version}
 usage:
   sutra install [--client claude|opencode]... [--all] [--config PATH] [--dry-run]
   sutra uninstall [--client claude|opencode]... [--all] [--config PATH] [--dry-run]
+  sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
-  sutra doctor [--json]        (prove the installed hook compresses + restores)
+  sutra doctor [--client claude|opencode]... [--json]  (prove installed hooks)
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
@@ -177,19 +178,47 @@ def _status(as_json: bool = False) -> int:
     return 0 if configured else 1
 
 
-def _doctor(as_json: bool = False) -> int:
-    from . import claude_code
+def _detect(as_json: bool = False, clients: list[str] | None = None) -> int:
+    from . import discovery
 
-    if not claude_code.binary():
-        print("sutra: claude is not installed; nothing to diagnose", file=sys.stderr)
-        return 1
-    report = claude_code.doctor()
+    rows = discovery.detect(clients)
     if as_json:
         import json
-        print(json.dumps(report, indent=2))
+        print(json.dumps({"read_only": True, "clients": rows}, indent=2))
     else:
-        print(claude_code.format_doctor(report))
-    return 0 if report.get("ok") else 1
+        print(discovery.format_detect(rows))
+    return 0
+
+
+def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
+    import shutil
+
+    from . import claude_code, opencode
+
+    selected = clients or ["claude", "opencode"]
+    reports = []
+    if "claude" in selected and (claude_code.binary()
+                                 or claude_code.settings_path().exists()):
+        reports.append(claude_code.doctor())
+    if "opencode" in selected and (shutil.which("opencode")
+                                   or opencode.plugin_path().exists()):
+        reports.append(opencode.doctor())
+    if not reports:
+        print("sutra: no supported client detected; nothing to diagnose",
+              file=sys.stderr)
+        return 1
+    if as_json:
+        import json
+        print(json.dumps(reports, indent=2))
+    else:
+        for report in reports:
+            formatter = (claude_code.format_doctor
+                         if report.get("client") == "claude"
+                         else opencode.format_doctor)
+            print(formatter(report))
+    failed = any(report.get("ok") is False or report.get("status") == "fail"
+                 for report in reports)
+    return 1 if failed else 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -204,12 +233,26 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _status(as_json=args.json)
-    if argv[:1] == ["doctor"]:
-        parser = argparse.ArgumentParser(prog="sutra doctor",
-                                         description="Prove the Claude Code automatic hook works.")
+    if argv[:1] == ["detect"]:
+        parser = argparse.ArgumentParser(
+            prog="sutra detect",
+            description="Read-only discovery of supported agents; writes nothing.")
+        parser.add_argument("--client", action="append",
+                            choices=["hermes", "claude", "opencode", "cursor",
+                                     "codex", "windsurf"],
+                            help="limit the report to this client (repeatable)")
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
-        return _doctor(as_json=args.json)
+        return _detect(as_json=args.json, clients=args.client)
+    if argv[:1] == ["doctor"]:
+        parser = argparse.ArgumentParser(
+            prog="sutra doctor",
+            description="Prove the installed automatic integrations work.")
+        parser.add_argument("--client", action="append", choices=["claude", "opencode"],
+                            help="limit the probe to this client (repeatable)")
+        parser.add_argument("--json", action="store_true", help="machine-readable output")
+        args = parser.parse_args(argv[1:])
+        return _doctor(as_json=args.json, clients=args.client)
     if argv[:1] and argv[0] in ("compress", "restore", "config"):
         return runner.run_script(
             "sutra-cli.py", argv,

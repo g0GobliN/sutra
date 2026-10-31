@@ -15,6 +15,18 @@
   the model-facing request, marker present, clue recovered through the host's
   tool dispatch. Adapter tests run the generated plugin under Node against the
   real Python CLI; OpenCode itself is not run in CI.
+- **Read-only `sutra detect`**: discovers Hermes, Claude Code, OpenCode,
+  Cursor, Codex CLI, and Windsurf/Cascade from an executable (with a bounded
+  `--version` probe) or a known config file. Reports the concrete evidence,
+  selected mechanism, and an honest `automatic` / `mcp-only` / `not installed`
+  tier. It never writes, backs up, or installs anything; empty familiar
+  directories are not treated as evidence. Supports `--json` and `--client`.
+- **OpenCode `sutra doctor` probe**: verifies the generated plugin, the
+  embedded interpreter, a real CLI compression/restore round-trip through the
+  shared core, and a protected diff that stays byte-identical. When Node is
+  available it also exercises the generated `tool.execute.after` contract and
+  the plugin's `sutra_restore`. Checks report pass/fail/skip; skipped optional
+  checks are `partial` with exit 0, while real failures exit non-zero.
 - **Host-agnostic adapter seam** (`core.py`): `Outcome`, `process_text`,
   `process_result`, `restore`, `outcome_json`, and the evidence-tool bypass
   list. The Hermes middleware, CLI, MCP server and Claude Code hook translate

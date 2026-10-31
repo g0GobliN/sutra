@@ -3,6 +3,7 @@
 The target is one command, then normal agent work:
 
 ```bash
+sutra detect           # read-only: what is installed, and what it can support
 sutra install          # detect and configure every safely supported client
 sutra doctor           # prove the automatic path, not just the config
 ```
@@ -24,6 +25,33 @@ added, and every edit is backed up first.
 
 The rest of this page records the evidence behind those labels. A client is not
 listed as automatic because its config file resembles another client's.
+
+## Read-only detection
+
+```bash
+sutra detect
+sutra detect --json
+sutra detect --client opencode
+```
+
+Detection checks for an executable on `PATH` (with a bounded `--version` probe)
+or a known configuration file. An empty directory with a familiar name is not
+evidence, and a binary alone never upgrades a client's capability tier.
+
+| Client | Tier when installed | Mechanism |
+|---|---|---|
+| Hermes Agent | `automatic` | native `tool_execution` middleware |
+| Claude Code | `automatic` | `PostToolUse` replacement + MCP recovery |
+| OpenCode | `automatic` | generated `tool.execute.after` plugin + `sutra_restore` |
+| Cursor | `mcp-only` | MCP server; built-in output cannot be replaced |
+| Codex CLI | `mcp-only` | MCP server; hooks do not replace tool output |
+| Windsurf / Cascade | `mcp-only` | MCP server; no documented replacement hook |
+
+`detect` writes nothing: no backups, no config edits, no plugin installs. The
+JSON envelope is `{"read_only": true, "clients": [...]}`; each row includes
+`installed`, `tier`, `automatic`, `mechanism`, `executable`, `version`,
+`version_error`, `config`, and the concrete `evidence` strings used. A version
+probe that times out leaves the executable as evidence and reports the timeout.
 
 ## Claude Code
 
@@ -200,20 +228,28 @@ when their MCP entry is one command away.
 ## Diagnostic
 
 ```bash
-sutra doctor          # human-readable
-sutra doctor --json   # machine-readable
+sutra doctor                         # probe every detected automatic client
+sutra doctor --client opencode       # focus on one integration
+sutra doctor --json                  # machine-readable list of reports
 ```
 
-`doctor` checks the hook is present in the exact settings file, asks Claude Code
-whether the MCP server is connected, runs the configured hook command on a
-synthetic persisted-output event, then restores the marker's id through the
-recovery seam. It uses a temporary store, so it never reads or writes the user's
-entries and stats. Exit status is `0` only when all three checks pass.
+`doctor` does not accept a configuration file as proof. For Claude Code it
+checks the hook is present in the exact settings file, asks Claude Code whether
+the MCP server is connected, runs the configured hook command on a synthetic
+persisted-output event, then restores the marker's id through the recovery seam.
 
-If it fails, the report names the failing layer: missing hook, unconnected MCP,
-hook left the result unchanged, or restore status. It does not report a
-configuration file as working when the command cannot actually replace output.
+For OpenCode it checks the generated plugin at the global path, parses the
+interpreter baked into it, confirms that interpreter can import `sutra.cli`,
+and runs the same CLI path the plugin uses against a temporary store. That probe
+must replace an oversized synthetic result with a marker plus id, restore the
+buried clue through the shared core, and leave a diff byte-identical. When Node
+is available it additionally loads the generated plugin contract through
+`tool.execute.after`, compresses and restores through the plugin's own
+`sutra_restore`, and repeats the protected-diff check. A missing Node is
+reported as `skip`, not as a pass and not as a failure.
 
-`doctor` currently probes the Claude Code hook. `sutra status` reports the
-OpenCode plugin and MCP state; OpenCode's automatic path is covered by the
-adapter tests and the real-host proof above, not by a doctor subprocess.
+Every check is reported as `pass`, `fail`, or `skip` with a reason. Exit status
+is non-zero only for a real failure; a skipped optional hook check yields
+`partial` with exit `0`. Temporary stores are used, so doctor never reads or
+writes the user's recovery entries. `sutra status` remains the short,
+configuration-oriented view; `sutra doctor` is the executed proof.

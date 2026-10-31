@@ -72,6 +72,16 @@ theoretical grounds.
 | OpenCode | generated native plugin (`tool.execute.after` + tool registry) | **Yes, installed automatically** | **Live host tested** — OpenCode 1.19.5, isolated config, real Bash tool, scripted local provider: 48,436 B compressed to 18,649 B in the model-facing request (marker + id), then `sutra_restore` returned the buried clue with statuses `error`, `not_found`, `ok` | `sutra install --client opencode` writes `~/.config/opencode/plugins/sutra.js` and, when an OpenCode config exists, the MCP recovery entry; restart OpenCode | `tests/test_opencode_adapter.py`: installer, private file, idempotence, backup, foreign-file refusal, uninstall, Node syntax, Node→real CLI compression/recovery; real-host proof in [automatic-install.md](automatic-install.md#opencode) | Tested on OpenCode 1.19.5 only; one short-lived Python process per oversized result (2.5 s timeout, fail-open); the configuring interpreter must remain available; the plugin is global for that config tree; Windows untested |
 | Cursor | native `postToolUse` hook (`updated_mcp_tool_output`) | **No adapter** | **Audited from official docs, not implemented** | MCP entry only, by hand (`~/.cursor/mcp.json`) | — | Cursor fires `postToolUse` for all tools but only replaces MCP tool output; built-in tool output cannot be replaced. No SUTRA hook is claimed. |
 
+## Discovery and diagnosis
+
+`sutra detect` is read-only and reports concrete evidence, the selected
+mechanism, and an honest capability tier for Hermes, Claude Code, OpenCode,
+Cursor, Codex CLI, and Windsurf/Cascade. `sutra doctor` executes the Claude Code
+and OpenCode automatic paths; OpenCode's probe includes a real CLI round-trip,
+a `tool.execute.after` contract check when Node is available, and a protected
+diff that must stay byte-identical. See
+[automatic-install.md](automatic-install.md#read-only-detection).
+
 ## Adapter usage
 
 ### Claude Code (automatic)
