@@ -32,9 +32,9 @@ payload is untouched).
 The patch and the array are the two cases that must **not** change: a diff
 because a rewritten patch can hide a code change, an array because reshaping it
 breaks the payload's schema. Their reported 0.0% is a pass, not a miss. The
-patch fixture is labelled `600 KB patch` in the generated artifacts; its measured
-size is 432,087 bytes, which is why every results table here says 432.1 kB. The
-array preview that was evaluated and rejected, with the consumer failures that
+patch fixture is labelled `432 kB patch` after its measured 432,087 bytes (432.1
+kB in the results tables); the archived 2026-10-25 artifacts still carry the
+pre-rename `600 KB` label. The array preview that was evaluated and rejected, with the consumer failures that
 rejected it, is recorded in [json-array-preview.md](json-array-preview.md).
 
 ## Method
