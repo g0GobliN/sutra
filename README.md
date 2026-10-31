@@ -69,7 +69,7 @@ host adapter
   ├─ Hermes: tool_execution middleware          automatic
   ├─ Claude Code: PostToolUse hook              automatic
   ├─ OpenCode: tool.execute.after plugin        automatic
-  ├─ Codex: MCP registration only               explicit calls
+  ├─ Codex: PostToolUse hook (trust)             automatic
   └─ other clients: CLI or MCP server           explicit calls
       │
       ▼
@@ -161,7 +161,7 @@ The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrela
 ```bash
 python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/pip install sutra-agent
-~/.sutra-venv/bin/sutra --version        # sutra 0.3.0
+~/.sutra-venv/bin/sutra --version        # sutra 0.4.0
 
 ~/.sutra-venv/bin/sutra detect           # read-only: what is installed
 ~/.sutra-venv/bin/sutra install --dry-run
@@ -169,14 +169,14 @@ python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/sutra doctor           # prove the installed paths
 ```
 
-If the index you use does not serve 0.3.0 yet, install the checkout instead:
+To work from a checkout instead (contributors or unreleased changes):
 
 ```bash
 git clone https://github.com/g0GobliN/sutra
 ~/.sutra-venv/bin/pip install ./sutra
 ```
 
-`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. Restart the host after installing a plugin or hook.
+`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
 
 ```bash
 ~/.sutra-venv/bin/sutra uninstall        # remove only SUTRA-owned entries
@@ -191,7 +191,7 @@ If you only want one client, use `--client hermes|claude|opencode|codex`. The in
 | **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
 | **Claude Code** | Automatic — `PostToolUse` hook + MCP recovery | 2.1.268 | Result replaced before the model reads it; start a new session; hook and MCP must share a store |
 | **OpenCode** | Automatic — generated `tool.execute.after` plugin + MCP recovery | 1.19.5 | Oversized string results replaced in place; restart OpenCode |
-| **Codex CLI** | **Explicit MCP only** | 0.166.0 | `sutra_compress`/`sutra_restore` are callable; Codex has no supported post-tool result replacement, so nothing is automatic |
+| **Codex CLI** | **Automatic — `PostToolUse` feedback hook + MCP recovery** | 0.166.0 | Compressed result replaces the model-visible tool output; trust the hook once via `/hooks`; start a new session. Codex truncates very large output before the hook, so only the supplied text is compressible and recoverable |
 | **Any MCP client** | Explicit | protocol `2024-11-05` | Register `python -m sutra.mcp`; MCP registration is not interception |
 | **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.13 | `sutra compress` / `sutra restore` as JSON; one process per call |
 | **Cursor, Windsurf/Cascade** | No adapter | — | No generic built-in-tool result hook; MCP registration only, by hand |
@@ -216,7 +216,7 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 
 ## Limitations
 
-- **Automatic replacement depends on the host.** Codex, Cursor and Windsurf have no supported generic result-replacement hook; they get explicit tools only.
+- **Automatic replacement depends on the host.** Codex's `PostToolUse` hook must be trusted once in `/hooks`, and Codex truncates very large tool output before the hook sees it; the retained original is that truncated text. Cursor and Windsurf have no supported generic result-replacement hook and get explicit tools only.
 - **JSON re-encoding normalises formatting.** Indentation and whitespace inside a re-encoded document are not preserved, and duplicate keys collapse to the last value. The original bytes remain recoverable, so nothing is lost, but the visible copy is not byte-identical.
 - **Large JSON arrays with no large string fields are not compressed at all** — the price of keeping their shape.
 - **Retrieval is bounded.** One entry ≤32 MiB, one response ≤8 KiB by default, at most 20 literal matches; a single line longer than the response cap is returned clipped.

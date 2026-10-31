@@ -1,9 +1,47 @@
 # Changelog
 
-## 0.3.0 (unreleased)
+## 0.4.0 (unreleased)
 
-0.3.0 is prepared in this tree and has not been published to PyPI. Entries
-describe the changes prepared for that release.
+### Added
+
+- **Codex CLI automatic integration**: `sutra install --client codex` now
+  writes a user-level `PostToolUse` hook to `$CODEX_HOME/hooks.json` in addition
+  to the official MCP recovery entry. The hook returns `continue: false` with
+  the compressed result; Codex 0.166.0 replaces the model-visible tool output
+  with that text and marks the hook run `Stopped` (no error). Other hooks and
+  settings are preserved, every edit is backed up, installation is idempotent,
+  malformed JSON is refused, and uninstall removes only SUTRA-owned entries.
+  Codex requires a one-time trust review (`/hooks`); `sutra doctor` reports
+  `limited` until Codex records that trust and `ok` afterwards.
+- Codex hook limits: because Codex truncates large tool output before the hook
+  sees it, the adapter caps eligibility at 8,192 bytes with 3,072/1,536-byte
+  head and tail budgets. It compresses only that host-supplied text; output
+  Codex already discarded is not recoverable. Hook-level tests cover
+  replacement, recovery through MCP, evidence-tool bypass, protected shapes,
+  malformed JSON and fail-open behavior.
+- Codex live evidence (2026-11-01): Codex CLI 0.166.0 with a scripted Responses
+  provider executed a real Bash tool call; the hook reduced the model-visible
+  result from 10,110 to 4,837 bytes (52%) with a marker and stored original,
+  Codex logged `hook: PostToolUse Stopped`, and `sutra restore` returned an
+  omitted middle line with `status: ok`. No provider or model was contacted.
+- `sutra detect` reports Codex as `automatic` only when the SUTRA hook is
+  installed, and `mcp-only` otherwise. `sutra status` and `sutra doctor` report
+  the hook path and Codex's recorded trust state.
+
+### Fixed
+
+- A production dispatch after a separate TestPyPI rehearsal rebuilt the same
+  tag; archive timestamps differ across runner toolchains, so the new wheel no
+  longer matched the bytes TestPyPI served and `verify-testpypi` blocked the
+  release. The workflow now accepts `artifact_run_id`, verifies that run was
+  dispatched for the release tag and built its commit, downloads that immutable
+  `dist` artifact and re-checks `SHA256SUMS` instead of rebuilding. Production
+  remains a promotion of exactly the rehearsed bytes.
+
+## 0.3.0 (2026-10-31)
+
+0.3.0 was published to PyPI on 2026-10-31. Entries describe the changes in that
+release.
 
 ### Added
 
