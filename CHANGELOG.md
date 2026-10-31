@@ -4,6 +4,23 @@
 
 ### Added
 
+- **Hermes automatic installer**: `sutra install --client hermes` copies the
+  native plugin from the installed package into `$HERMES_HOME/plugins/sutra`,
+  validates it with `hermes plugins validate`, and enables it with `hermes
+  plugins enable sutra`. Existing SUTRA plugins are backed up; foreign plugins
+  and symlinks are refused. `sutra uninstall --client hermes` disables and
+  removes only the generated directory. The real-gateway E2E harness remains
+  `scripts/e2e/run.sh`.
+- **Codex CLI MCP integration**: `sutra install --client codex` uses the
+  official `codex mcp add` command, verifies the entry through `codex mcp list
+  --json`, refuses a different existing entry, and removes it with `codex mcp
+  remove`. This is explicitly **MCP-only**: Codex 0.166.0 parses but rejects
+  `updatedMCPToolOutput` and has no supported post-tool output replacement, so
+  no automatic-compression claim is made.
+- **All-client `sutra doctor`**: reports Claude Code, OpenCode, Hermes, and
+  Codex, including `not-installed` rows and Codex's `status=limited`,
+  `automatic=no` host limit. A real Codex MCP round trip is covered against an
+  isolated `CODEX_HOME`; Hermes' real-gateway proof remains separate.
 - **OpenCode automatic adapter**: `sutra install --client opencode` generates
   `~/.config/opencode/plugins/sutra.js` with the installing interpreter and a
   dedicated `~/.sutra` store home baked in. The plugin replaces oversized

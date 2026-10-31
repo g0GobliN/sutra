@@ -18,11 +18,20 @@ It runs as a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin, or as
 
 ## Install
 
-Two ways in: as a Hermes plugin, or as a Python package whose MCP server any MCP client can call. Both run the same deterministic core.
+One package with native adapters for Hermes, Claude Code, and OpenCode, plus an MCP server that any MCP client can register. All run the same deterministic core.
 
-Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; OpenCode gets it with the generated plugin installed by `sutra install`; MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The matrix and the setup are in [docs/integrations.md](docs/integrations.md).
+Automatic replacement is host-dependent. Hermes gets it natively; Claude Code gets it with its `PostToolUse` hook; OpenCode gets it with the generated plugin installed by `sutra install`. Codex CLI 0.166.0 has no documented post-tool output replacement, so `sutra install` registers its MCP server but labels it MCP-only rather than claiming automatic compression. MCP registration alone and the CLI are manual, because MCP has no server-side interception of another server's result. The full audit, install behavior, and host limits are in [docs/universal-integration.md](docs/universal-integration.md); the setup matrix is in [docs/integrations.md](docs/integrations.md).
 
 ### Hermes Agent
+
+The supported path is the installer; it copies the native plugin, asks Hermes to validate it, then enables it:
+
+```bash
+sutra install --client hermes
+sutra doctor --client hermes
+```
+
+For a manual checkout install:
 
 ```bash
 git clone https://github.com/g0GobliN/sutra ~/.hermes/plugins/sutra
@@ -30,9 +39,9 @@ hermes plugins enable sutra
 hermes tools        # enable the SUTRA plugin toolset
 ```
 
-Compression does not depend on the toolset. The recovery tool is gated by toolset like any other Hermes tool: if you skip `hermes tools`, the marker's `sutra_restore` call fails and the model falls back to re-running the tool. The marker says so.
+Compression does not depend on the toolset. The recovery tool is gated by toolset like any other Hermes tool: if you skip `hermes tools`, the marker's `sutra_restore` call fails and the model falls back to re-running the tool. The marker says so. Restart the gateway after enabling so middleware loading is refreshed.
 
-### OpenCode and other MCP clients
+### OpenCode, Codex, and other MCP clients
 
 SUTRA is not on PyPI yet (the `sutra` name there belongs to an unrelated package; the distribution is `sutra-agent`), so install from a checkout:
 
@@ -49,9 +58,16 @@ python3 -m venv ~/.sutra-venv
 
 `sutra install` writes the automatic OpenCode plugin to `~/.config/opencode/plugins/sutra.js` and, when the config exists, adds the MCP recovery entry by editing the config as text. Comments and every existing server survive; it writes a timestamped backup first, does nothing on a second run, and `sutra uninstall` restores the file byte for byte — including whether the `mcp` block ended with a trailing comma before the install. Restart OpenCode. The automatic path was verified with OpenCode 1.19.5 (48,436 B → 18,649 B model-facing, clue restored); Claude Code 2.1.268 reports `✔ Connected` for the same MCP server command.
 
-`sutra install` auto-detects Claude Code and OpenCode; other MCP clients register the server themselves. See what is present without changing anything with `sutra detect` (add `--json` for a machine-readable report), and prove an installed automatic path with `sutra doctor --client opencode` or `sutra doctor --client claude`. The matrix in [docs/integrations.md](docs/integrations.md) states what has and has not been exercised per client.
+`sutra install` auto-detects Hermes, Claude Code, OpenCode, and Codex. Codex is MCP-only: its official `codex mcp add` path is automated, but no automatic interception is claimed because the host cannot replace tool output. See what is present without changing anything with `sutra detect` (add `--json` for a machine-readable report), and prove installed paths with `sutra doctor` or focus one with `--client`. The matrix in [docs/integrations.md](docs/integrations.md) and the audit in [docs/universal-integration.md](docs/universal-integration.md) state what has and has not been exercised per client.
 
-For any other MCP client, register the same server yourself:
+For Codex specifically:
+
+```bash
+sutra install --client codex
+sutra doctor --client codex   # status=limited, automatic=no
+```
+
+This registers `sutra` for explicit `sutra_compress` and `sutra_restore` calls. It does not make Codex's Bash or `apply_patch` output automatic. For any other MCP client, register the same server yourself:
 
 ```json
 {"mcpServers": {"sutra": {"command": "/home/you/.sutra-venv/bin/python",
@@ -253,13 +269,14 @@ python3 -m venv .venv && .venv/bin/pip install pytest
 .venv/bin/python bench/benchmark.py           # compression + clue recovery
 .venv/bin/python bench/retrieval.py           # worst-case restore near the 32 MiB cap
 .venv/bin/sutra detect --json                 # read-only client discovery
-.venv/bin/sutra doctor --client opencode      # executed automatic-path proof
+.venv/bin/sutra doctor                           # all four clients, with explicit limits
+.venv/bin/sutra doctor --client opencode         # executed automatic-path proof
 hermes plugins validate .                     # loads the plugin the way Hermes does
 ```
 
 The tests cover every rule, both never-touch payloads, the fail-open paths, text fidelity (CRLF, final newline, UTF-8 boundaries), configuration, metrics, the store (TTL, quota, permissions, symlinks, concurrency, interrupted writes), the retrieval protocol (statuses, bounds, pagination, field scope, the entry cap), the Hermes middleware-chain contract, the shared `core` seam, the Claude Code hook protocol, the generated OpenCode plugin through Node against the real Python CLI, the benchmark's own claims, and the A/B protocol's scorers. The original bridge spike tests remain under `spikes/opencode-poc/`. CI runs the suite on Python 3.11–3.13 on Linux, the same suite on macOS, `ruff check .`, `hermes plugins validate .` against the pinned Hermes revision, and a tag/version consistency check on `v*` tags. Windows is not covered yet.
 
-**SUTRA in other agents**: the same deterministic core is exposed through native Claude Code and OpenCode integrations (automatic when installed), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md).
+**SUTRA in other agents**: the same deterministic core is exposed through native Hermes, Claude Code, and OpenCode integrations (automatic when installed), a Codex MCP registration (explicit compression/recovery only; the host cannot rewrite tool output), a generic CLI, and an MCP stdio server (manual; MCP tool registration is not interception) — verified statuses in [docs/integrations.md](docs/integrations.md) and [docs/universal-integration.md](docs/universal-integration.md).
 
 Documentation: [how the benchmark works](docs/benchmark.md) · [the recovery protocol](docs/recovery.md) · [the correctness contract](docs/contract.md) · [security model](SECURITY.md) · [troubleshooting](docs/troubleshooting.md) · [the frozen A/B protocol](docs/ab-benchmark.md) · [the OpenCode adapter tests](tests/test_opencode_adapter.py) · [the OpenCode production proof](docs/automatic-install.md#opencode)
 
@@ -272,7 +289,11 @@ claimed; the middleware contract has its own test so a mismatch should fail
 there before it reaches a model. The Claude Code and OpenCode integrations have
 live-host proof with scripted local providers, not live-model sessions. OpenCode
 automatic interception was verified against OpenCode 1.19.5; details are in
-[automatic-install.md](docs/automatic-install.md#opencode).
+[automatic-install.md](docs/automatic-install.md#opencode). Codex 0.166.0 has
+no supported post-tool output replacement, so it is intentionally MCP-only;
+the Codex MCP round trip is tested against the real CLI but no automatic claim
+is made. Hermes' installer is tested against the documented host commands, and
+the real-gateway proof remains recorded for Hermes 0.22.2+3030.g4d04303.
 
 ## Contributing
 
