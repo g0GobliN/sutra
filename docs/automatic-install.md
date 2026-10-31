@@ -21,7 +21,7 @@ added, and every edit is backed up first.
 | **Claude Code** | **Yes** — native `PostToolUse` hook replacing `updatedToolOutput` | **Yes** — user settings + user-scope MCP entry, then a doctor probe | Live Claude Code 2.1.268 with a scripted provider; real Bash tool execution; marker seen by the model; retained original restored through MCP |
 | **Hermes Agent** | **Yes** — native `tool_execution` middleware | **Yes** — copies the plugin, runs `hermes plugins validate`, then `hermes plugins enable sutra` | Real gateway E2E on 0.22.5 (2026-10-31): 38,925 B → 22,597 B, marker present, clue hidden, deferred `tool_search` found `sutra_restore`, and the bridge restored `ok: true`; optional live test covers plugin validate/enable |
 | **OpenCode** | **Yes** — generated plugin replaces `tool.execute.after` output | **Yes** — plugin + MCP recovery entry when a config exists | Live OpenCode 1.19.5 with a scripted provider; real Bash tool; 48,436 B → 18,649 B model-facing; clue restored through the plugin's `sutra_restore` |
-| **Codex CLI** | **No** — `PostToolUse` has no transparent output replacement | **MCP only** — `codex mcp add sutra -- <python> -m sutra.mcp` | Codex 0.166.0 real `mcp add/list/remove` round trip in an isolated `CODEX_HOME`; official hook schema confirms replacement is unsupported |
+| **Codex CLI** | **Yes** — `PostToolUse` feedback replacement (`continue: false`) | **Yes** — writes `$CODEX_HOME/hooks.json` and registers MCP with `codex mcp add` | Codex 0.166.0 with a scripted Responses provider and a real Bash call: 10,110 B → 4,837 B model-visible, marker present, omitted middle line restored; Codex logged `hook: PostToolUse Stopped`; trust is a one-time `/hooks` review |
 | **Cursor** | **No** — `postToolUse` replaces MCP tool output only | Not auto-configured | Official hooks and MCP documentation read; no host run |
 | **Windsurf / Cascade** | **No** — no documented output-replacement hook | Not auto-configured | Official MCP documentation read; no host run |
 
@@ -46,7 +46,7 @@ evidence, and a binary alone never upgrades a client's capability tier.
 | Claude Code | `automatic` | `PostToolUse` replacement + MCP recovery |
 | OpenCode | `automatic` | generated `tool.execute.after` plugin + `sutra_restore` |
 | Cursor | `mcp-only` | MCP server; built-in output cannot be replaced |
-| Codex CLI | `mcp-only` | MCP server; hooks do not replace tool output |
+| Codex CLI | `automatic` when the SUTRA hook is installed, otherwise `mcp-only` | `PostToolUse` feedback replacement + MCP recovery |
 | Windsurf / Cascade | `mcp-only` | MCP server; no documented replacement hook |
 
 `detect` writes nothing: no backups, no config edits, no plugin installs. The
@@ -199,25 +199,43 @@ each oversized result; Windows was not exercised.
 
 ### Codex CLI
 
-Verified from the official Codex documentation and the 0.166.0 binary:
+Codex 0.166.0 supports lifecycle hooks. The installer writes a user-level
+`PostToolUse` handler to `$CODEX_HOME/hooks.json` (or the `CODEX_HOME` it finds)
+and keeps the MCP entry for recovery:
 
-- MCP config is `~/.codex/config.toml` (or project `.codex/config.toml`) with a
-  `[mcp_servers.sutra]` table; `codex mcp add sutra -- <python> -m sutra.mcp`
-  is the official CLI path. `sutra install --client codex` uses that command,
-  verifies the entry with `codex mcp list --json`, and refuses a different
-  existing `sutra` entry. `sutra uninstall --client codex` uses `codex mcp
-  remove sutra`.
-- `PostToolUse` runs for Bash, `apply_patch`, MCP, and other local tools, but it
-  has **no field for replacing the tool result**. `decision: "block"` and
-  `continue: false` replace the result with hook *feedback* and continue from
-  that message; `updatedMCPToolOutput` is parsed but rejected as unsupported.
-  Using those to inject a compressed result would turn every large output into
-  a hook intervention, not a transparent rewrite, so no automatic adapter is
-  claimed. MCP registration only provides explicit `sutra_compress` and
-  `sutra_restore` calls.
-- `sutra doctor --client codex` reports `status=limited` and `automatic=no`
-  when the MCP entry is valid. It does not fail merely because the host has no
-  supported automatic path; a missing entry is still a real failure.
+- the handler runs `<python> <site-packages>/sutra/scripts/sutra-codex-hook.py`
+  for `Bash|exec_command`, with a 30-second timeout;
+- the hook extracts the string `tool_response`, runs the shared SUTRA seam, and
+  returns `{"continue": false, "stopReason": "<compressed text + marker>"}`;
+- Codex replaces the model-visible tool result with that text, records the hook
+  run as `Stopped` (not `Blocked`), and continues the turn. The original result
+  is not re-sent;
+- `codex mcp add sutra -- <python> -m sutra.mcp` supplies `sutra_restore`. The
+  hook and MCP server share `SUTRA_STORE_DIR` / `HERMES_HOME`.
+
+Codex rejects `updatedMCPToolOutput` as unsupported, so the feedback contract is
+the only supported replacement path; it is not a transparent field rewrite, and
+the host records an intervention. **Trust is a one-time Codex decision**: user
+hooks are skipped until reviewed. The installer prints `/hooks`; it does not
+edit Codex's trust ledger, which would bypass that review. `sutra doctor`
+reports `limited` until the trusted hash is recorded and `ok` afterwards.
+
+Large-output limit: Codex truncates very large tool output before the hook runs
+(the observed shape begins with `Warning: truncated output` and is about 10 KB).
+The adapter therefore uses 8,192-byte eligibility with 3,072/1,536-byte head and
+tail budgets. The marker restores exactly the text Codex supplied; output Codex
+already discarded cannot be recovered.
+
+Live evidence (2026-11-01): Codex CLI 0.166.0, isolated `CODEX_HOME`, a local
+scripted Responses provider and a real Bash `seq 1 20000` call. The second model
+request carried **4,837 bytes** with the marker and id instead of the 10,110-byte
+host-truncated result (no middle `10000` line); Codex logged `hook: PostToolUse
+Stopped`; `sutra restore --mode lines --start 1000 --end 1002` returned
+`status: ok` and the omitted line. No provider or model was contacted.
+
+Installation edits are idempotent, preserve other hooks and settings, write a
+timestamped backup, refuse malformed JSON, and support `--dry-run`. Uninstall
+removes only the SUTRA handler and MCP entry, and preserves unrelated hooks.
 
 ### Cursor
 
@@ -243,16 +261,16 @@ auto-configured.
 MCP is a tool protocol, not an interception layer. Registering `sutra` gives the
 model two tools; it does not make another server's results pass through SUTRA.
 Only a host hook that replaces the result before the model reads it is automatic.
-That is why Hermes, Claude Code, and OpenCode are the clients this installer
-configures for automatic use today, and why Codex says "MCP only" even though
-its MCP entry is now installed by one command.
+Hermes, Claude Code, OpenCode and Codex each have such a path; the installer
+configures all four, and Codex's hook additionally needs the one-time `/hooks`
+trust review before Codex will run it.
 
 ## Diagnostic
 
 ```bash
 sutra doctor                         # all four clients, including not-installed rows
 sutra doctor --client opencode       # focus on one integration
-sutra doctor --client codex          # MCP state and the explicit host limit
+sutra doctor --client codex          # hook probe, trust state and MCP
 sutra doctor --json                  # machine-readable list of reports
 ```
 

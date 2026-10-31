@@ -56,14 +56,16 @@ outputs, evidence tools, and fail-open errors. Official references:
 
 ### Codex CLI
 
-Codex 0.166.0 `PostToolUse` supports blocking/feedback and
-`additionalContext`, but not transparent output replacement. Its wire schema
-parses `updatedMCPToolOutput` and then marks the hook failed because the field
-is unsupported; the original result passes through. There is no documented
-post-tool transform or MCP response filter. SUTRA therefore installs the
-standard MCP server as the best legitimate alternative, and `sutra doctor`
-reports a host limit rather than a broken automatic integration. Official
-references:
+Codex 0.166.0 `PostToolUse` can replace the model-visible tool result through
+its feedback contract: a command hook returns `continue: false` with
+`stopReason`, Codex records the run as `Stopped` and continues from that text.
+The wire schema still parses and rejects `updatedMCPToolOutput` as unsupported;
+the documented replacement is the feedback message, not a field rewrite. SUTRA
+uses it for Bash/exec output, runs the result through the shared seam, and keeps
+MCP for `sutra_restore`. User hooks are skipped until Codex's one-time `/hooks`
+trust review, so the installer prints that instruction instead of editing the
+trust ledger. Codex truncates very large output before the hook, which bounds
+what can be compressed and restored. Official references:
 
 - <https://learn.chatgpt.com/docs/hooks>
 - <https://github.com/openai/codex/blob/main/codex-rs/hooks/src/schema.rs>
@@ -87,7 +89,8 @@ its config file exists:
   probe;
 - OpenCode is automatic only when the generated plugin is present; the doctor
   additionally exercises the generated contract;
-- Codex is MCP-only even after a successful `codex mcp add`.
+- Codex is automatic only after the `PostToolUse` hook is installed and Codex
+  has recorded the one-time `/hooks` trust review; before that it is MCP-only.
 
 ## Restart and uninstall behavior
 
@@ -96,7 +99,7 @@ its config file exists:
 | Hermes | restart the gateway so middleware reloads | disable plugin, remove generated plugin directory |
 | Claude Code | start a new session | remove SUTRA-owned hook, remove the user-scope MCP entry |
 | OpenCode | restart OpenCode | remove generated plugin, remove SUTRA MCP entry if present |
-| Codex | no restart claimed; new session after MCP config change | `codex mcp remove sutra` |
+| Codex | start a new Codex session; run `/hooks` once to trust the SUTRA hook | remove the SUTRA hook entry and `codex mcp remove sutra` |
 
 All adapters fail open. A missing interpreter, malformed host payload, failed
 subprocess, or timeout leaves the host's original result untouched. The
@@ -119,13 +122,13 @@ The Hermes gateway harness is manual because it needs a live Hermes install:
 scripts/e2e/run.sh
 ```
 
-The Claude Code and OpenCode host proofs are the scripted-provider runs
+The Claude Code, OpenCode and Codex host proofs are the scripted-provider runs
 recorded in [automatic-install.md](automatic-install.md); they are not live
 model or billing measurements.
 
 ## Deliberately not claimed
 
-- Codex automatic output replacement — the host does not support it.
+- Codex output restoration beyond the text Codex itself supplies to the hook.
 - Cursor or Windsurf automatic replacement — no supported generic result hook.
 - Compression of MCP tool results through OpenCode's after-hook in 1.19.5.
 - A live model task-success score or invoice saving.

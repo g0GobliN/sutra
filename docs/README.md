@@ -11,7 +11,7 @@ need the detail behind a claim.
 | [README](../README.md) | What SUTRA is, how to install it, and what it supports |
 | [integrations.md](integrations.md) | The authoritative per-client matrix: mechanism, automatic or explicit, install, verification, limits |
 | [automatic-install.md](automatic-install.md) | What `sutra install` changes for each client, with backups and rollback |
-| [universal-integration.md](universal-integration.md) | Host-API evidence: which hook each agent documents, and why Codex is MCP-only |
+| [universal-integration.md](universal-integration.md) | Host-API evidence: which hook each agent documents, including Codex's PostToolUse feedback contract |
 | [configuration.md](configuration.md) | Every environment variable, default and bound |
 
 ## Correctness and recovery

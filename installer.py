@@ -20,7 +20,7 @@ __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured"
 
 # Clients with a verified configuration path. ``hermes`` is native middleware;
 # ``claude`` is the native PostToolUse hook; ``opencode`` gets a generated
-# plugin; ``codex`` is MCP-only because its hook cannot replace tool output.
+# plugin; ``codex`` gets a PostToolUse feedback hook plus MCP recovery.
 CLIENTS = ("hermes", "claude", "opencode", "codex")
 
 
