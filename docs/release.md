@@ -243,9 +243,9 @@ silently.
   ~/.sutra-venv/bin/sutra install --dry-run
   ```
 
-- If the README still describes installing from a checkout, update it to the
-  published instructions in a separate documentation pull request. That change
-  is documentation, not part of the release.
+- The README install section is what PyPI renders as the long description for
+  this version, and that description is frozen per release. Update it before
+  tagging; an edit after publication does not change the released page.
 
 ## Troubleshooting
 

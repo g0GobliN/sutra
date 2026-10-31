@@ -156,18 +156,24 @@ Read the full threat model in [SECURITY.md](https://github.com/g0GobliN/sutra/bl
 
 ## Install
 
-**SUTRA 0.3.0 is not on PyPI yet.** The `sutra` name on PyPI belongs to an unrelated package; the distribution is `sutra-agent`. Until 0.3.0 is published, install from a checkout:
+The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrelated package.
 
 ```bash
-git clone https://github.com/g0GobliN/sutra
 python3 -m venv ~/.sutra-venv
-~/.sutra-venv/bin/pip install ./sutra
+~/.sutra-venv/bin/pip install sutra-agent
 ~/.sutra-venv/bin/sutra --version        # sutra 0.3.0
 
 ~/.sutra-venv/bin/sutra detect           # read-only: what is installed
 ~/.sutra-venv/bin/sutra install --dry-run
 ~/.sutra-venv/bin/sutra install          # configure every detected client
 ~/.sutra-venv/bin/sutra doctor           # prove the installed paths
+```
+
+If the index you use does not serve 0.3.0 yet, install the checkout instead:
+
+```bash
+git clone https://github.com/g0GobliN/sutra
+~/.sutra-venv/bin/pip install ./sutra
 ```
 
 `sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. Restart the host after installing a plugin or hook.
