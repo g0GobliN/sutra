@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Measure retrieval cost at the default per-entry cap.
+"""Measure retrieval cost near the default per-entry cap.
 
 Run from the repository root:
 
     python3 bench/retrieval.py
 
 Writes ``bench/retrieval.json``. The point is the worst realistic restore, not
-an average: a 32 MiB entry (the default ``SUTRA_STORE_MAX_ENTRY_BYTES``), every
-mode, a search that has to scan the whole entry, and a field inside a 32 MiB
-JSON document. Everything is generated and local; nothing touches the network.
+an average: a 32,000,001-byte entry just under the 32 MiB default
+(``SUTRA_STORE_MAX_ENTRY_BYTES``), every mode, a search that has to scan the
+whole entry, and a field inside a 32,400,015-byte JSON document. Everything is
+generated and local; nothing touches the network.
 """
 
 from __future__ import annotations

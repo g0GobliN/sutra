@@ -406,8 +406,9 @@ def test_search_treats_regex_metacharacters_literally(sutra, store):
 
 
 def test_retrieval_at_the_entry_cap_stays_within_its_bounds(sutra, tmp_path):
-    """The execution envelope starts with hard work bounds: one 32 MiB entry,
-    at most 64 KiB returned, at most the requested matches, every mode an
+    """The execution envelope starts with hard work bounds: one entry just under
+    the 32 MiB cap, at most 64 KiB returned, at most the requested matches,
+    every mode an
     answer rather than a hang or an unbounded payload. Wall-clock evidence is
     in bench/retrieval.py; this holds the structural half."""
     cap = 32 * 1024 * 1024
