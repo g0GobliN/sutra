@@ -16,13 +16,13 @@ One core. Multiple agents. Recoverable output. No compression model calls.
 
 ## The problem: tool output is re-read all session
 
-An agent runs `pytest -q`, receives 12,000 lines, and needs one failure. The useful part may be twenty lines, but the tool result stays in context and is re-sent on every subsequent turn. Prompt compression shaves an instruction once; tool output grows with every command an agent runs.
+An agent runs `pytest -q`, receives 12,000 lines, and needs one failure. The useful part may be twenty lines, but the tool result stays in context and is re-sent on every subsequent turn. Prompt compression can shave an instruction once; tool output grows with every command an agent runs.
 
 ```text
 turn 1   ── tool output 60.9 kB ──► model
 turn 2   ── tool output 60.9 kB ──► model   (re-sent)
 turn 3   ── tool output 60.9 kB ──► model   (re-sent)
-         ...                               cost compounds with the session
+         ...                               context grows with the session
 ```
 
 The agent rarely needs the whole result: it needs the failing line, the stack frame, the row that matters — and a route back to everything else.
