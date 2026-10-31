@@ -64,6 +64,7 @@ jobs:
           cd sutra-main
           pip install pytest
           python -m pytest tests -q
+          python -m pytest spikes -q
 
   validate:
     runs-on: ubuntu-latest
