@@ -26,7 +26,7 @@ def test_every_case_is_measured_and_never_grows():
 def test_the_patch_case_is_left_alone():
     """A compressor that shrinks diffs can hide a code change."""
     rows = {r["case"]: r for r in bench.measure()}
-    patch = rows["600 KB patch"]
+    patch = rows["432 kB patch"]
     assert patch["rule"] == "diff-kept"
     assert patch["saved_bytes"] == 0
 
@@ -62,8 +62,8 @@ def test_recovery_costs_one_call_and_lands_below_the_original():
 
 def test_the_patch_clue_is_visible_without_recovery():
     rows = {r["case"]: r for r in bench.measure_recovery()}
-    assert rows["600 KB patch"]["clue_visible_in_compressed"] is True
-    assert rows["600 KB patch"]["recovery_calls"] == 0
+    assert rows["432 kB patch"]["clue_visible_in_compressed"] is True
+    assert rows["432 kB patch"]["recovery_calls"] == 0
 
 
 def test_the_timing_policy_defers_instead_of_publishing_a_loaded_run():

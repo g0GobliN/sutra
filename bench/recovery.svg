@@ -31,7 +31,7 @@
 <rect x="250" y="314" width="12.8" height="11" rx="2" fill="#f59e0b"/>
 <text x="700.8" y="294" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#475569">359.4 kB original</text>
 <text x="272.8" y="324" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="11" fill="#b45309">10.4 kB to the clue</text>
-<text x="232" y="358" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">600 KB patch</text>
+<text x="232" y="358" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="13.5" fill="#0f172a">432 kB patch</text>
 <text x="232" y="375" text-anchor="end" font-family="ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif" font-size="11.5" fill="#94a3b8">never rewritten (safety case)</text>
 <rect x="250" y="346" width="530.0" height="11" rx="2" fill="#cbd5e1"/>
 <rect x="250" y="361" width="530.0" height="11" rx="2" fill="#2563eb"/>

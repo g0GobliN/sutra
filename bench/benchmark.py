@@ -102,7 +102,7 @@ def build_payloads() -> "list[dict]":
          "text": test_run, "clue": "FAIL src/module-1000.test.ts"},
         {"case": "3,000-frame traceback", "note": "error end preserved",
          "text": traceback, "clue": "ValueError: the thing broke"},
-        {"case": "600 KB patch", "note": "never rewritten (safety case)",
+        {"case": "432 kB patch", "note": "never rewritten (safety case)",
          "text": patch, "clue": "+const line = 'added by the patch'"},
         {"case": "900-row SQL result", "note": "head + tail",
          "text": sql, "clue": "user450@example.com"},
