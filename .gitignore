@@ -57,6 +57,9 @@ Thumbs.db
 *.orig
 *.rej
 
+# Imported conversation cache (local only, never part of the repository)
+.cloud-attachments/
+
 # Logs and temp files
 *.log
 *.tmp
