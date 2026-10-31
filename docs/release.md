@@ -253,8 +253,8 @@ silently.
 - [ ] Pull request merged with every CI job green, including `package`.
 - [ ] Tag pushed for the merged commit.
 - [ ] TestPyPI rehearsal passed, including install-back verification.
-- [ ] `pip install --no-deps --index-url https://test.pypi.org/simple/ ...`
-      reports the expected version.
+- [ ] `pip install --no-deps --index-url https://test.pypi.org/simple/
+      sutra-agent==X.Y.Z` reports the expected version.
 - [ ] Production run approved for the `pypi` environment.
 - [ ] PyPI page renders and the published version installs and runs.
 - [ ] Install instructions in the README updated if they changed.
