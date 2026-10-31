@@ -6,15 +6,98 @@
 
 **Less output. More signal.**
 
-SUTRA reduces the tool output your agent carries through a session. It keeps the original locally and gives the agent a way to retrieve omitted evidence when needed.
+SUTRA is an agent-agnostic tool-output optimization layer for AI coding agents. It sits between a tool result and the model: it reduces eligible output before that output is re-sent through the rest of the session, and it keeps the original bytes locally behind a marker that can restore them on demand.
 
-It runs as a [Hermes Agent](https://hermes-agent.nousresearch.com) plugin, or as a package whose MCP server any MCP client can register, and cuts tool output before the model reads it — your agent does not need the whole 2 MB log, it needs the failing line, the stack frame, the row that matters, and a way back to everything else. A tool result is read once and re-sent on every following turn, so a 2 MB log is 2 MB times the rest of the session (on one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context). SUTRA attacks that, deterministically, with no model calls — and keeps every original, because a compressor that cannot be questioned is a compressor you cannot trust.
+It is not a prompt compressor and not a summarizer. It does not rewrite your instructions, shorten the model's replies, or ask a model to paraphrase a log. It processes the result a tool has already produced, after execution and before the model reads it. A tool result is read once and re-sent on every following turn, so a 2 MB log is 2 MB times the rest of the session (on one measured seven-agent fleet, 96.8% of all tokens were cache-reads of prior context). SUTRA removes only redundant or oversized material, states in the result exactly what it removed, and fails open: an unexpected shape, parse error or internal exception leaves the host's original result untouched.
+
+The same deterministic core powers native adapters for Hermes, Claude Code and OpenCode, an MCP registration for Codex, and a CLI plus MCP server for everything else — with no model calls in any path. Automatic replacement is a property of the host, not a slogan: Hermes, Claude Code and OpenCode expose a documented result-replacing hook; Codex does not, so there SUTRA is explicit `sutra_compress`/`sutra_restore` only.
 
 > **54.3%** fewer bytes · **55.2%** fewer o200k tokens · **8/8** planted clues recovered · **0** diffs touched
 >
 > Eight generated tool-output shapes. The token column is `tiktoken o200k_base` on the payload text, not a provider bill. [Method and limits](#proof-not-a-promise).
 
-[Install](#install) · [How it works](#how-it-works) · [Proof](#proof-not-a-promise) · [Recovery](#how-recovery-works) · [What we don't claim](#what-we-dont-claim)
+[Install](#install) · [How it works](#how-it-works) · [Comparison](#sutra-vs-prompt-and-context-optimization-tools) · [Proof](#proof-not-a-promise) · [Recovery](#how-recovery-works) · [What we don't claim](#what-we-dont-claim)
+
+## What SUTRA does — and where it sits
+
+SUTRA has one agent-agnostic core: `core.py` (the host seam), `engine.py` (the ordered compression rules), `store.py` (local retention) and `recovery.py` (the retrieval protocol). Each adapter only translates a host's tool result into that seam and writes the result back. Nothing is reimplemented per client, so the same eligibility, safety, retention and recovery rules apply everywhere.
+
+```text
+AI coding agent
+      │  runs a tool
+      ▼
+tool execution
+      │  raw result
+      ▼
+host adapter
+  ├─ Hermes: tool_execution middleware
+  ├─ Claude Code: PostToolUse hook
+  ├─ OpenCode: tool.execute.after plugin
+  ├─ Codex: MCP registration only (no result hook; explicit calls)
+  └─ other clients: CLI or MCP server (explicit calls)
+      │
+      ▼
+shared SUTRA core
+  ├─ eligibility: size, payload shape, evidence tools, diffs
+  ├─ deterministic rewrite plus a marker naming what was removed
+  └─ retain the original locally (TTL, quota, bounded reads)
+      │
+      ▼
+model reads the smaller result
+      │  marker quotes: sutra_restore(id="…", mode="…")
+      ▼
+original retrieved from the local store when needed
+```
+
+The scope is deliberately narrow:
+
+- **Tool output, not prompts.** SUTRA never edits the user's instructions or the model's reply, and it does not call a model.
+- **Eligible output only.** Results at or below `SUTRA_MAX_BYTES` (24,576 B by default) pass through; diffs and patches are always byte-identical; JSON keeps its shape; tracebacks keep their error end.
+- **Recoverable by construction.** Every rewrite names the bytes removed and, when retention succeeded, an id that restores them. A marker never claims an id for bytes that were not kept.
+- **Fail-open.** Any unexpected input or internal error returns the original result, so the agent continues as if SUTRA were not there.
+- **Host-specific integration, shared behaviour.** Automatic only where the host documents a result-replacing hook; explicit tools or MCP registration everywhere else.
+
+### SUTRA vs. prompt and context optimization tools
+
+SUTRA is often mentioned next to tools such as Caveman and Ponytail because all three try to reduce what an AI coding agent consumes. They intervene at different points, and they are better understood as complementary than as substitutes.
+
+- **[Caveman](https://github.com/JuliusBrussee/caveman)** is a skill plus CLI/proxy that, in its own description, makes the agent "say less and read less". Its 4.0 release bundles reply brevity, compression of logs/JSON/CSV/test output, model and effort routing, reusable code blocks, and web-page compression. It states that prompts are never rewritten, and that every original stays on disk and can be pulled back.
+- **[Ponytail](https://github.com/DietrichGebert/ponytail)** is a skill/plugin that changes how much code the agent writes: a ladder of "do we even need this?" questions applied after the agent understands the task. Its savings come from code that is never generated, not from shrinking a tool result that already exists.
+
+| Dimension | SUTRA | Caveman | Ponytail |
+|---|---|---|---|
+| Primary focus | Eligible agent tool output | Agent brevity plus the inputs it reads (files, logs, web pages) | How much code the agent writes |
+| Where it acts | Between a tool result and the model, through host adapters | Agent instructions/skill and a CLI/proxy around the agent | Agent instructions/skill before code is generated |
+| What it transforms | Logs, JSON documents, tracebacks and other tool results; diffs untouched | Model replies, tool-readable files, web pages; routing and reusable scripts in 4.0 | The agent's plan and implementation choices |
+| Original content recovery | Local bounded store, marker with id, `sutra_restore` modes | Docs state originals stay on disk and the agent can pull them back | Not a compression layer; no recovery surface is claimed |
+| Compression model calls | None; deterministic rules | No separate compression model for the voice; effect depends on the host model, with tooling for the file compressors | No separate compression model; effect depends on the host model following the rules |
+| Prompt rewriting | No | Docs state prompts are never rewritten | It is a prompt/rules layer: it changes agent behaviour rather than compressing a prompt |
+| Agent support | Four first-class adapters plus MCP/CLI; automatic only on hosts with a result hook | 30+ agents through a skill/installer | Many agents through a skill/plugin |
+| Deterministic, byte-exact guarantees | Yes for eligibility, rewrite and recovery; diffs always byte-identical | Reply style is model behaviour; file compression is tooling | Behavioural, not a byte-level transform |
+
+The overlap is real: Caveman's "read less" compressors and SUTRA both shrink what the model reads, and both keep originals retrievable. The difference is the object and the guarantee. SUTRA is not a voice, a code-writing philosophy or a router; it is a deterministic, reversible transform on the tool-result path, with the same rules behind every adapter. It also does not claim automatic interception where the host has none — Codex is MCP-only for exactly that reason.
+
+A concrete difference:
+
+```text
+Agent runs: pytest -q   →   12,000 lines (60.9 kB)
+
+SUTRA on Hermes, Claude Code or OpenCode:
+  the eligible result is rewritten before the model's next turn
+  60.9 kB → 18.6 kB; the marker names the elided bytes and an id
+  a diff in the same session is untouched, byte for byte
+  the model can call sutra_restore(id, mode="search", query="FAILED")
+
+SUTRA on Codex or a generic MCP client:
+  the model must call sutra_compress explicitly; nothing is replaced for it
+
+Caveman or Ponytail in the same session:
+  they change what the agent says, reads or writes — not that stored result
+```
+
+Measurements differ by tool and by workload, so compare published methods rather than a single number. Caveman's own README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and a case where its HTML compressor lost 9.9%; Ponytail's README reports 45% fewer tokens and 53% less code on its 39-task benchmark. SUTRA's numbers are payload-level tokenizer counts and byte savings on generated fixtures, not a provider bill — see [Proof](#proof-not-a-promise) and [What we don't claim](#what-we-dont-claim).
+
+Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Competitor details come from their published documentation and may change.
 
 ## Install
 
@@ -116,7 +199,7 @@ hermes tools list             # toolset:     "sutra  ✓ enabled" under Plugin t
 
 The middleware is active the moment the plugin is enabled — run any tool whose output exceeds `SUTRA_MAX_BYTES` (24,576 B by default) and the result the model sees carries a `[sutra: …]` marker. The recovery tool needs the toolset enabled ([troubleshooting](https://github.com/g0GobliN/sutra/blob/main/docs/troubleshooting.md) covers the Tool Search deferral case).
 
-Current release: [v0.2.0](https://github.com/g0GobliN/sutra/releases/tag/v0.3.0). Verified against Hermes Agent `v0.22.5 (2026.9.24)`.
+Current release: [v0.2.0](https://github.com/g0GobliN/sutra/releases/tag/v0.2.0). The `main` tree declares 0.3.0, which is not published yet. Verified against Hermes Agent `v0.22.5 (2026.9.24)`.
 
 ## How it works
 
