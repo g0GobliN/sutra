@@ -42,6 +42,24 @@ def test_unfiltered_doctor_reports_all_four_when_none_are_installed(
     assert all(report["automatic"] is False for report in reports)
 
 
+def test_one_adapter_exception_does_not_hide_the_next(
+        empty_clients, monkeypatch, capsys):
+    import sutra_plugin.claude_code as claude_code
+
+    monkeypatch.setattr(claude_code, "binary", lambda: "/usr/bin/claude")
+    monkeypatch.setattr(claude_code, "doctor",
+                        lambda: (_ for _ in ()).throw(RuntimeError("broken config")))
+    monkeypatch.setattr(shutil, "which", lambda _name: None)
+
+    assert cli.main(["doctor", "--client", "claude", "--client", "opencode",
+                     "--json"]) == 1
+    reports = json.loads(capsys.readouterr().out)
+    assert [report["client"] for report in reports] == ["claude", "opencode"]
+    assert reports[0]["status"] == "fail"
+    assert "broken config" in reports[0]["error"]
+    assert reports[1]["status"] == "not-installed"
+
+
 def test_explicit_absent_client_is_reported_not_silently_dropped(
         empty_clients, monkeypatch, capsys):
     import sutra_plugin.codex as codex

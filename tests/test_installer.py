@@ -226,6 +226,27 @@ def test_config_discovery_prefers_jsonc_and_honours_the_override(tmp_path, monke
     assert installer.opencode_config(str(tmp_path / "given.json")).name == "given.json"
 
 
+def test_one_adapter_exception_does_not_stop_the_next(monkeypatch, capsys):
+    calls = []
+
+    def operation(client, args, *, required):
+        calls.append(client)
+        if client == "claude":
+            raise RuntimeError("broken adapter")
+        return 0
+
+    monkeypatch.setattr(cli, "_install_one", operation)
+    monkeypatch.setattr(cli, "_rows", lambda: [])
+    args = types.SimpleNamespace(client=["claude", "hermes"], config=None,
+                                 dry_run=True, all=False)
+    assert cli._apply("install", args) == 1
+    assert calls == ["claude", "hermes"]
+    output = capsys.readouterr()
+    assert "claude install failed" in output.err
+    assert "claude=failed" in output.out
+    assert "hermes=skipped" in output.out
+
+
 def test_the_package_declares_its_console_entry_points():
     import tomllib
     root = pathlib.Path(__file__).resolve().parent.parent

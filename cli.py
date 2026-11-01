@@ -138,6 +138,57 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
     return status
 
 
+def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool) -> None:
+    """One concise, truthful line after an install attempt."""
+    try:
+        rows = {row.get("client"): row for row in _rows()
+                if row.get("client") and "error" not in row}
+    except Exception:  # a summary must never turn a completed install into a failure
+        rows = {}
+    labels: list[str] = []
+    for client in clients:
+        if results.get(client, 1) != 0:
+            labels.append(f"{client}=failed")
+            continue
+        row = rows.get(client)
+        if row is None:
+            labels.append(f"{client}=skipped")
+        elif client == "claude":
+            if row.get("hook") is True and row.get("mcp") == "configured":
+                labels.append("claude=configured")
+            elif row.get("hook") is True:
+                labels.append("claude=hook-only")
+            else:
+                labels.append("claude=not configured")
+        elif client == "hermes":
+            if row.get("installed") and row.get("enabled") is True:
+                labels.append("hermes=active")
+            elif row.get("installed"):
+                labels.append("hermes=installed, not enabled")
+            else:
+                labels.append("hermes=not configured")
+        elif client == "opencode":
+            if row.get("plugin") == "installed" and row.get("mcp") == "configured":
+                labels.append("opencode=configured")
+            elif row.get("plugin") == "installed":
+                labels.append("opencode=configured, MCP skipped")
+            else:
+                labels.append("opencode=not configured")
+        else:
+            if row.get("hook") != "installed":
+                labels.append("codex=not configured")
+            elif row.get("mcp") != "configured":
+                labels.append("codex=hook-only")
+            elif row.get("trusted") is not True:
+                labels.append("codex=requires /hooks trust")
+            else:
+                labels.append("codex=active")
+    prefix = "sutra: dry-run summary: " if dry_run else "sutra: install summary: "
+    print(prefix + " ".join(labels))
+    if not dry_run:
+        print("sutra: run `sutra doctor` to verify the installed paths")
+
+
 def _apply(action: str, args) -> int:
     clients = _selected(args)
     if not clients:
@@ -146,9 +197,19 @@ def _apply(action: str, args) -> int:
         return 1
     required = bool(args.client)
     status = 0
+    results: dict[str, int] = {}
     for client in clients:
         operation = _install_one if action == "install" else _uninstall_one
-        status = max(status, operation(client, args, required=required))
+        try:
+            code = operation(client, args, required=required)
+        except Exception as exc:  # one broken adapter must not block the others
+            print(f"sutra: {client} {action} failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+            code = 1
+        results[client] = code
+        status = max(status, code)
+    if action == "install":
+        _install_summary(clients, results, args.dry_run)
     return status
 
 
@@ -193,8 +254,11 @@ def _status(as_json: bool = False) -> int:
 
     rows = _rows()
     configured = any(
-        row.get("hook") is True or row.get("automatic") is True
-        or row.get("mcp") in ("connected", "configured")
+        row.get("hook") in (True, "installed")
+        or row.get("installed") is True
+        or row.get("plugin") == "installed"
+        or row.get("automatic") is True
+        or row.get("mcp") in ("connected", "verified", "configured")
         for row in rows)
     if as_json:
         print(json.dumps(rows, indent=2))
@@ -262,22 +326,27 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     selected = clients or ["claude", "opencode", "hermes", "codex"]
     reports = []
     for client in selected:
-        if client == "claude":
-            reports.append(claude_code.doctor() if (
-                claude_code.binary() or claude_code.settings_path().exists())
-                else _not_installed(client))
-        elif client == "opencode":
-            reports.append(opencode.doctor() if (
-                shutil.which("opencode") or opencode.plugin_path().exists())
-                else _not_installed(client))
-        elif client == "hermes":
-            reports.append(hermes.doctor() if (
-                hermes.binary() or hermes.plugin_dir().exists()
-                or hermes.config_path().exists()) else _not_installed(client))
-        elif client == "codex":
-            reports.append(codex.doctor() if (
-                codex.binary() or codex.config_path().exists())
-                else _not_installed(client))
+        try:
+            if client == "claude":
+                reports.append(claude_code.doctor() if (
+                    claude_code.binary() or claude_code.settings_path().exists())
+                    else _not_installed(client))
+            elif client == "opencode":
+                reports.append(opencode.doctor() if (
+                    shutil.which("opencode") or opencode.plugin_path().exists())
+                    else _not_installed(client))
+            elif client == "hermes":
+                reports.append(hermes.doctor() if (
+                    hermes.binary() or hermes.plugin_dir().exists()
+                    or hermes.config_path().exists()) else _not_installed(client))
+            elif client == "codex":
+                reports.append(codex.doctor() if (
+                    codex.binary() or codex.config_path().exists())
+                    else _not_installed(client))
+        except Exception as exc:  # a broken adapter must not hide the other three
+            reports.append({"client": client, "status": "fail", "ok": False,
+                            "automatic": False,
+                            "error": f"{type(exc).__name__}: {exc}"})
     if as_json:
         import json
         print(json.dumps(reports, indent=2))
@@ -286,6 +355,9 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
             client = report.get("client")
             if report.get("status") == "not-installed":
                 print(f"{client}: not installed")
+                continue
+            if report.get("error"):
+                print(f"{client}: error: {report['error']}")
                 continue
             if client == "claude":
                 formatter = claude_code.format_doctor
@@ -297,7 +369,8 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
                 formatter = codex.format_doctor
             print(formatter(report))
     failed = any(
-        report.get("status") == "fail"
+        report.get("error")
+        or report.get("status") == "fail"
         or (report.get("ok") is False
             and report.get("status") not in ("not-installed", "limited"))
         for report in reports)
