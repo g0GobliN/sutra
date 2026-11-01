@@ -130,7 +130,8 @@ Describe user-visible behaviour, not the internal sequence of commits.
 2. Move the `CHANGELOG.md` entries from `Unreleased` under the new version.
 3. Update the `README.md` install section if what users install or run changed.
 4. Open a pull request and wait for CI. Every job must pass:
-   - the product suite on Python 3.11, 3.12 and 3.13, plus macOS;
+   - the product suite on Python 3.11, 3.12, 3.13 and 3.14, plus macOS and
+     Windows;
    - `ruff check .`;
    - `hermes plugins validate .` at the pinned Hermes revision;
    - the `package` job, which builds the sdist and wheel, runs

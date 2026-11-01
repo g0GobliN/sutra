@@ -6,3 +6,8 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(ci)"
+    groups:
+      github-actions:
+        patterns: ["*"]
+    # Dependabot updates the pinned commit and keeps the trailing version
+    # comment readable; review the upstream release before merging.
