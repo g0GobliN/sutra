@@ -223,7 +223,7 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
 - **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made.
-- **Windows is untested.** CI covers Linux and macOS.
+- **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all four adapter dry runs, and verifies OpenCode install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
 
 ## Development and contributing
 

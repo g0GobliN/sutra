@@ -124,7 +124,7 @@ def test_production_promotes_and_never_rebuilds():
     production = _job_blocks()["publish-pypi"]
     assert "actions/checkout" not in production, "production must not check out the tree"
     assert "python -m build" not in production
-    assert "actions/download-artifact@v4" in production
+    assert "actions/download-artifact@" in production
     assert "SHA256SUMS" in production
     checked = production.index("sha256sum -c SHA256SUMS")
     published = production.index("gh-action-pypi-publish")
@@ -171,7 +171,7 @@ def test_the_build_uploads_one_checksummed_artifact():
 
 def test_the_pypi_verification_checks_served_files_and_retries():
     verify = _job_blocks()["verify-pypi"]
-    assert "actions/download-artifact@v4" in verify
+    assert "actions/download-artifact@" in verify
     assert "sha256sum -c SHA256SUMS" in verify
     assert "https://pypi.org/simple/" in verify
     assert "sutra-agent==${VERSION}" in verify

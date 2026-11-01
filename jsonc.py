@@ -137,10 +137,15 @@ def _line_indent(text: str, index: int) -> str:
     return prefix[: len(prefix) - len(prefix.lstrip(" \t"))]
 
 
-def _entry_block(indent: str, python: str) -> str:
+def _newline(text: str) -> str:
+    """Preserve a config's line-ending convention for inserted text."""
+    return "\r\n" if "\r\n" in text else "\n"
+
+
+def _entry_block(indent: str, python: str, nl: str) -> str:
     command = ", ".join(json.dumps(part) for part in (python, *SERVER_ARGS))
     inner = indent + "  "
-    return "\n".join((
+    return nl.join((
         indent + '"sutra": {',
         inner + '"type": "local",',
         inner + '"command": [' + command + "],",
@@ -165,15 +170,18 @@ def has_entry(text: str, key: str = "sutra") -> bool:
 
 def with_entry(text: str, python: str) -> tuple[str, bool]:
     """The config with a `sutra` MCP entry. Returns (text, changed)."""
+    nl = _newline(text)
     root = _root_object(text)
     root_members, root_close = _members(text, root)
     mcp = _find(text, root_members, "mcp")
     if mcp is None:
         key_indent = _line_indent(text, root) + "  "
-        block = key_indent + '"mcp": {\n' + _entry_block(key_indent + "  ", python) + "\n" + key_indent + "}"
+        block = (key_indent + '"mcp": {' + nl
+                 + _entry_block(key_indent + "  ", python, nl) + nl
+                 + key_indent + "}")
         before = text[:root_close].rstrip()
         separator = "," if root_members else ""
-        return before + separator + "\n" + block + "\n" + text[root_close:], True
+        return before + separator + nl + block + nl + text[root_close:], True
     value_start = mcp[2]
     if text[value_start] != "{":
         raise ValueError('the "mcp" key is not an object')
@@ -185,9 +193,9 @@ def with_entry(text: str, python: str) -> tuple[str, bool]:
             return text, False
         raise ValueError("a different sutra entry already exists; run `sutra uninstall` first")
     key_indent = _line_indent(text, mcp[0])
-    block = _entry_block(key_indent + "  ", python)
+    block = _entry_block(key_indent + "  ", python, nl)
     if not members:
-        return text[:value_start + 1] + "\n" + block + "\n" + key_indent + text[close:], True
+        return text[:value_start + 1] + nl + block + nl + key_indent + text[close:], True
     last_end = members[-1][3]
     tail = text[last_end:close]
     # An existing separator after the last member becomes the separator for the
@@ -201,9 +209,9 @@ def with_entry(text: str, python: str) -> tuple[str, bool]:
     # Whatever follows that separator — a comment on the member's line, say —
     # stays where it is and keeps its owner; the new entry goes after it.
     kept = tail.rstrip(" \t")
-    lead = "" if kept.endswith("\n") else "\n"
+    lead = "" if kept.endswith("\n") else nl
     return (text[:last_end] + "," + kept + lead + block
-            + ("," if re_emit else "") + "\n" + key_indent + text[close:]), True
+            + ("," if re_emit else "") + nl + key_indent + text[close:]), True
 
 
 def without_entry(text: str) -> tuple[str, bool]:
@@ -217,6 +225,10 @@ def without_entry(text: str) -> tuple[str, bool]:
     target = _find(text, members, "sutra")
     if target is None:
         return text, False
+    if len(members) == 1:
+        # Removing the only member leaves `{}`. Collapse the whitespace the
+        # insert added so a CRLF config round-trips byte-for-byte.
+        return text[:mcp[2] + 1] + text[close:], True
     position = members.index(target)
     start, end = target[0], target[3]
     if position + 1 < len(members):          # not last: take the separator after it

@@ -34,3 +34,13 @@ def test_the_package_job_exercises_the_installed_cli():
     assert "before=$(find \"$CLI_HOME\"" in text
     assert "after=$(find \"$CLI_HOME\"" in text
     assert 'test "$before" = "$after"' in text
+
+
+def test_every_action_is_pinned_to_a_commit_with_a_version_comment():
+    for path in (WORKFLOW, ROOT / ".github" / "workflows" / "release.yml"):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if " uses: " not in line or line.lstrip().startswith("#"):
+                continue
+            reference = line.split("@", 1)[1].split("#", 1)[0].strip()
+            assert re.fullmatch(r"[0-9a-f]{40}", reference), line
+            assert " # " in line, line

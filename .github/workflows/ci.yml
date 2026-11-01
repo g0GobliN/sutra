@@ -16,10 +16,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest
@@ -28,13 +28,71 @@ jobs:
       - name: OpenCode feasibility spike
         run: python -m pytest spikes -q
 
+  # Windows exercises the path, text-mode and subprocess branches that the
+  # POSIX jobs cannot. POSIX permission/symlink tests skip by design; the
+  # functional store, hooks and adapter contract still run.
+  windows:
+    name: test (windows-latest)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+      - run: pip install pytest build
+      - name: Product suite
+        run: python -m pytest tests -q
+      - name: Build and install the wheel
+        run: |
+          python -m build
+          python -m venv venv
+          $wheel = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          .\venv\Scripts\python -m pip install --quiet $wheel
+          .\venv\Scripts\sutra --version
+          .\venv\Scripts\python -c "import sutra; print(sutra.__version__)"
+      - name: Installed CLI and four adapter dry runs
+        shell: pwsh
+        env:
+          CLI_HOME: ${{ runner.temp }}\windows-home
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Force -Path $env:CLI_HOME | Out-Null
+          $env:HOME = $env:CLI_HOME
+          $env:USERPROFILE = $env:CLI_HOME
+          $env:XDG_CONFIG_HOME = Join-Path $env:CLI_HOME ".config"
+          $env:CLAUDE_CONFIG_DIR = Join-Path $env:CLI_HOME ".claude"
+          $env:CODEX_HOME = Join-Path $env:CLI_HOME ".codex"
+          $env:HERMES_HOME = Join-Path $env:CLI_HOME ".hermes"
+          & .\venv\Scripts\sutra detect
+          & .\venv\Scripts\sutra doctor --json | Set-Content -Encoding utf8 doctor.json
+          if ($LASTEXITCODE -ne 0) { throw "doctor failed" }
+          .\venv\Scripts\python -c "import json; rows=json.load(open('doctor.json', encoding='utf-8-sig')); assert {r['client'] for r in rows} == {'hermes','claude','opencode','codex'}"
+          $Box = Join-Path $env:CLI_HOME "bin"
+          New-Item -ItemType Directory -Force -Path $Box | Out-Null
+          foreach ($client in @("claude","codex","hermes","opencode")) {
+            Set-Content -Path (Join-Path $Box "$client.cmd") -Value "@echo off`r`nexit /b 0`r`n"
+          }
+          $env:PATH = "$Box;$env:PATH"
+          foreach ($client in @("claude","codex","hermes","opencode")) {
+            & .\venv\Scripts\sutra install --client $client --dry-run
+            if ($LASTEXITCODE -ne 0) { throw "$client dry-run failed" }
+            & .\venv\Scripts\sutra uninstall --client $client --dry-run
+            if ($LASTEXITCODE -ne 0) { throw "$client uninstall dry-run failed" }
+          }
+          $plugin = Join-Path $env:XDG_CONFIG_HOME "opencode\plugins\sutra.js"
+          & .\venv\Scripts\sutra install --client opencode
+          if (-not (Test-Path $plugin)) { throw "OpenCode plugin was not installed" }
+          & .\venv\Scripts\sutra install --client opencode
+          & .\venv\Scripts\sutra uninstall --client opencode
+          if (Test-Path $plugin) { throw "OpenCode plugin was not removed" }
+
   # Portability evidence for the POSIX path (permissions, symlinks, atomic
   # replace) that the Linux job alone does not provide.
   macos:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
       - run: pip install pytest
@@ -43,8 +101,8 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.12"
       - run: pip install ruff==0.17.2
@@ -55,8 +113,8 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
       - run: pip install build twine
@@ -151,8 +209,8 @@ jobs:
   hyphen-checkout:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.12"
       - name: Run the suite from a hyphen-named clone (tarball-style)
@@ -166,8 +224,8 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.14"
       - name: Check out Hermes at the pinned revision
@@ -181,14 +239,23 @@ jobs:
       - name: Install Hermes at the pinned revision
         run: pip install -e "$RUNNER_TEMP/hermes-agent"
       - run: hermes plugins validate .
+      - name: Install real host CLIs for the live adapter tests
+        run: npm install --global @anthropic-ai/claude-code@2.1.268 @openai/codex@0.166.0
+      - name: Run real-host adapter tests without authentication
+        run: |
+          pip install pytest
+          python -m pytest -q \
+            tests/test_claude_installer.py::test_live_claude_rolls_back_when_the_server_cannot_connect \
+            tests/test_codex_adapter.py::test_real_codex_round_trip_uses_an_isolated_home \
+            tests/test_hermes_adapter.py::test_real_hermes_plugin_round_trip_uses_an_isolated_home
 
   version:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [test, lint, validate]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.12"
       - run: python scripts/check_version.py "$GITHUB_REF_NAME"

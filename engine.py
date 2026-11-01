@@ -118,6 +118,27 @@ def _parse_json_document(text: str) -> Any | None:
     stripped = text.strip()
     if not stripped or stripped[0] not in "{[":
         return None
+    # Python 3.14's parser handles nesting that older interpreters reject with
+    # RecursionError. Refuse pathological depth here so it takes the same
+    # bounded text path on every supported interpreter.
+    depth = 0
+    in_string = escaped = False
+    for char in stripped:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == "\"":
+                in_string = False
+        elif char == "\"":
+            in_string = True
+        elif char in "{[":
+            depth += 1
+            if depth > _JSON_MAX_DEPTH:
+                return None
+        elif char in "}]":
+            depth = max(0, depth - 1)
     try:
         return json.loads(stripped)
     except (ValueError, TypeError, RecursionError):

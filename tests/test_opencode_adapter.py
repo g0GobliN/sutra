@@ -7,6 +7,7 @@ scripted-provider run documented in docs/automatic-install.md.
 """
 
 import json
+import os
 import pathlib
 import shutil
 import stat
@@ -30,11 +31,12 @@ def paths(tmp_path, monkeypatch):
     return tmp_path, config
 
 
-def test_render_embeds_json_paths_and_has_no_placeholders():
-    text = opencode.render(python="/opt/sutra/bin/python", home="/tmp/sutra home")
+def test_render_embeds_json_paths_and_has_no_placeholders(tmp_path):
+    home = tmp_path / "sutra home"
+    text = opencode.render(python="/opt/sutra/bin/python", home=home)
     assert opencode.MARKER in text
     assert json.dumps("/opt/sutra/bin/python") in text
-    assert json.dumps("/tmp/sutra home") in text
+    assert json.dumps(str(home)) in text
     assert "__SUTRA_PYTHON__" not in text
     assert "__SUTRA_HOME__" not in text
 
@@ -45,7 +47,10 @@ def test_install_writes_a_private_plugin_and_is_idempotent(paths, capsys):
     assert opencode.install(python="/opt/python", home=root / "home",
                             config_path=config) == 0
     assert path.is_file()
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name == "posix":
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    else:
+        assert path.is_file()
     assert opencode.MARKER in path.read_text(encoding="utf-8")
     assert opencode.configured(config) is True
 

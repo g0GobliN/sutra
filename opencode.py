@@ -68,8 +68,10 @@ def _new_file(path: pathlib.Path, text: str) -> None:
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".",
                                      suffix=".tmp")
     try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        # Windows has no fchmod; its mode bits are not the access control.
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         os.replace(temporary, path)
     except BaseException:
@@ -159,9 +161,14 @@ def _embedded(text: str, name: str) -> str:
 
 
 def _cli_call(python: str, args: list[str], stdin: str, env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [python, "-m", "sutra.cli", *args], input=stdin, capture_output=True,
-        text=True, timeout=30, env=env)
+    result = subprocess.run(
+        [python, "-m", "sutra.cli", *args], input=stdin.encode("utf-8"),
+        capture_output=True, timeout=30, env=env)
+    # Byte pipes preserve protected text on Windows; text mode would turn the
+    # probe's LF fixture into CRLF before the CLI sees it.
+    return subprocess.CompletedProcess(
+        result.args, result.returncode,
+        result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))
 
 
 def _cli_probe(python: str, env: dict) -> list[dict]:

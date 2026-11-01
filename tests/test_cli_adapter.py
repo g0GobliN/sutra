@@ -24,9 +24,15 @@ SHARED_PAYLOAD = "\n".join(SHARED_LINES) + "\n"
 
 
 def run_cli(args, stdin_text=None, timeout=60, env=None):
-    return subprocess.run(
-        [sys.executable, str(CLI), *args], input=stdin_text, capture_output=True,
-        text=True, timeout=timeout, cwd=str(ROOT), env=env)
+    result = subprocess.run(
+        [sys.executable, str(CLI), *args],
+        input=None if stdin_text is None else stdin_text.encode("utf-8"),
+        capture_output=True, timeout=timeout, cwd=str(ROOT), env=env)
+    # Bytes preserve the fixture exactly on Windows; text-mode pipes would
+    # translate LF to CRLF and make a contract comparison platform-dependent.
+    return subprocess.CompletedProcess(
+        result.args, result.returncode,
+        result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))
 
 
 def run_cli_bytes(args, stdin_bytes=b"", timeout=60, env=None):
