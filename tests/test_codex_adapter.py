@@ -81,6 +81,12 @@ def _read_hooks():
     return json.loads(codex.hooks_path().read_text(encoding="utf-8"))
 
 
+def _write_mcp(python=sys.executable):
+    codex.config_path().write_text(
+        f'[mcp_servers.sutra]\ncommand = "{python}"\n'
+        'args = ["-m", "sutra.mcp"]\n', encoding="utf-8")
+
+
 def test_install_writes_the_hook_and_registers_mcp(isolated, monkeypatch, capsys):
     state = _fake_list(monkeypatch, [])
     assert codex.install(python=sys.executable) == 0
@@ -162,7 +168,7 @@ def test_dry_run_writes_nothing_and_calls_no_mutation(isolated, monkeypatch, cap
     monkeypatch.setattr(codex, "_run", list_only)
     assert codex.install(python=sys.executable, dry_run=True) == 0
     assert not codex.hooks_path().exists()
-    assert calls == [["mcp", "list", "--json"]]
+    assert calls == [], "dry run must not invoke Codex at all"
     output = capsys.readouterr().out
     assert "would add the SUTRA PostToolUse hook" in output
     assert "would run: codex mcp add" in output
@@ -197,6 +203,7 @@ def test_doctor_reports_missing_hook_as_a_failure(isolated, monkeypatch):
 def test_doctor_is_limited_until_the_hook_is_trusted(isolated, monkeypatch):
     _fake_list(monkeypatch, [_entry(python=sys.executable)])
     assert codex.install(python=sys.executable) == 0
+    _write_mcp()
     report = codex.doctor(python=sys.executable)
     assert report["ok"] is True
     assert report["status"] == "limited"
@@ -211,6 +218,8 @@ def test_doctor_is_ok_once_codex_records_trust(isolated, monkeypatch):
     assert codex.install(python=sys.executable) == 0
     key = f"{codex.hooks_path()}:post_tool_use:0:0"
     codex.config_path().write_text(
+        f'[mcp_servers.sutra]\ncommand = "{sys.executable}"\n'
+        'args = ["-m", "sutra.mcp"]\n'
         f'[hooks.state."{key}"]\ntrusted_hash = "sha256:test"\n', encoding="utf-8")
     report = codex.doctor(python=sys.executable)
     assert report["ok"] is True
@@ -229,6 +238,19 @@ def test_status_never_claims_automatic_without_trust(isolated, monkeypatch):
     assert report["automatic"] is False
     # The tier names the host capability; automatic is the installed proof.
     assert report["tier"] == "automatic"
+
+
+def test_status_and_doctor_never_run_codex(isolated, monkeypatch):
+    _fake_list(monkeypatch, [])
+    assert codex.install(python=sys.executable) == 0
+    _write_mcp()
+    monkeypatch.setattr(codex, "_run", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("diagnosis must not invoke the Codex CLI")))
+    report = codex.status()
+    assert report["mcp"] == "configured"
+    doctor = codex.doctor(python=sys.executable)
+    assert doctor["status"] == "limited", doctor
+    assert doctor["mcp"] == "configured"
 
 
 def test_cli_status_prints_hook_and_trust(isolated, monkeypatch, capsys):

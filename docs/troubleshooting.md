@@ -28,6 +28,18 @@ later re-discovery cycles, not an availability gate. If a session reports
 `sutra_restore` unknown while the toolset is enabled, the cause is Tool Search
 deferral, not timing.
 
+## Doctor and status
+
+| Symptom | Likely cause | What to do |
+|---|---|---|
+| `claude` shows `mcp=not configured` after an old install | the MCP entry was written by a different profile, or `.claude.json` was removed | run `sutra install --client claude`; doctor reads `.claude.json` without invoking the Claude CLI |
+| `codex` shows `status=limited` | the hook is installed but Codex has not recorded `/hooks` trust | run `/hooks`, trust the SUTRA `PostToolUse` entry, then `sutra doctor --client codex` |
+| `opencode` shows `host=skip` / `status=partial` | the generated plugin is present, but `opencode` is not on `PATH` | install OpenCode or put its binary on `PATH`; the plugin's Python/Node contract can still pass |
+| one host reports an error while the rest pass | that host's config or runtime is broken | fix that host; `doctor` continues checking the others |
+
+`doctor` and `status` do not edit host configuration or create backups. Their
+probes use temporary stores; no user recovery entries are read or written.
+
 ## Plugin state
 
 | Symptom | Likely cause | What to do |

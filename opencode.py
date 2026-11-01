@@ -305,6 +305,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
             _check("cli_roundtrip", "skip", "plugin is not present"),
             _check("protected_output", "skip", "plugin is not present"),
             _check("plugin_hook", "skip", "plugin is not present"),
+            _check("host", "skip", "plugin is not present"),
         ])
         report["probe"] = "plugin is not installed"
         return report
@@ -315,10 +316,14 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
             _check("cli_roundtrip", "skip", "plugin is foreign"),
             _check("protected_output", "skip", "plugin is foreign"),
             _check("plugin_hook", "skip", "plugin is foreign"),
+            _check("host", "skip", "plugin is foreign"),
         ])
         report["probe"] = "foreign plugin; refusing to execute it"
         return report
     checks.append(_check("plugin", "pass", f"generated plugin at {plugin}"))
+    host = shutil.which("opencode")
+    checks.append(_check("host", "pass" if host else "skip",
+                         host or "the opencode executable is not on PATH"))
     try:
         python = _embedded(text, "PYTHON")
         home = pathlib.Path(_embedded(text, "SUTRA_HOME"))
@@ -328,6 +333,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
             _check("cli_roundtrip", "skip", "interpreter is not known"),
             _check("protected_output", "skip", "interpreter is not known"),
             _check("plugin_hook", "skip", "interpreter is not known"),
+            _check("host", "skip", "interpreter is not known"),
         ])
         report["interpreter"] = None
         report["probe"] = "generated plugin has no usable interpreter"
@@ -340,6 +346,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
             _check("cli_roundtrip", "skip", "interpreter does not resolve"),
             _check("protected_output", "skip", "interpreter does not resolve"),
             _check("plugin_hook", "skip", "interpreter does not resolve"),
+            _check("host", "skip", "interpreter does not resolve"),
         ])
         report["probe"] = "the configuring interpreter no longer exists"
         return report
@@ -359,6 +366,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
             _check("cli_roundtrip", "skip", "sutra.cli is not importable"),
             _check("protected_output", "skip", "sutra.cli is not importable"),
             _check("plugin_hook", "skip", "sutra.cli is not importable"),
+            _check("host", "skip", "sutra.cli is not importable"),
         ])
         report["probe"] = "the generated interpreter cannot import sutra.cli"
         return report

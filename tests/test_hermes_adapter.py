@@ -117,6 +117,17 @@ def test_doctor_reports_missing_or_disabled_plugin(isolated, monkeypatch):
     assert report["automatic"] is True
 
 
+def test_doctor_reports_a_stale_plugin_when_the_executable_is_missing(
+        isolated, monkeypatch, capsys):
+    _fake_runner(monkeypatch)
+    assert hermes.install() == 0
+    monkeypatch.setattr(hermes, "binary", lambda: None)
+    report = hermes.doctor()
+    assert report["status"] == "fail"
+    assert report["ok"] is False
+    assert "executable is missing" in report["probe"]
+
+
 def test_dry_run_writes_nothing(isolated, monkeypatch, capsys):
     calls = _fake_runner(monkeypatch)
     assert hermes.install(dry_run=True) == 0

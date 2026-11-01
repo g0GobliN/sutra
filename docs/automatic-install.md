@@ -85,9 +85,13 @@ settings write is atomic, uses a timestamped `.bak-*` backup, and a second
 install is a no-op. A different existing `sutra` MCP entry is refused rather
 than overwritten; `sutra uninstall --client claude` is the documented repair.
 
-`claude mcp get sutra` must report `Status: ✔ Connected`. The installer does not
-claim success from a written file alone: after both edits it runs the same probe
-as `sutra doctor`.
+The installer does not claim success from a written file alone: after both edits
+it asks Claude Code for the MCP status, then runs the same probe as
+`sutra doctor`. Diagnosis is read-only: `sutra status` and `sutra doctor` read
+the user-scope entry from `.claude.json` and never run `claude mcp get` (which
+creates the file when absent). The doctor starts the configured MCP command and
+restores the probe id through it, so a configured but unusable server is a
+failure, not a green label.
 
 ### The host limit that matters
 
@@ -275,9 +279,11 @@ sutra doctor --json                  # machine-readable list of reports
 ```
 
 `doctor` does not accept a configuration file as proof. For Claude Code it
-checks the hook is present in the exact settings file, asks Claude Code whether
-the MCP server is connected, runs the configured hook command on a synthetic
-persisted-output event, then restores the marker's id through the recovery seam.
+checks the hook is present in the exact settings file, reads the MCP entry from
+`.claude.json` without invoking the Claude CLI, runs the configured hook command
+on a synthetic persisted-output event, then starts the configured MCP server and
+restores the marker's id through it. Status and doctor create no files and make
+no backups in the user's config.
 
 For OpenCode it checks the generated plugin at the global path, parses the
 interpreter baked into it, confirms that interpreter can import `sutra.cli`,

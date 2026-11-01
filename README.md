@@ -161,7 +161,7 @@ The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrela
 ```bash
 python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/pip install sutra-agent
-~/.sutra-venv/bin/sutra --version        # sutra 0.4.1
+~/.sutra-venv/bin/sutra --version        # sutra 0.4.2
 
 ~/.sutra-venv/bin/sutra detect           # read-only: what is installed
 ~/.sutra-venv/bin/sutra install --dry-run
@@ -176,7 +176,7 @@ git clone https://github.com/g0GobliN/sutra
 ~/.sutra-venv/bin/pip install ./sutra
 ```
 
-`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
+`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. The command ends with a per-client summary (`configured`, `active`, `requires /hooks trust`, `skipped` or `failed`) and the next verification step. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
 
 ```bash
 ~/.sutra-venv/bin/sutra uninstall        # remove only SUTRA-owned entries
