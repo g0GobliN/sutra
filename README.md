@@ -161,7 +161,7 @@ The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrela
 ```bash
 python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/pip install sutra-agent
-~/.sutra-venv/bin/sutra --version        # sutra 0.4.0
+~/.sutra-venv/bin/sutra --version        # sutra 0.4.1
 
 ~/.sutra-venv/bin/sutra detect           # read-only: what is installed
 ~/.sutra-venv/bin/sutra install --dry-run

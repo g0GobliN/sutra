@@ -473,23 +473,22 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
               file=sys.stderr)
         return 1
 
-    existing, detail = _mcp_get()
-    if existing and not _mcp_matches(detail, python):
-        print("sutra: a different sutra MCP entry already exists in Claude Code; "
-              "run `sutra uninstall --client claude` first", file=sys.stderr)
-        return 1
-
     if dry_run:
+        # The Claude CLI creates ~/.claude.json even for `mcp get`, so a dry run
+        # must not invoke it. Report the intended action instead.
         if changed:
             print(f"sutra: dry run, {path} would gain the PostToolUse hook "
                   f"({command} {' '.join(args)})")
         else:
             print(f"sutra: {path} already has the PostToolUse hook")
-        if existing:
-            print("sutra: dry run, the sutra MCP server is already registered")
-        else:
-            print(f"sutra: dry run, would run: claude {' '.join(_mcp_add_args(python))}")
+        print(f"sutra: dry run, would run if absent: claude {' '.join(_mcp_add_args(python))}")
         return 0
+
+    existing, detail = _mcp_get()
+    if existing and not _mcp_matches(detail, python):
+        print("sutra: a different sutra MCP entry already exists in Claude Code; "
+              "run `sutra uninstall --client claude` first", file=sys.stderr)
+        return 1
 
     if changed:
         try:
@@ -562,13 +561,14 @@ def uninstall(*, python: str | None = None, dry_run: bool = False) -> int:
               file=sys.stderr)
         return 1
 
-    existing, _ = _mcp_get()
     if dry_run:
+        # Do not ask the Claude CLI: `mcp get` creates ~/.claude.json.
         if changed:
             print(f"sutra: dry run, {path} would lose the PostToolUse hook")
-        if existing:
-            print("sutra: dry run, would remove the sutra MCP server")
+        print("sutra: dry run, would remove the sutra MCP server if registered")
         return 0
+
+    existing, _ = _mcp_get()
 
     if changed:
         try:

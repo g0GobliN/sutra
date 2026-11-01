@@ -1,6 +1,17 @@
 # Changelog
 
-## 0.4.0 (unreleased)
+## 0.4.1 (2026-11-01)
+
+### Fixed
+
+- `sutra install --dry-run --client claude` invoked `claude mcp get` before
+  printing its preview; the Claude CLI creates `~/.claude.json` even for that
+  read, so a dry run left a file behind. Dry runs for install and uninstall now
+  never invoke the Claude CLI and state the intended MCP action instead. The
+  regression test fails on any CLI call and checks that no `.claude.json` is
+  created.
+
+## 0.4.0 (2026-11-01)
 
 ### Added
 

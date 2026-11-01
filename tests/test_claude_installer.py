@@ -186,13 +186,14 @@ def test_a_failed_mcp_registration_removes_a_settings_file_it_created(
 
 def test_dry_run_writes_nothing_and_runs_no_claude(isolated, monkeypatch, capsys):
     def fake_run(args, timeout=60):
-        if args[:2] == ["mcp", "get"]:
-            return _completed(returncode=1, stdout="not found\n")
         raise AssertionError(f"dry run must not call {args}")
 
     _fake_runner(monkeypatch, fake_run)
+    assert cli.main(["uninstall", "--client", "claude", "--dry-run"]) == 0
+    assert not (isolated / ".claude.json").exists()
     assert cli.main(["install", "--client", "claude", "--dry-run"]) == 0
     assert not claude_code.settings_path().exists()
+    assert not (isolated / ".claude.json").exists()
     output = capsys.readouterr().out
     assert "dry run" in output and "PostToolUse" in output and "claude mcp add" in output
 
