@@ -169,6 +169,19 @@ def test_the_build_uploads_one_checksummed_artifact():
     assert "dist/SHA256SUMS" not in build
 
 
+def test_the_pypi_verification_checks_served_files_and_retries():
+    verify = _job_blocks()["verify-pypi"]
+    assert "actions/download-artifact@v4" in verify
+    assert "sha256sum -c SHA256SUMS" in verify
+    assert "https://pypi.org/simple/" in verify
+    assert "sutra-agent==${VERSION}" in verify
+    assert "for attempt in $(seq 1 30)" in verify, (
+        "the JSON API can lead the simple index; pip resolution must be retried")
+    assert "sleep 10" in verify
+    assert "SHA256SUMS" in verify
+    assert "digests" in verify and "sha256" in verify
+
+
 def test_the_release_document_describes_the_same_path():
     text = RELEASE_DOC.read_text(encoding="utf-8")
     assert "SHA256SUMS" in text

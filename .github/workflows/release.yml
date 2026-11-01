@@ -339,9 +339,16 @@ jobs:
     env:
       VERSION: ${{ needs.build.outputs.version }}
     steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - name: Verify the promoted files are the verified files
+        run: |
+          set -euo pipefail
+          sha256sum -c SHA256SUMS
       - name: Wait until PyPI serves the release
         run: |
           python - <<'PY'
@@ -365,6 +372,43 @@ jobs:
         run: |
           set -euo pipefail
           python -m venv venv
-          ./venv/bin/pip install --quiet "sutra-agent==${VERSION}"
+          installed=0
+          # PyPI's JSON API can list a release before the simple index serves
+          # it; retry the real resolution instead of trusting that signal.
+          for attempt in $(seq 1 30); do
+            if ./venv/bin/pip install --quiet --index-url https://pypi.org/simple/ \
+                "sutra-agent==${VERSION}"; then
+              installed=1
+              break
+            fi
+            echo "PyPI simple index does not serve sutra-agent==${VERSION} yet (attempt ${attempt}/30)"
+            sleep 10
+          done
+          if [ "$installed" != 1 ]; then
+            echo "could not install sutra-agent==${VERSION} from PyPI" >&2
+            exit 1
+          fi
           ./venv/bin/sutra --version
           ./venv/bin/sutra config > /dev/null
+      - name: PyPI serves the exact built files
+        run: |
+          python - <<'PY'
+          import json, os, pathlib, sys, urllib.request
+
+          expected = {}
+          for line in pathlib.Path("SHA256SUMS").read_text(encoding="utf-8").splitlines():
+              digest, name = line.split()
+              expected[pathlib.PurePosixPath(name).name] = digest
+
+          url = f"https://pypi.org/pypi/sutra-agent/{os.environ['VERSION']}/json"
+          with urllib.request.urlopen(url, timeout=60) as response:
+              data = json.load(response)
+          served = {item["filename"]: item["digests"]["sha256"]
+                    for item in data.get("urls", [])}
+          if set(served) != set(expected):
+              sys.exit(f"pypi serves {sorted(served)}, the build is {sorted(expected)}")
+          for name, digest in sorted(served.items()):
+              if digest != expected[name]:
+                  sys.exit(f"{name}: pypi sha256 {digest} != built {expected[name]}")
+          print("pypi serves the exact built files:", ", ".join(sorted(served)))
+          PY

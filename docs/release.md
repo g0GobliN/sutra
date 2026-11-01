@@ -134,8 +134,10 @@ Describe user-visible behaviour, not the internal sequence of commits.
    - `ruff check .`;
    - `hermes plugins validate .` at the pinned Hermes revision;
    - the `package` job, which builds the sdist and wheel, runs
-     `twine check --strict`, validates the archive contents and installs the
-     wheel in a clean environment;
+     `twine check --strict`, validates the archive contents, installs the
+     wheel in a clean environment and exercises the installed CLI: `detect`,
+     `doctor`, `status`, all four adapter dry runs, and an OpenCode
+     install/reinstall/uninstall round trip;
    - the hyphen-checkout job, which proves the suite runs from a directory whose
      name is not a valid Python module name (as GitHub tarballs extract).
 5. Merge the pull request. The release is built from a tag on the merged commit,
@@ -240,10 +242,12 @@ Run **Actions → Release → Run workflow** again with the same tag,
 job stops depending on `verify-testpypi`, starts rebuilding, or loses the
 checksum verification.
 
-The final job installs `sutra-agent==X.Y.Z` from PyPI into a clean environment
-and runs `sutra --version` and `sutra config`, so a release that uploaded
-successfully but cannot be installed fails the workflow instead of passing
-silently.
+The final job downloads the verified `dist` artifact, re-checks
+`SHA256SUMS`, installs `sutra-agent==X.Y.Z` from PyPI with a bounded retry for
+simple-index propagation, and runs `sutra --version` and `sutra config`. It then
+compares the wheel and sdist hashes PyPI serves with the built manifest, so a
+successful upload that cannot be installed, or whose served bytes differ, fails
+the workflow instead of passing silently.
 
 ## Post-publication verification
 
@@ -314,8 +318,8 @@ silently.
 - [ ] TestPyPI rehearsal passed, including install-back verification.
 - [ ] `pip install --no-deps --index-url https://test.pypi.org/simple/
       sutra-agent==X.Y.Z` reports the expected version.
-- [ ] Workflow artifact checksums verified before the TestPyPI upload and again
-      before production.
+- [ ] Workflow artifact checksums verified before the TestPyPI upload, before
+      production and against the hashes PyPI serves afterwards.
 - [ ] Production run approved for the `pypi` environment, promoting the same
       `dist` artifact without a rebuild.
 - [ ] PyPI page renders and the published version installs and runs.
