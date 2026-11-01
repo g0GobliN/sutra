@@ -156,8 +156,9 @@ billing measurement.
 - The `args` form of a hook handler is verified on 2.1.268, the version tested
   here. Older releases may use a different handler schema; the installer does
   not edit project-scope settings, and no claim is made for unexercised versions.
-- Windows is not covered by CI or by this probe. The path and `O_NOFOLLOW` code
-  use POSIX facilities, with `O_NOFOLLOW` omitted where the platform lacks it.
+- Windows CI covers the core, CLI, wheel and OpenCode adapter; this live Claude
+  probe remains Linux-only. `O_NOFOLLOW` is omitted where the platform lacks it,
+  and Windows access is governed by ACLs rather than POSIX mode bits.
 - MCP must be connected for `sutra_restore` to work. If the MCP registration
   fails or the server cannot connect, install returns a non-zero status and
   rolls back both the MCP entry it added and the hook; it does not leave a
@@ -199,7 +200,8 @@ uninstall, and recovery; OpenCode itself is not run in CI.
 Limitations: tested on OpenCode 1.19.5 only; a plugin process failure is
 fail-open (the original result reaches the model), so no compression is
 guaranteed if the interpreter disappears; the 2.5 s subprocess timeout bounds
-each oversized result; Windows was not exercised.
+each oversized result. Windows CI exercises install and the CLI contract, not
+a live OpenCode model session.
 
 ### Codex CLI
 
