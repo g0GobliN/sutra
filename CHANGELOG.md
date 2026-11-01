@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.4.2 (unreleased)
+
+### Fixed
+
+- **Diagnosis no longer invokes host CLIs that mutate configuration.** Claude
+  Code `status` and `doctor` read the user-scope MCP entry from `.claude.json`
+  instead of running `claude mcp get` (which creates that file). Codex `status`
+  and `doctor` read `config.toml` instead of running `codex mcp list`. Claude's
+  doctor now starts the configured MCP server and restores the probe id through
+  it, proving the recovery path rather than merely reading a label.
+- **One broken adapter no longer hides the others.** `sutra install` and
+  `sutra doctor` catch per-client exceptions, report that client as failed and
+  continue with the remaining hosts. A non-zero result is preserved.
+- **`sutra status` counts installed hooks and plugins as configured.** A Codex
+  hook or Hermes/OpenCode plugin previously returned a failure status when MCP
+  was not separately registered.
+- **Codex dry-run no longer invokes the Codex CLI.** It reads `config.toml` for
+  the existing MCP entry and prints the intended action.
+- **Doctor states are honest about missing hosts.** Claude Code fails when its
+  executable is gone; Hermes reports a stale plugin without an executable as a
+  failure; OpenCode reports a missing host as `partial` instead of a green
+  pass.
+
+### Added
+
+- `sutra install` prints a concise per-client summary with `configured`,
+  `active`, `requires /hooks trust`, `hook-only`, `skipped` or `failed`, plus
+  the next verification command. `--dry-run` prints the same summary without
+  claiming a change.
+- Regression tests for read-only diagnosis, Codex dry-run, per-adapter failure
+  isolation, status classification and the OpenCode missing-host state.
+
 ## 0.4.1 (2026-11-01)
 
 ### Fixed

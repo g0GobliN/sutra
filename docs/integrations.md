@@ -19,7 +19,7 @@ explicitly; the original tool result has already reached the model.
 | Surface | Automatic? | Why |
 |---|---|---|
 | Hermes Agent | **Yes** | Native `tool_execution` middleware; the agent never calls a compression tool. |
-| Claude Code | **Yes, with the `PostToolUse` hook installed** | The hook returns `hookSpecificOutput.updatedToolOutput`, which Claude Code uses in place of the tool result. Hook-level tested; a live authenticated Claude Code session has not been run here. |
+| Claude Code | **Yes, with the `PostToolUse` hook installed** | The hook returns `hookSpecificOutput.updatedToolOutput`, which Claude Code uses in place of the tool result. Hook-level tested and live-host tested with a scripted provider; no live model was called. |
 | MCP clients (Claude Code without the hook, Cursor, Codex, …) | **No** | MCP has no server-side hook for another server's result. A server sees only requests addressed to itself. The agent must call `sutra_compress`, or the host must provide a client-side hook/proxy. |
 | Codex CLI | **Yes — with the trusted `PostToolUse` hook** | Codex 0.166.0's `PostToolUse` feedback (`continue: false`) replaces the model-visible tool result; `sutra install --client codex` writes that hook and the MCP recovery entry. Codex requires a one-time `/hooks` trust review. |
 | CLI | **No** | It is a subprocess filter. A shell pipeline compresses a stream, not an agent's tool result. |

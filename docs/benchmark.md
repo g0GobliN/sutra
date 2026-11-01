@@ -263,6 +263,27 @@ multi-second outliers under contention; the fastest operations (a plain `bytes`
 slice, a refused `full`) are tens of milliseconds. See
 [docs/recovery.md](recovery.md#execution-time-envelope).
 
+## Host-path latency (measured 2026-11-01)
+
+Source checkout, Python 3.13 on Linux, isolated local store, default limits,
+median of three runs. `core.process_text` is the shared seam; the hook figure
+is a subprocess invocation of the installed Claude hook with the event JSON on
+stdin. No model or provider was contacted.
+
+| Input | Compressed | Saved | Core compress | Restore | Hook subprocess |
+|---:|---:|---:|---:|---:|---:|
+| 1 KB | 1 KB (unchanged, below threshold) | 0.0% | 0.26 ms | — | not run |
+| 10 KB | 10 KB (unchanged, below threshold) | 0.0% | 0.69 ms | — | 188.1 ms |
+| 100 KB | 893 B | 99.1% | 22.09 ms | 0.91 ms | 199.0 ms |
+| 1 MB | 907 B | 99.9% | 170.31 ms | 8.82 ms | 412.2 ms |
+| 5 MB | 912 B | 100.0% | 912.17 ms | 49.64 ms | 1,167.1 ms |
+
+The 100 KB–5 MB fixtures use repeated log lines, so the reductions are
+fixture-specific and larger than the mixed eight-fixture result above. The hook
+number includes Python startup and JSON transport; the host pays that once per
+eligible result, not per turn. The 10 KB hook payload is below the 24,576-byte
+threshold and is returned unchanged, which is why it has no rewrite.
+
 ## Not measured
 
 | Quantity | Why not | What would be needed |
