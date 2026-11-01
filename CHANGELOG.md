@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.4.2 (unreleased)
+## 0.4.2 (2026-11-01)
+
+Published to PyPI on 2026-11-01. The immutable `v0.4.2` tag was cut before
+publication, so its copy of this heading still says `(unreleased)`; this
+post-release update is on `main` and does not move the tag.
 
 ### Fixed
 
