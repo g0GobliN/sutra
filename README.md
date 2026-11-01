@@ -129,6 +129,8 @@ What the numbers are — and are not:
 - Not provider input tokens, not prompt-cache effects, not an invoice, and not a live-agent task-success score. No model was called for any number here.
 - 8/8 proves the clue is retained and retrievable; it does not prove an agent will ask for it.
 
+The [effectiveness pilot](docs/effectiveness-pilot.md) separately measured 23 deterministic fixtures: 91.01% byte and tokenizer-estimated token reduction on the 17 rewritten fixtures, 0.00% on six protection cases, 17/17 byte-exact restores, and 18/18 host-adapter checks. It did not call a model; live task success, provider input-token reduction and live host ranking remain unmeasured.
+
 Method, fixtures, per-phase timings, memory, recovery costs and reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). The frozen live-model A/B protocol is in [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md); it has not been run.
 
 ## Safety, recovery and trust
