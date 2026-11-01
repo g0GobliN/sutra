@@ -36,9 +36,12 @@ def big():
 
 def run_hook(payload=None, *, raw=None, env=None, timeout=60):
     data = raw if raw is not None else json.dumps(payload)
-    return subprocess.run(
-        [sys.executable, str(HOOK)], input=data, capture_output=True, text=True,
+    result = subprocess.run(
+        [sys.executable, str(HOOK)], input=data.encode("utf-8"), capture_output=True,
         timeout=timeout, cwd=str(ROOT), env=env)
+    return subprocess.CompletedProcess(
+        result.args, result.returncode,
+        result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))
 
 
 def run_hook_bytes(raw: bytes, env=None, timeout=60):
@@ -224,9 +227,9 @@ def persisted_payload(tmp_path, *, full=None, declared=None, tool="Bash",
     results = session / "tool-results"
     results.mkdir(parents=True, exist_ok=True)
     transcript = root / "session.jsonl"
-    transcript.write_text("{}\n", encoding="utf-8")
+    transcript.write_bytes(b"{}\n")
     path = results / "result.txt"
-    path.write_text(full, encoding="utf-8")
+    path.write_bytes(full.encode("utf-8"))
     if link:
         target = path.with_suffix(".real")
         path.rename(target)
