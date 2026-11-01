@@ -28,6 +28,7 @@ need the detail behind a claim.
 | Document | Answers |
 |---|---|
 | [benchmark.md](benchmark.md) | Fixtures, method, timings, memory and reproduction |
+| [effectiveness-pilot.md](effectiveness-pilot.md) | The completed deterministic and host-adapter pilot, with live metrics marked unavailable |
 | [ab-benchmark.md](ab-benchmark.md) | The frozen live-model A/B protocol (not yet run) |
 
 ## Operations and contribution
