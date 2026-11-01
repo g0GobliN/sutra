@@ -115,6 +115,9 @@ def test_the_testpypi_verification_checks_the_served_files():
     assert "SHA256SUMS" in verify, "the served files must be compared with the build"
     assert "digests" in verify and "sha256" in verify
     assert "sutra --version" in verify
+    assert "for attempt in $(seq 1 30)" in verify, (
+        "the JSON API can lead the simple index; pip resolution must be retried")
+    assert "sleep 10" in verify
 
 
 def test_production_promotes_and_never_rebuilds():
