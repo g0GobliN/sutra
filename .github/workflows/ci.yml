@@ -7,6 +7,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -74,6 +77,72 @@ jobs:
           ./venv/bin/sutra --version
           ./venv/bin/python -c "import sutra; print(sutra.__version__, sutra.__file__)"
           ./venv/bin/sutra config > /dev/null
+      - name: Exercise the installed CLI across all four adapters
+        env:
+          CLI_HOME: ${{ runner.temp }}/cli-home
+          CLI_OUT: ${{ runner.temp }}/cli-output
+        run: |
+          set -euo pipefail
+          rm -rf "$CLI_HOME" "$CLI_OUT"
+          mkdir -p "$CLI_HOME" "$CLI_OUT/bin"
+          export HOME="$CLI_HOME"
+          export XDG_CONFIG_HOME="$CLI_HOME/.config"
+          export CLAUDE_CONFIG_DIR="$CLI_HOME/.claude"
+          export CODEX_HOME="$CLI_HOME/.codex"
+          export HERMES_HOME="$CLI_HOME/.hermes"
+          # Keep host discovery deterministic on a runner that may have one of
+          # these CLIs preinstalled; the contract below only tests SUTRA.
+          export PATH="/usr/bin:/bin"
+          ./venv/bin/sutra detect > "$CLI_OUT/detect.txt"
+          for client in hermes claude opencode codex; do
+            grep -q "^$client " "$CLI_OUT/detect.txt"
+          done
+          ./venv/bin/sutra doctor --json > "$CLI_OUT/doctor.json"
+          ./venv/bin/python - "$CLI_OUT/doctor.json" <<'PY'
+          import json, sys
+          rows = json.load(open(sys.argv[1], encoding="utf-8"))
+          expected = {"hermes", "claude", "opencode", "codex"}
+          assert {row["client"] for row in rows} == expected, rows
+          assert all(row["status"] == "not-installed" for row in rows), rows
+          assert all(row["automatic"] is False for row in rows), rows
+          PY
+
+          # Fake executables make status report all four adapters without
+          # installing or invoking a real host. Dry runs must still write nothing.
+          for client in claude codex hermes opencode; do
+            printf '#!/bin/sh\nexit 0\n' > "$CLI_OUT/bin/$client"
+            chmod +x "$CLI_OUT/bin/$client"
+          done
+          export PATH="$CLI_OUT/bin:$PATH"
+          ./venv/bin/sutra status --json > "$CLI_OUT/status.json" || test $? -eq 1
+          ./venv/bin/python - "$CLI_OUT/status.json" <<'PY'
+          import json, sys
+          rows = json.load(open(sys.argv[1], encoding="utf-8"))
+          expected = {"hermes", "claude", "opencode", "codex"}
+          assert {row["client"] for row in rows} == expected, rows
+          assert all(row["automatic"] is False for row in rows), rows
+          PY
+          before=$(find "$CLI_HOME" -type f -print0 | sort -z | xargs -0 -r sha256sum)
+          for client in claude codex hermes opencode; do
+            ./venv/bin/sutra install --client "$client" --dry-run > "$CLI_OUT/install-$client.txt"
+            grep -q "dry-run summary: $client=" "$CLI_OUT/install-$client.txt"
+            ./venv/bin/sutra uninstall --client "$client" --dry-run > "$CLI_OUT/uninstall-$client.txt"
+          done
+          after=$(find "$CLI_HOME" -type f -print0 | sort -z | xargs -0 -r sha256sum)
+          test "$before" = "$after"
+
+          # OpenCode installs without a host process, so it also exercises a
+          # real install, idempotent reinstall and removal through the wheel.
+          plugin="$XDG_CONFIG_HOME/opencode/plugins/sutra.js"
+          ./venv/bin/sutra install --client opencode > "$CLI_OUT/opencode-install.txt"
+          test -f "$plugin"
+          ./venv/bin/sutra install --client opencode > "$CLI_OUT/opencode-reinstall.txt"
+          test -f "$plugin"
+          ./venv/bin/sutra uninstall --client opencode > "$CLI_OUT/opencode-uninstall.txt"
+          test ! -e "$plugin"
+          ./venv/bin/sutra install --client opencode > "$CLI_OUT/opencode-second-install.txt"
+          test -f "$plugin"
+          ./venv/bin/sutra uninstall --client opencode > /dev/null
 
   # Guards the fix for pytest >= 9 importing the root package's __init__.py:
   # the suite must pass in a checkout whose directory name is not a valid
