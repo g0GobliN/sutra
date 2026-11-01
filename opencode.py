@@ -68,8 +68,10 @@ def _new_file(path: pathlib.Path, text: str) -> None:
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".",
                                      suffix=".tmp")
     try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        # Windows has no fchmod; its mode bits are not the access control.
+        if hasattr(os, "fchmod"):
+            os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         os.replace(temporary, path)
     except BaseException:

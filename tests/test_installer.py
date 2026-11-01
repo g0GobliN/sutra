@@ -203,6 +203,18 @@ def test_a_trailing_comma_is_preserved_only_where_it_existed():
     assert restored_plain == PLAIN_TAIL_CONFIG
 
 
+def test_crlf_config_round_trips_without_rewriting_line_endings(tmp_path):
+    path = tmp_path / "opencode.json"
+    source = (b'{\r\n  "theme": "dark",\r\n  "mcp": {}\r\n}\r\n')
+    path.write_bytes(source)
+    assert cli.main(["install", "--config", str(path)]) == 0
+    installed = path.read_bytes()
+    assert b"\r\n" in installed
+    assert b"\n" not in installed.replace(b"\r\n", b"")
+    assert cli.main(["uninstall", "--config", str(path)]) == 0
+    assert path.read_bytes() == source
+
+
 def test_two_writes_in_one_second_do_not_overwrite_the_earlier_backup(tmp_path, monkeypatch):
     path = tmp_path / "opencode.json"
     path.write_text(JSON_CONFIG, encoding="utf-8")

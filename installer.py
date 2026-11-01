@@ -93,7 +93,10 @@ def _write(path: pathlib.Path, text: str) -> pathlib.Path:
         backup = path.with_name(f"{path.name}.bak-{stamp}-{suffix}")
     shutil.copy2(path, backup)
     temp = path.with_name(path.name + ".sutra-tmp")
-    temp.write_text(text, encoding="utf-8")
+    # newline="" preserves CRLF configs on Windows; text-mode translation here
+    # would rewrite every unrelated line ending.
+    with temp.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
     shutil.copymode(path, temp)
     os.replace(temp, path)
     return backup
@@ -121,7 +124,8 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
             return 1
         print(f"sutra: {path} does not exist; nothing to uninstall")
         return 0
-    text = path.read_text(encoding="utf-8")
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        text = handle.read()
     try:
         updated, changed = (jsonc.with_entry(text, _python()) if installing
                            else jsonc.without_entry(text))
