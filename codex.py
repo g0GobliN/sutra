@@ -123,6 +123,32 @@ def _matches(entry: dict, python: str) -> bool:
     )
 
 
+def _config_entry() -> tuple[dict | None, str | None]:
+    """Read the MCP entry from config.toml without invoking the Codex CLI."""
+    path = config_path()
+    if not path.is_file():
+        return None, "not configured"
+    try:
+        document = tomllib.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, f"{path} is not readable TOML: {exc}"
+    servers = document.get("mcp_servers")
+    if not isinstance(servers, dict):
+        return None, "not configured"
+    entry = servers.get(SERVER_NAME)
+    if not isinstance(entry, dict):
+        return None, "not configured"
+    return {
+        "name": SERVER_NAME,
+        "enabled": entry.get("enabled", True),
+        "transport": {
+            "type": "stdio",
+            "command": entry.get("command"),
+            "args": list(entry.get("args") or []),
+        },
+    }, None
+
+
 # -- hooks.json --------------------------------------------------------------
 
 def _load_hooks(path: pathlib.Path) -> dict:
@@ -298,6 +324,21 @@ def _remove_hook(*, dry_run: bool) -> tuple[int, bool]:
 # -- MCP ---------------------------------------------------------------------
 
 def _install_mcp(python: str, *, dry_run: bool) -> int:
+    command = ["mcp", "add", SERVER_NAME, "--", python, "-m", "sutra.mcp"]
+    if dry_run:
+        entry, error = _config_entry() if config_home().is_dir() else (None, None)
+        if error not in (None, "not configured"):
+            print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+            return 1
+        if entry is not None:
+            if _matches(entry, python):
+                print("sutra: Codex already has the sutra MCP entry; nothing to do")
+                return 0
+            print("sutra: a different sutra MCP entry already exists in Codex; "
+                  "run `sutra uninstall --client codex` first", file=sys.stderr)
+            return 1
+        print(f"sutra: dry run, would run: codex {' '.join(command)}")
+        return 0
     if config_home().is_dir():
         entries, error = _list()
     else:
@@ -313,10 +354,6 @@ def _install_mcp(python: str, *, dry_run: bool) -> int:
         print("sutra: a different sutra MCP entry already exists in Codex; "
               "run `sutra uninstall --client codex` first", file=sys.stderr)
         return 1
-    command = ["mcp", "add", SERVER_NAME, "--", python, "-m", "sutra.mcp"]
-    if dry_run:
-        print(f"sutra: dry run, would run: codex {' '.join(command)}")
-        return 0
     config_home().mkdir(parents=True, exist_ok=True)
     result = _run(command, timeout=60)
     if result is None or result.returncode != 0:
@@ -340,6 +377,16 @@ def _remove_mcp(*, dry_run: bool) -> int:
         return 0
     if not config_home().is_dir():
         print("sutra: Codex has no sutra MCP entry; nothing to do")
+        return 0
+    if dry_run:
+        entry, error = _config_entry()
+        if error not in (None, "not configured"):
+            print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+            return 1
+        if entry is None:
+            print("sutra: Codex has no sutra MCP entry; nothing to do")
+            return 0
+        print("sutra: dry run, would remove the sutra MCP entry from Codex")
         return 0
     entries, error = _list()
     if entries is None:
@@ -380,15 +427,12 @@ def status() -> dict:
     }
     if report["binary"] is None:
         return report
-    if config_home().is_dir():
-        entries, error = _list()
-        if entries is None:
-            report["mcp"] = f"error: {error}"
-        else:
-            entry = _entry(entries)
-            if entry is not None:
-                report["mcp"] = ("configured" if entry.get("enabled", True)
-                                 else "configured, disabled")
+    entry, error = _config_entry()
+    if error not in (None, "not configured"):
+        report["mcp"] = f"error: {error}"
+    elif entry is not None:
+        report["mcp"] = ("configured" if entry.get("enabled", True)
+                         else "configured, disabled")
     return report
 
 
@@ -498,11 +542,10 @@ def doctor(*, python: str | None = None) -> dict:
     if not hook["installed"]:
         report["probe"] = "the SUTRA PostToolUse hook is not installed"
         return report
-    entries, error = _list()
-    if entries is None:
+    entry, error = _config_entry()
+    if error not in (None, "not configured"):
         report["probe"] = f"could not read MCP config: {error}"
         return report
-    entry = _entry(entries)
     if entry is not None:
         report["mcp"] = ("configured" if entry.get("enabled", True)
                          else "configured, disabled")

@@ -47,8 +47,11 @@ def test_doctor_passes_roundtrip_and_protected_output(installed):
     checks = _checks(report)
 
     assert report["ok"] is True, report
-    assert report["status"] == ("pass" if shutil.which("node") else "partial")
+    expected = ("pass" if shutil.which("opencode") and shutil.which("node")
+                else "partial")
+    assert report["status"] == expected
     assert checks["plugin"]["status"] == "pass"
+    assert checks["host"]["status"] == ("pass" if shutil.which("opencode") else "skip")
     assert checks["interpreter"]["status"] == "pass"
     assert checks["cli_roundtrip"]["status"] == "pass"
     assert "compressed and restored" in checks["cli_roundtrip"]["detail"]
@@ -72,7 +75,7 @@ def test_doctor_reports_a_missing_plugin_without_running_anything(tmp_path, monk
     assert checks["plugin"]["status"] == "fail"
     assert all(checks[name]["status"] == "skip"
                for name in ("interpreter", "cli_roundtrip", "protected_output",
-                            "plugin_hook"))
+                            "plugin_hook", "host"))
 
 
 def test_doctor_refuses_a_foreign_plugin(isolated_plugin, tmp_path):
@@ -118,6 +121,8 @@ def test_node_absence_is_skipped_not_a_failure(installed):
     assert report["status"] == "partial"
     assert checks["plugin_hook"]["status"] == "skip"
     assert "node" in checks["plugin_hook"]["detail"]
+    if shutil.which("opencode") is None:
+        assert checks["host"]["status"] == "skip"
 
 
 def test_cli_doctor_passes_opencode_only(installed, tmp_path, monkeypatch, capsys):

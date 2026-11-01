@@ -242,28 +242,54 @@ def test_status_reports_hook_and_mcp_without_writing(isolated, monkeypatch, caps
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _mcp_config(command, args):
+    path = claude_code.config_dir() / ".claude.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"mcpServers": {"sutra": {
+        "type": "stdio", "command": command, "args": args}}}), encoding="utf-8")
+    return path
+
+
 def test_doctor_proves_the_real_hook_compresses_and_restores(isolated, monkeypatch):
-    """The doctor runs the installed hook, not a reimplementation of it."""
+    """The doctor runs the installed hook and the configured MCP server."""
     command, args = sys.executable, [str(ROOT / "scripts" / "sutra-claude-code-hook.py")]
     document = {}
     assert claude_code.add_hook(document, command, args) is True
     _settings(claude_code.settings_path(), document)
+    _mcp_config(sys.executable, [str(ROOT / "scripts" / "sutra-mcp-server.py")])
 
-    def fake_run(arguments, timeout=60):
-        if arguments[:2] == ["mcp", "get"]:
-            return _completed(stdout="Command: /venv/python\nArgs: -m sutra.mcp\n"
-                                      "Status: \u2714 Connected\n")
-        raise AssertionError(arguments)
-
-    _fake_runner(monkeypatch, fake_run)
+    monkeypatch.setattr(claude_code, "_run", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("doctor must not invoke the Claude CLI")))
     report = claude_code.doctor(hook=(command, args))
     assert report["ok"] is True, report
     assert report["hook"] is True
-    assert report["mcp"] == "connected"
+    assert report["mcp"] == "verified"
     assert report["recovered"] is True
     assert report["original_bytes"] > 24_576
     assert report["compressed_bytes"] < report["original_bytes"]
     assert "compressed and restored" in claude_code.format_doctor(report)
+
+
+def test_status_and_doctor_do_not_invoke_claude_or_write_its_config(
+        isolated, monkeypatch):
+    _settings(claude_code.settings_path(), {})
+    path = _mcp_config(sys.executable, ["-m", "sutra.mcp"])
+    before = path.read_bytes()
+    monkeypatch.setattr(claude_code, "_run", lambda *a, **k: (_ for _ in ()).throw(
+        AssertionError("diagnosis must not invoke the Claude CLI")))
+    report = claude_code.status()
+    assert report["mcp"] == "configured"
+    assert path.read_bytes() == before
+    assert not list(isolated.glob(".claude.json.backup.*"))
+
+
+def test_doctor_reports_a_missing_host_even_with_settings(isolated, monkeypatch):
+    _settings(claude_code.settings_path(), {})
+    monkeypatch.setattr(claude_code, "binary", lambda: None)
+    report = claude_code.doctor()
+    assert report["status"] == "fail"
+    assert report["ok"] is False
+    assert "executable is missing" in report["probe"]
 
 
 def test_doctor_reports_a_missing_hook_without_probing(isolated, monkeypatch):

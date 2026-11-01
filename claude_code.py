@@ -266,6 +266,104 @@ def _mcp_get() -> tuple[bool, str]:
     return True, result.stdout
 
 
+def mcp_config_paths() -> list[pathlib.Path]:
+    """Where Claude Code may keep the user-scope MCP registry, read-only."""
+    paths = [config_dir() / ".claude.json", pathlib.Path.home() / ".claude.json"]
+    unique: list[pathlib.Path] = []
+    seen: set[str] = set()
+    for path in paths:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            unique.append(path)
+    return unique
+
+
+def _mcp_entry_readonly() -> tuple[dict | None, str]:
+    """Read the user-scope MCP entry without running the Claude CLI.
+
+    ``claude mcp get`` creates ``.claude.json`` when it does not exist, so
+    status and doctor must not use it. The file is the source of truth, and a
+    missing or malformed file is reported rather than repaired.
+    """
+    for path in mcp_config_paths():
+        try:
+            if not path.is_file():
+                continue
+            if path.stat().st_size > 8 * 1024 * 1024:
+                return None, f"{path} is too large to inspect safely"
+            document = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            return None, f"{path} is not readable JSON: {exc}"
+        if not isinstance(document, dict):
+            return None, f"{path}'s root is not a JSON object"
+        servers = document.get("mcpServers")
+        if not isinstance(servers, dict):
+            continue
+        entry = servers.get(SERVER_NAME)
+        if isinstance(entry, dict):
+            return entry, str(path)
+    return None, "not configured"
+
+
+def _entry_is_sutra(entry: dict) -> bool:
+    args = entry.get("args")
+    if not (isinstance(entry.get("command"), str) and entry.get("command")
+            and isinstance(args, list) and all(isinstance(arg, str) for arg in args)):
+        return False
+    if args[-2:] == ["-m", "sutra.mcp"]:
+        return True
+    # A checkout install documents the bundled server path instead of -m.
+    return len(args) == 1 and pathlib.Path(args[0]).name == "sutra-mcp-server.py"
+
+
+def _mcp_restore_probe(entry: dict, entry_id: str, env: dict) -> tuple[bool, str]:
+    """Start the configured MCP server and restore the probe id through it."""
+    command = entry.get("command")
+    args = entry.get("args")
+    if (not isinstance(command, str) or not command
+            or not isinstance(args, list)
+            or not all(isinstance(arg, str) for arg in args)):
+        return False, "the MCP entry has no usable command and args"
+    initialize = {
+        "jsonrpc": "2.0", "id": 1, "method": "initialize",
+        "params": {"protocolVersion": "2024-11-05", "capabilities": {},
+                   "clientInfo": {"name": "sutra-doctor", "version": "1"}},
+    }
+    call = {
+        "jsonrpc": "2.0", "id": 2, "method": "tools/call",
+        "params": {"name": "sutra_restore",
+                   "arguments": {"id": entry_id, "mode": "search",
+                                 "query": DOCTOR_CLUE, "context": 1}},
+    }
+    payload = "\n".join(json.dumps(item) for item in (initialize, call)) + "\n"
+    try:
+        result = subprocess.run(
+            [command, *args], input=payload, capture_output=True, text=True,
+            timeout=30, env=env)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return False, f"the configured MCP server did not start: {exc}"
+    for line in (result.stdout or "").splitlines():
+        try:
+            response = json.loads(line)
+        except ValueError:
+            continue
+        content = (response.get("result") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for item in content:
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str):
+                continue
+            try:
+                restored = json.loads(item["text"])
+            except ValueError:
+                continue
+            if (restored.get("status") == "ok"
+                    and DOCTOR_CLUE in restored.get("content", "")):
+                return True, "the configured MCP server restored the probe"
+    return False, "the configured MCP server did not restore the probe"
+
+
 def _mcp_matches(text: str, python: str) -> bool:
     """Check the command and args reported by ``claude mcp get``."""
     command = args = None
@@ -368,7 +466,13 @@ def doctor(*, python: str | None = None,
         "mcp": "not configured",
         "probe": "not run",
         "ok": False,
+        "status": "fail",
     }
+    if binary() is None:
+        report.update({"status": "fail",
+                       "probe": "the Claude Code executable is missing; the installed "
+                                "hook and MCP entry cannot be used"})
+        return report
     try:
         document = load_settings(settings_path())
     except ValueError as exc:
@@ -384,9 +488,12 @@ def doctor(*, python: str | None = None,
     else:
         command, args = hook
         report["hook"] = has_hook(document, command, args)
-    existing, detail = _mcp_get()
-    if existing:
-        report["mcp"] = "connected" if _mcp_connected(detail) else "configured, not connected"
+    entry, mcp_detail = _mcp_entry_readonly()
+    if entry is not None:
+        report["mcp"] = "configured" if _entry_is_sutra(entry) else "different command"
+        report["mcp_config"] = mcp_detail
+    elif mcp_detail != "not configured":
+        report["mcp"] = f"error: {mcp_detail}"
     if report["hook"] is not True:
         report["probe"] = "the named hook is not installed in the user settings"
         return report
@@ -437,9 +544,13 @@ def doctor(*, python: str | None = None,
             "probe": ("compressed and restored" if status == "ok"
                       else f"restore status: {status}"),
         })
+        if report["mcp"] == "configured" and entry is not None:
+            verified, detail = _mcp_restore_probe(entry, match.group(1), env)
+            report["mcp"] = "verified" if verified else f"configured, restore failed: {detail}"
         report["ok"] = (report["hook"] is True
-                        and report["mcp"] == "connected"
+                        and report["mcp"] == "verified"
                         and report["recovered"] is True)
+        report["status"] = "pass" if report["ok"] else "fail"
     return report
 
 
@@ -452,7 +563,7 @@ def format_doctor(report: dict) -> str:
                   f"{report.get('compressed_bytes', 0):,} B)")
     return (f"claude: hook={'yes' if report.get('hook') is True else 'no'} "
             f"mcp={report.get('mcp')} automatic={'yes' if report.get('ok') else 'no'} "
-            f"probe={probe}")
+            f"status={report.get('status')} probe={probe}")
 
 
 def install(*, python: str | None = None, dry_run: bool = False) -> int:
@@ -605,7 +716,10 @@ def status() -> dict:
         report["automatic"] = report["hook"] is True
     except ValueError as exc:
         report["hook"] = f"error: {exc}"
-    existing, detail = _mcp_get()
-    if existing:
-        report["mcp"] = "connected" if _mcp_connected(detail) else "configured, not connected"
+    entry, detail = _mcp_entry_readonly()
+    if entry is not None:
+        report["mcp"] = "configured" if _entry_is_sutra(entry) else "different command"
+        report["mcp_config"] = detail
+    elif detail != "not configured":
+        report["mcp"] = f"error: {detail}"
     return report

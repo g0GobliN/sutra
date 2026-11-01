@@ -239,10 +239,15 @@ def doctor() -> dict:
         "status": "fail",
         "probe": "hermes is not installed",
     }
-    if report["binary"] is None:
-        report["status"] = "not-installed"
-        return report
     target = plugin_dir()
+    if report["binary"] is None:
+        if target.exists():
+            report.update({"installed": is_ours(target), "status": "fail",
+                           "probe": "the SUTRA plugin directory exists, but the hermes "
+                                    "executable is missing; the plugin cannot be validated"})
+        else:
+            report["status"] = "not-installed"
+        return report
     if not is_ours(target):
         report["probe"] = "the SUTRA Hermes plugin is not installed"
         return report
