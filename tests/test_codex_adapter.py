@@ -82,8 +82,9 @@ def _read_hooks():
 
 
 def _write_mcp(python=sys.executable):
+    escaped = python.replace("\\", "\\\\")
     codex.config_path().write_text(
-        f'[mcp_servers.sutra]\ncommand = "{python}"\n'
+        f'[mcp_servers.sutra]\ncommand = "{escaped}"\n'
         'args = ["-m", "sutra.mcp"]\n', encoding="utf-8")
 
 
@@ -216,9 +217,9 @@ def test_doctor_is_limited_until_the_hook_is_trusted(isolated, monkeypatch):
 def test_doctor_is_ok_once_codex_records_trust(isolated, monkeypatch):
     _fake_list(monkeypatch, [_entry(python=sys.executable)])
     assert codex.install(python=sys.executable) == 0
-    key = f"{codex.hooks_path()}:post_tool_use:0:0"
+    key = f"{codex.hooks_path()}:post_tool_use:0:0".replace("\\", "\\\\")
     codex.config_path().write_text(
-        f'[mcp_servers.sutra]\ncommand = "{sys.executable}"\n'
+        f'[mcp_servers.sutra]\ncommand = "{sys.executable.replace(chr(92), chr(92) * 2)}"\n'
         'args = ["-m", "sutra.mcp"]\n'
         f'[hooks.state."{key}"]\ntrusted_hash = "sha256:test"\n', encoding="utf-8")
     report = codex.doctor(python=sys.executable)

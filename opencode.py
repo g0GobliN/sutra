@@ -161,9 +161,14 @@ def _embedded(text: str, name: str) -> str:
 
 
 def _cli_call(python: str, args: list[str], stdin: str, env: dict) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [python, "-m", "sutra.cli", *args], input=stdin, capture_output=True,
-        text=True, timeout=30, env=env)
+    result = subprocess.run(
+        [python, "-m", "sutra.cli", *args], input=stdin.encode("utf-8"),
+        capture_output=True, timeout=30, env=env)
+    # Byte pipes preserve protected text on Windows; text mode would turn the
+    # probe's LF fixture into CRLF before the CLI sees it.
+    return subprocess.CompletedProcess(
+        result.args, result.returncode,
+        result.stdout.decode("utf-8"), result.stderr.decode("utf-8"))
 
 
 def _cli_probe(python: str, env: dict) -> list[dict]:

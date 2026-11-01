@@ -399,9 +399,11 @@ def _doctor_payload(root: pathlib.Path) -> tuple[dict, str]:
     lines[len(lines) // 2] = f"CLUE: {DOCTOR_CLUE}"
     full = "\n".join(lines)
     path = results / "result.txt"
-    path.write_text(full, encoding="utf-8")
+    # The declared size is the on-disk byte count; text-mode writes would add
+    # CRLF on Windows and make the host's size check reject its own fixture.
+    path.write_bytes(full.encode("utf-8"))
     transcript = project / "session.jsonl"
-    transcript.write_text("{}\n", encoding="utf-8")
+    transcript.write_bytes(b"{}\n")
     payload = {
         "hook_event_name": HOOK_EVENT,
         "session_id": "sutra-doctor",

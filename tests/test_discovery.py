@@ -22,6 +22,9 @@ def isolated(tmp_path, monkeypatch):
     xdg = tmp_path / "xdg"
     xdg.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    # Path.expanduser uses USERPROFILE on Windows; keep the fixture isolated
+    # from the runner's real profile there too.
+    monkeypatch.setenv("USERPROFILE", str(home))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(xdg))
     monkeypatch.setenv("HERMES_HOME", str(home / ".hermes"))
     monkeypatch.delenv("CLAUDE_CONFIG_DIR", raising=False)
