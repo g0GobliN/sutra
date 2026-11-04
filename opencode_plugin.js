@@ -18,7 +18,7 @@ import { spawn } from "node:child_process"
 
 const PYTHON = __SUTRA_PYTHON__
 const SUTRA_HOME = __SUTRA_HOME__
-const TIMEOUT_MS = 2500
+const TIMEOUT_MS = 15000
 const MAX_BUFFER = 8 * 1024 * 1024
 
 function thresholdBytes() {

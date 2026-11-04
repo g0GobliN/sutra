@@ -67,6 +67,28 @@ def test_install_copies_the_native_plugin_and_enables_it(isolated, monkeypatch, 
     assert hermes.status()["automatic"] is True
 
 
+def test_install_permits_hermes_cold_runtime_preparation(isolated, monkeypatch, capsys):
+    calls = []
+
+    def slow_run(args, timeout=90):
+        calls.append((args, timeout))
+        if args[:2] == ["plugins", "validate"]:
+            if timeout < 180:
+                return None
+            return _completed(stdout="validated\n")
+        if args[:2] == ["plugins", "enable"]:
+            return _completed(stdout="enabled\n")
+        if args[:2] == ["plugins", "show"]:
+            return _completed(stdout="Status: enabled\n")
+        raise AssertionError(args)
+
+    monkeypatch.setattr(hermes, "_run", slow_run)
+    assert hermes.install() == 0
+    validate = [timeout for args, timeout in calls if args[:2] == ["plugins", "validate"]]
+    assert validate and validate[0] >= 180
+    assert "installed and enabled" in capsys.readouterr().out
+
+
 def test_a_foreign_plugin_directory_is_refused(isolated, monkeypatch, capsys):
     _fake_runner(monkeypatch)
     target = hermes.plugin_dir()

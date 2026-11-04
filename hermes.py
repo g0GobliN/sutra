@@ -25,6 +25,9 @@ import time
 PLUGIN_NAME = "sutra"
 MARKER = ".sutra-generated"
 MANIFEST = "plugin.yaml"
+# Hermes prepares its isolated runtime on the first validation and can exceed
+# five minutes on a cold isolated home; allow that preparation to finish.
+VALIDATION_TIMEOUT = 600
 
 
 def binary() -> str | None:
@@ -180,7 +183,7 @@ def install(*, dry_run: bool = False) -> int:
         _restore(target, backup)
         print(f"sutra: could not install the Hermes plugin: {exc}", file=sys.stderr)
         return 1
-    validation = _run(["plugins", "validate", str(target)], timeout=120)
+    validation = _run(["plugins", "validate", str(target)], timeout=VALIDATION_TIMEOUT)
     if validation is None or validation.returncode != 0:
         detail = ((validation.stderr or validation.stdout) if validation else "hermes did not run")
         _restore(target, backup)
@@ -252,7 +255,7 @@ def doctor() -> dict:
         report["probe"] = "the SUTRA Hermes plugin is not installed"
         return report
     report["installed"] = True
-    validation = _run(["plugins", "validate", str(target)], timeout=120)
+    validation = _run(["plugins", "validate", str(target)], timeout=VALIDATION_TIMEOUT)
     if validation is None or validation.returncode != 0:
         detail = ((validation.stderr or validation.stdout) if validation else "hermes did not run")
         report["probe"] = f"Hermes validation failed: {(detail or '').strip()[-300:]}"

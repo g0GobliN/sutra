@@ -9,6 +9,7 @@ scripted-provider run documented in docs/automatic-install.md.
 import json
 import os
 import pathlib
+import shlex
 import shutil
 import stat
 import subprocess
@@ -209,3 +210,43 @@ console.log("opencode plugin ok")
                             timeout=90, cwd=str(tmp_path), env=env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "opencode plugin ok" in result.stdout
+
+
+def test_plugin_hook_allows_a_slow_but_successful_compression(paths, tmp_path):
+    """Regression: a 2.5 s hook bound killed the CLI on a large result and
+    silently failed open, leaving the payload uncompressed."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    _, config = paths
+    home = tmp_path / "home"
+    wrapper = tmp_path / "slow-python"
+    wrapper.write_text(
+        "#!/bin/sh\nsleep 3\nexec " + shlex.quote(sys.executable) + ' "$@"\n',
+        encoding="utf-8")
+    wrapper.chmod(0o755)
+    plugin = tmp_path / "slow-plugin.mjs"
+    plugin.write_text(opencode.render(python=str(wrapper), home=home), encoding="utf-8")
+
+    script = tmp_path / "slow-hook.mjs"
+    script.write_text(f"""
+import assert from "node:assert/strict"
+const plugin = await import({json.dumps(plugin.as_uri())})
+const hooks = await plugin.Sutra({{}})
+const lines = Array.from({{length: 3000}}, (_, i) => `line ${{i}} padding padding`)
+lines[1500] = "CLUE: opencode-slow-token-7Q"
+const output = {{ title: "bash", output: lines.join("\\n"), metadata: {{ exit: 0 }} }}
+await hooks["tool.execute.after"]({{ tool: "bash" }}, output)
+assert.match(output.output, /\\[sutra:/)
+assert.ok(!output.output.includes("opencode-slow-token-7Q"))
+console.log("opencode slow hook ok")
+""", encoding="utf-8")
+    library = tmp_path / "lib"
+    library.mkdir()
+    (library / "sutra").symlink_to(pathlib.Path(__file__).resolve().parents[1],
+                                    target_is_directory=True)
+    env = dict(os.environ, PYTHONPATH=str(library), HERMES_HOME=str(home))
+    result = subprocess.run([node, str(script)], capture_output=True, text=True,
+                            timeout=30, cwd=str(tmp_path), env=env)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "opencode slow hook ok" in result.stdout
