@@ -50,6 +50,14 @@ class FakeCtx:
         self.tools.append(kwargs)
 
 
+def test_recovery_schema_uses_the_deferred_tool_id_argument(sutra):
+    """Hermes' tool_call needs ``id``; ``marker_id`` costs an extra turn."""
+    schema = sutra.recovery.TOOL_SCHEMA
+    assert schema["parameters"]["required"] == ["id"]
+    assert "id" in schema["parameters"]["properties"]
+    assert "marker_id" not in schema["parameters"]["properties"]
+
+
 def test_register_wires_middleware_and_recovery_tool(sutra):
     ctx = FakeCtx()
     sutra.register(ctx)

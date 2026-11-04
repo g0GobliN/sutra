@@ -38,6 +38,9 @@ KIND_TEXT = "text"
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 # Any of these anywhere means "this payload contains a patch": protect all of it.
 _DIFF_RE = re.compile(r"^(diff --git |--- a/|\+\+\+ b/|@@ )", re.M)
+# Hermes' read_file result prefixes every line with ``N|``. A line-numbered
+# diff is still a diff and must remain byte-identical.
+_LINE_NUMBER_PREFIX_RE = re.compile(r"^\d+\|", re.M)
 _TRACEBACK_RE = re.compile(r"^Traceback \(most recent call last\):", re.M)
 # `diff a b` (non-unified) writes change commands like "2c2" plus < / > rows.
 _CHANGE_CMD_RE = re.compile(r"^[0-9]+(?:,[0-9]+)?[acd][0-9]+(?:,[0-9]+)?$", re.M)
@@ -102,15 +105,24 @@ def strip_ansi(text: str) -> str:
 
 def _looks_like_patch(text: str) -> bool:
     """True when the payload *is* a patch (or contains one) and must not move."""
-    if _DIFF_RE.search(text):
-        return True
-    # Unified diff without git prefixes: the first two non-blank lines are the
-    # file headers. `git diff --no-prefix` and plain `diff -u` land here.
-    lines = [line for line in text.splitlines() if line.strip()][:2]
-    if len(lines) == 2 and lines[0].startswith("--- ") and lines[1].startswith("+++ "):
-        return True
-    # Plain `diff a b`: a change command plus removed and added rows.
-    return bool(_CHANGE_CMD_RE.search(text) and _LT_RE.search(text) and _GT_RE.search(text))
+    candidates = [text]
+    unprefixed = _LINE_NUMBER_PREFIX_RE.sub("", text)
+    if unprefixed != text:
+        candidates.append(unprefixed)
+    for candidate in candidates:
+        if _DIFF_RE.search(candidate):
+            return True
+        # Unified diff without git prefixes: the first two non-blank lines are
+        # the file headers. `git diff --no-prefix` and plain `diff -u` land here.
+        lines = [line for line in candidate.splitlines() if line.strip()][:2]
+        if (len(lines) == 2 and lines[0].startswith("--- ")
+                and lines[1].startswith("+++ ")):
+            return True
+        # Plain `diff a b`: a change command plus removed and added rows.
+        if (_CHANGE_CMD_RE.search(candidate) and _LT_RE.search(candidate)
+                and _GT_RE.search(candidate)):
+            return True
+    return False
 
 
 def _parse_json_document(text: str) -> Any | None:

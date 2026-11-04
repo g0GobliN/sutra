@@ -74,6 +74,15 @@ def test_plain_diff_output_is_never_rewritten(sutra):
     assert stats["rule"] == "diff-kept"
 
 
+def test_line_numbered_read_file_diff_is_never_rewritten(sutra):
+    """Hermes read_file prefixes lines with ``N|``; the diff is still protected."""
+    raw = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n" + "+line\n" * 3000
+    text = "\n".join(f"{index + 1}|{line}" for index, line in enumerate(raw.splitlines())) + "\n"
+    out, stats = sutra.compress(text, max_bytes=1000)
+    assert out == text
+    assert stats["rule"] == "diff-kept"
+
+
 def test_a_patch_fragment_protects_the_whole_payload(sutra):
     """Conservative on purpose: we would rather save nothing than cut a patch."""
     log = "\n".join(f"log line {i}" for i in range(4000)) + "\ndiff --git a/x b/x\n"
