@@ -13,6 +13,7 @@ need the detail behind a claim.
 | [automatic-install.md](automatic-install.md) | What `sutra install` changes for each client, with backups and rollback |
 | [universal-integration.md](universal-integration.md) | Host-API evidence: which hook each agent documents, including Codex's PostToolUse feedback contract |
 | [configuration.md](configuration.md) | Every environment variable, default and bound |
+| [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
 
 ## Correctness and recovery
 
@@ -28,6 +29,7 @@ need the detail behind a claim.
 | Document | Answers |
 |---|---|
 | [benchmark.md](benchmark.md) | Fixtures, method, timings, memory and reproduction |
+| [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md) | Model-free Hermes cost replay: definitions, savings, quality and what is not measured |
 | [effectiveness-pilot.md](effectiveness-pilot.md) | The completed deterministic and host-adapter pilot, with live metrics marked unavailable |
 | [ab-benchmark.md](ab-benchmark.md) | The frozen live-model A/B protocol (not yet run) |
 

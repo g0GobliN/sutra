@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.5.0 (unreleased)
+
+### Added
+
+- **Agent cost policy.** A bounded, clearly labelled guidance section is
+  injected through Hermes' documented `register_system_prompt_section` plugin
+  API. `SUTRA_POLICY=off|balanced|aggressive` selects the text; `off` is the
+  default because the replay measures a per-turn prompt cost and no live run
+  has yet shown a behavioural gain. `balanced` is recommended when enabled.
+  The section states that host instructions, the user's task and repository
+  rules take precedence, and names the work that must never be skipped. It is re-resolved per new session, so `off` adds no prompt bytes
+  without editing host configuration. A Hermes build without the API still
+  gets compression and recovery.
+- **Exact-duplicate reuse.** A result that exactly matches an earlier
+  compressed plain-text result in the same session is replaced by a marker
+  quoting the earlier id. The store entry is verified for existence, size,
+  hash and TTL first; diffs, JSON and tracebacks are never replaced. The index
+  is bounded to 64 sessions × 128 digests and is never durable.
+- **Model-free cost replay.** `eval/replay.py` runs eight deterministic Hermes
+  workloads through the real core, store and recovery seam and reports
+  tool-result context tokens, reuse, latency, policy prompt cost and clue
+  retention. It calls no model and makes no provider-cost claim.
+- **`sutra status` reports optimization state.** One quiet line shows
+  compression, policy mode, reuse, recovery availability and the size cap.
+
+### Changed
+
+- README positions SUTRA as agent cost-optimization middleware rather than
+  only a tool-output compressor. No new performance claim is made: the replay
+  numbers are tool-result estimates and the policy's behavioural effect is
+  explicitly not measured.
+- Version 0.5.0.
+
+### Verification
+
+- Public pytest, ruff, the model-free replay and the isolated Hermes plugin
+  validation are recorded in the release pull request. The live-model A/B has
+  still not been run.
+
 ## 0.4.2 (2026-11-01)
 
 Published to PyPI on 2026-11-01. The immutable `v0.4.2` tag was cut before
