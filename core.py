@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import config as _config
-from . import engine, metrics, recovery
+from . import engine, metrics, recovery, reuse as _reuse
 from . import store as _store
 from .engine import Ref
 
@@ -100,6 +100,30 @@ def _failed(text: str, original_bytes: int) -> Outcome:
     return Outcome(False, text, False, None, original_bytes, original_bytes)
 
 
+def _record_reuse(hit: _reuse.Hit, marker: str, *, cfg: _config.Config,
+                  tool_name: str, started: float) -> Outcome:
+    """Serialize one exact-duplicate hit through the compression contract."""
+    marker_bytes = engine.utf8_byte_length(marker) or 0
+    suppressed = max(0, hit.visible_bytes - marker_bytes)
+    metrics.record_reuse("hit", suppressed_bytes=suppressed,
+                         original_bytes=hit.original_bytes)
+    stats = {
+        "changed": True,
+        "rule": "reuse",
+        "original_bytes": hit.original_bytes,
+        "compressed_bytes": marker_bytes,
+        "omitted_bytes": max(0, hit.original_bytes - marker_bytes),
+        "partial": False,
+        "stored": True,
+        "id": hit.id,
+        "fail_open": False,
+        "tool": tool_name,
+        "duration_ms": round((time.perf_counter() - started) * 1000, 2),
+    }
+    _record_compression(stats, cfg)
+    return Outcome(True, marker, True, hit.id, hit.original_bytes, marker_bytes)
+
+
 def process_text(text: str, *, cfg: _config.Config | None = None,
                  tool_name: str = "", session_id: str = "") -> Outcome:
     """Compress one string through the existing engine and store.
@@ -108,6 +132,10 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
     internal failure returns the original text as an unchanged outcome. A
     string that cannot be encoded as UTF-8 is returned untouched with zero
     byte counts: it has no UTF-8 representation to measure or store.
+
+    Exact repeats within one session are served from the reuse index before
+    any compression work: the earlier id is verified against the store first,
+    and anything that fails verification takes the normal path.
     """
     cfg = cfg or _config.resolve()
     original_bytes = engine.utf8_byte_length(text)
@@ -115,6 +143,21 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
         return Outcome(False, text, False, None, 0, 0)
     if not cfg.enabled or should_bypass(tool_name):
         return _failed(text, original_bytes)
+    started = time.perf_counter()
+    try:
+        hit = _reuse.lookup(text, session_id=session_id, cfg=cfg)
+        if hit is not None:
+            marker = _reuse.marker(hit, cfg.store_ttl_hours)
+            marker_bytes = engine.utf8_byte_length(marker) or 0
+            if hit.visible_bytes > marker_bytes:
+                return _record_reuse(hit, marker, cfg=cfg, tool_name=tool_name,
+                                     started=started)
+            # A marker that costs more than the repeat it replaces is not an
+            # optimization; forget it so the digest is not considered again.
+            metrics.record_reuse("skipped")
+            _reuse.forget(session_id, text)
+    except Exception:  # reuse is optional; compression must still run
+        logger.debug("sutra: reuse failed; compressing normally", exc_info=True)
     try:
         out, stats = _compress_and_store(
             text, cfg=cfg, tool_name=tool_name, session_id=session_id)
@@ -122,6 +165,11 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
         logger.exception("sutra: compression failed; returning the original")
         return _failed(text, original_bytes)
     _record_compression(stats, cfg)
+    if (cfg.reuse and stats.get("stored") and stats.get("id")
+            and stats.get("rule") in _reuse.REUSABLE_RULES):
+        _reuse.remember(text, session_id=session_id, entry_id=str(stats["id"]),
+                        visible_bytes=int(stats.get("compressed_bytes") or 0),
+                        cfg=cfg)
     compressed_bytes = stats.get("compressed_bytes")
     if compressed_bytes is None:
         compressed_bytes = engine.utf8_byte_length(out)
