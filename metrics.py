@@ -55,6 +55,13 @@ _COMPRESSION: dict[str, Any] = {
     "fail_open": 0,
     "duration_ms_total": 0.0,
 }
+_REUSE: dict[str, int] = {
+    "lookups": 0,
+    "hits": 0,
+    "skipped": 0,
+    "suppressed_bytes": 0,
+    "original_bytes": 0,
+}
 
 
 def _reason(response: dict[str, Any]) -> str:
@@ -86,6 +93,26 @@ def record_restore(response: dict[str, Any]) -> None:
             logger.info("sutra: restore %s", reason)
     except Exception:  # a metric must never break the tool call
         logger.debug("sutra: could not record the restore metric", exc_info=True)
+
+
+def record_reuse(result: str, *, suppressed_bytes: int = 0,
+                 original_bytes: int = 0) -> None:
+    """Count one exact-duplicate lookup. Never raises.
+
+    ``skipped`` also covers a hit whose marker would be larger than the repeat
+    it replaces: the index is real, but reusing it would not save context.
+    """
+    try:
+        with _LOCK:
+            _REUSE["lookups"] += 1
+            if result == "hit":
+                _REUSE["hits"] += 1
+                _REUSE["suppressed_bytes"] += max(0, int(suppressed_bytes))
+                _REUSE["original_bytes"] += max(0, int(original_bytes))
+            else:
+                _REUSE["skipped"] += 1
+    except Exception:  # a metric must never break the tool call
+        logger.debug("sutra: could not record the reuse metric", exc_info=True)
 
 
 def record_cleanup(report: dict[str, int]) -> None:
@@ -207,13 +234,15 @@ def snapshot(store: Any = None) -> dict[str, Any]:
             cleanup = dict(_CLEANUP)
             compression = dict(_COMPRESSION)
             compression["rules"] = dict(_COMPRESSION["rules"])
+            reuse = dict(_REUSE)
     except Exception:
         compression = {"total": 0, "changed": 0, "unchanged": 0, "rules": {},
                        "original_bytes": 0, "compressed_bytes": 0, "saved_bytes": 0,
                        "omitted_bytes": 0, "partial": 0, "stored": 0, "fail_open": 0,
                        "duration_ms_total": 0.0}
         return {"scope": "process", "scope_note": _SCOPE_NOTE,
-                "compression": compression, "restores": {"total": 0}, "cleanup": {}}
+                "compression": compression, "restores": {"total": 0},
+                "cleanup": {}, "reuse": {}}
     compression["duration_ms_total"] = round(float(compression["duration_ms_total"]), 2)
     data: dict[str, Any] = {
         "scope": "process",
@@ -221,6 +250,7 @@ def snapshot(store: Any = None) -> dict[str, Any]:
         "restores": restores,
         "cleanup": cleanup,
         "compression": compression,
+        "reuse": reuse,
     }
     if store is not None:
         try:
