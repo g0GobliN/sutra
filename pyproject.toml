@@ -7,13 +7,13 @@ build-backend = "setuptools.build_meta"
 # distribution is `sutra-agent`, the import package and commands stay `sutra`.
 name = "sutra-agent"
 dynamic = ["version"]
-description = "Deterministic tool-output reduction for AI agents, preserving the evidence that matters."
+description = "Cost optimization middleware for AI agents: deterministic tool-output reduction, recoverable originals and bounded agent guidance."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Vishal Gurung" }]
-keywords = ["ai-agents", "context-compression", "tool-output", "mcp"]
+keywords = ["ai-agents", "context-compression", "tool-output", "cost-optimization", "mcp"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

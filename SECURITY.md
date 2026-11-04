@@ -12,8 +12,7 @@ stored output, escape the store directory, or make a protected payload
 (diff, patch, traceback) lose content.
 
 Supported versions: the latest published release. At the time of writing that is
-the `0.2.x` line; `0.3.0` is prepared but not yet published. Older lines are not
-patched.
+`0.4.2`; `0.5.0` is prepared but not yet published. Older lines are not patched.
 
 ## What is stored, and where
 
@@ -26,6 +25,19 @@ patched.
 Nothing is sent anywhere. There is no network code in the plugin, no telemetry,
 no model call, and no external service. The stats log never contains tool
 output; the metadata file never contains tool output.
+
+**The agent policy is static SUTRA text.** It is authored in `policy.py`, is
+never built from tool output or user input, and is never written to disk. It is
+registered as one bounded section through the host's documented API; the host
+skips an empty or oversized section. SUTRA does not edit `config.yaml` or any
+host prompt template, and `SUTRA_POLICY=off` makes the section empty for the
+next session.
+
+**The reuse index holds hashes, not content.** It is process memory only: a
+SHA-256 digest, the earlier store id and the earlier visible size, bounded to
+64 sessions × 128 digests. Before an id is quoted, the store entry is checked
+for existence, size, hash and TTL. A failed check falls back to normal
+compression.
 
 **The store can contain secrets**, because tool output does. It is protected by
 filesystem permissions, not encryption. Anyone who can read your user's files

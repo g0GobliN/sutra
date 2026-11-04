@@ -6,7 +6,7 @@
 
 **Less output. More signal.**
 
-SUTRA is a deterministic tool-output optimization and recovery layer for AI coding agents. It processes eligible tool results after a command runs and before the model reads them, so a large log costs less context on every following turn — without a model paraphrasing it.
+SUTRA is a deterministic cost-optimization middleware for AI coding agents. It reduces the context an agent spends on tool output, replaces exact repeats with a reference instead of re-sending them, and offers bounded cost-aware execution guidance — while keeping every omitted byte recoverable. A large log costs less on every following turn, without a model paraphrasing it.
 
 One core. Multiple agents. Recoverable output. No compression model calls.
 
@@ -35,8 +35,33 @@ The agent rarely needs the whole result: it needs the failing line, the stack fr
 4. **The original is retained locally** when storage is enabled, with a bounded lifetime.
 5. **The model sees a smaller result with a marker** naming what was removed, how much, and the exact `sutra_restore` call that returns it.
 6. **Nothing is generated.** No summariser, no model call, no interpretation, no invented content.
+7. **An exact repeat is a reference, not a re-send.** If the same result was already compressed in this session, the second copy becomes a marker quoting the earlier id. The store is verified first; a changed byte, a pruned entry or a restart takes the normal compression path.
 
 If anything is unexpected — a malformed payload, a failed store write, an internal exception — SUTRA fails open and the host receives the original result unchanged.
+
+## Agent cost policy
+
+Compression acts after a tool runs. SUTRA can also give the agent bounded,
+cost-aware execution guidance before it spends the next call, through Hermes'
+documented `register_system_prompt_section` plugin API. Nothing rewrites the
+prompt the host built: SUTRA adds one clearly labelled section that Hermes
+freezes into each new session.
+
+| `SUTRA_POLICY` | Effect |
+|---|---|
+| `off` (default) | No section content; the prompt is byte-identical to a session without SUTRA |
+| `balanced` (recommended when enabled) | Reuse valid information, read narrowly, avoid redundant calls, keep required evidence |
+| `aggressive` | Adds planning, combined checks and retrieval paging; never permits skipping required work |
+
+The section says that system and developer instructions, the user's task and
+repository rules take precedence, and it names the work that must never be
+skipped: required tests, security checks, error reading, fresh evidence and
+honest reporting. It is capped at 4,000 characters and re-resolved for each new
+session, so `SUTRA_POLICY=off` takes effect in the next session without editing
+any host configuration. An older Hermes build without the section API simply
+gets compression and recovery.
+
+Read [docs/agent-policy.md](https://github.com/g0GobliN/sutra/blob/main/docs/agent-policy.md) for the API evidence, safeguards and limits.
 
 ## What makes SUTRA different
 
@@ -129,7 +154,7 @@ What the numbers are — and are not:
 - Not provider input tokens, not prompt-cache effects, not an invoice, and not a live-agent task-success score. No model was called for any number here.
 - 8/8 proves the clue is retained and retrievable; it does not prove an agent will ask for it.
 
-The [effectiveness pilot](docs/effectiveness-pilot.md) separately measured 23 deterministic fixtures: 91.01% byte and tokenizer-estimated token reduction on the 17 rewritten fixtures, 0.00% on six protection cases, 17/17 byte-exact restores, and 18/18 host-adapter checks. It did not call a model; live task success, provider input-token reduction and live host ranking remain unmeasured.
+The [effectiveness pilot](docs/effectiveness-pilot.md) separately measured 23 deterministic fixtures: 91.01% byte and tokenizer-estimated token reduction on the 17 rewritten fixtures, 0.00% on six protection cases, 17/17 byte-exact restores, and 18/18 host-adapter checks. It did not call a model; live task success, provider input-token reduction and live host ranking remain unmeasured. The [Phase 2 cost replay](docs/phase2-hermes-cost-report.md) measures tool-result context, exact-duplicate reuse and policy prompt cost on eight deterministic workloads, also without a model.
 
 Method, fixtures, per-phase timings, memory, recovery costs and reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). The frozen live-model A/B protocol is in [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md); it has not been run.
 
@@ -163,7 +188,7 @@ The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrela
 ```bash
 python3 -m venv ~/.sutra-venv
 ~/.sutra-venv/bin/pip install sutra-agent
-~/.sutra-venv/bin/sutra --version        # sutra 0.4.2
+~/.sutra-venv/bin/sutra --version        # sutra 0.5.0
 
 ~/.sutra-venv/bin/sutra detect           # read-only: what is installed
 ~/.sutra-venv/bin/sutra install --dry-run
@@ -190,7 +215,7 @@ If you only want one client, use `--client hermes|claude|opencode|codex`. The in
 
 | Host | Mode | Verified against | What to expect |
 |---|---|---|---|
-| **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
+| **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5; install/validate rechecked on 0.22.7 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
 | **Claude Code** | Automatic — `PostToolUse` hook + MCP recovery | 2.1.268 | Result replaced before the model reads it; start a new session; hook and MCP must share a store |
 | **OpenCode** | Automatic — generated `tool.execute.after` plugin + MCP recovery | 1.19.5 | Oversized string results replaced in place; restart OpenCode |
 | **Codex CLI** | **Automatic — `PostToolUse` feedback hook + MCP recovery** | 0.166.0 | Compressed result replaces the model-visible tool output; trust the hook once via `/hooks`; start a new session. Codex truncates very large output before the hook, so only the supplied text is compressible and recoverable |
@@ -213,6 +238,9 @@ Common settings, read on every call:
 | `SUTRA_STORE_DIR` | `$HERMES_HOME/cache/sutra-store` | where originals live |
 | `SUTRA_STORE_TTL_HOURS` | `168` | retention window |
 | `SUTRA_RECOVERY_MAX_BYTES` | `8192` | default response cap (64 KiB hard max) |
+| `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` session guidance |
+| `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
+| `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
 
 The complete table, including store quotas, stats-log rotation and retrieval bounds, is in [docs/configuration.md](https://github.com/g0GobliN/sutra/blob/main/docs/configuration.md).
 
@@ -224,7 +252,8 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **Retrieval is bounded.** One entry ≤32 MiB, one response ≤8 KiB by default, at most 20 literal matches; a single line longer than the response cap is returned clipped.
 - **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
-- **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made.
+- **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made. The policy's prompt cost is measured by the offline replay; its behavioural effect is not.
+- **Reuse is exact-duplicate only, per process session.** A single changed byte, a pruned store entry or a restart means normal compression instead.
 - **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all four adapter dry runs, and verifies OpenCode install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
 
 ## Development and contributing
