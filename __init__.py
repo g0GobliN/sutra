@@ -42,6 +42,9 @@ change:
   SUTRA_STORE_MAX_ENTRY_BYTES   largest single original retained (default 32 MiB)
   SUTRA_STORE_MAX_ENTRIES       most originals retained (default 2000)
   SUTRA_RECOVERY_MAX_BYTES      response cap for sutra_restore (default 8192)
+  SUTRA_POLICY                  off|balanced|aggressive session guidance (default off)
+  SUTRA_REUSE                   "0" disables exact-duplicate reuse (default "1")
+  SUTRA_REUSE_MIN_BYTES         smallest output eligible for reuse (default 4096)
   SUTRA_JSON_ITEMS              retired; ignored (array elision changed the payload's type)
 """
 
@@ -50,7 +53,7 @@ from __future__ import annotations
 from typing import Any
 
 from . import config as _config
-from . import metrics
+from . import metrics, policy
 from . import recovery
 from . import store as _store
 from .core import (
@@ -73,7 +76,7 @@ from .engine import (  # re-exported: this was a single-module plugin before 0.2
     strip_ansi,
 )
 
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 
 # Backward-compatible name: before the seam extraction this was the plugin's
 # own function. It is now the seam's result-shaped entry point.
@@ -119,7 +122,13 @@ def tool_execution(*, next_call, tool_name: str | None = None, args: Any = None,
 
 
 def register(ctx) -> None:
-    """Hermes plugin entry point: middleware plus the recovery tool."""
+    """Hermes plugin entry point: middleware, recovery tool, cost policy.
+
+    Compression and recovery are registered first so an older host that lacks
+    the system-prompt-section API still gets the proven behaviour. The policy
+    registration is isolated: it reports its own failure and never prevents
+    the other two registrations.
+    """
     ctx.register_middleware("tool_execution", tool_execution)
     ctx.register_tool(
         name=recovery.TOOL_NAME,
@@ -129,6 +138,7 @@ def register(ctx) -> None:
         description="Retrieve the omitted part of a tool result SUTRA compressed.",
         emoji="🔎",
     )
+    policy.register(ctx)
 
 
 __all__ = [
@@ -145,6 +155,7 @@ __all__ = [
     "enabled",
     "metrics_snapshot",
     "outcome_json",
+    "policy",
     "process_result",
     "process_text",
     "register",

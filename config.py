@@ -41,6 +41,16 @@ RECOVERY_MAX_BYTES_FLOOR = 512
 HARD_RECOVERY_MAX_BYTES = 65_536
 HARD_RECOVERY_MAX_MATCHES = 20
 
+# Agent-policy layer: independent of compression. ``off`` is exactly the
+# pre-0.5 prompt behaviour and stays the default until a live run shows the
+# guidance earns its per-turn prompt cost; ``balanced`` is the recommended mode
+# when it is enabled, and ``aggressive`` is never selected automatically.
+DEFAULT_POLICY_MODE = "off"
+POLICY_MODES = ("off", "balanced", "aggressive")
+# The smallest output worth remembering for exact-duplicate reuse. Below this a
+# marker costs about as much context as the repeat it would replace.
+DEFAULT_REUSE_MIN_BYTES = 4096
+
 # One contract for the JSON pointer quoted in a marker, shared by the producer
 # (engine) and the consumer (recovery). Measured in UTF-8 bytes: it also bounds
 # how much of the marker budget one field path can consume. A field whose
@@ -86,6 +96,26 @@ def _flag(name: str, default: bool) -> bool:
     return str(raw).strip().lower() not in _FALSEY
 
 
+_POLICY_ALIASES = {
+    "0": "off", "false": "off", "no": "off", "disabled": "off", "none": "off",
+    "1": "balanced", "true": "balanced", "on": "balanced",
+}
+
+
+def _policy_mode() -> str:
+    """Read ``SUTRA_POLICY``; an unrecognised value warns and uses the default."""
+    raw = os.environ.get("SUTRA_POLICY")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_POLICY_MODE
+    value = str(raw).strip().lower()
+    value = _POLICY_ALIASES.get(value, value)
+    if value not in POLICY_MODES:
+        _warn_once(f"SUTRA_POLICY={raw!r} is not one of "
+                   f"{', '.join(POLICY_MODES)}; using {DEFAULT_POLICY_MODE}")
+        return DEFAULT_POLICY_MODE
+    return value
+
+
 def hermes_home() -> str:
     """The active Hermes home; the plugin host sets ``HERMES_HOME`` per profile."""
     return os.path.expanduser(os.environ.get("HERMES_HOME") or "~/.hermes")
@@ -114,6 +144,9 @@ class Config:
     store_max_entries: int
     recovery_max_bytes: int
     recovery_max_matches: int
+    policy_mode: str = "off"
+    reuse: bool = False
+    reuse_min_bytes: int = DEFAULT_REUSE_MIN_BYTES
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -122,8 +155,9 @@ class Config:
 def resolve() -> Config:
     """Parse the environment once and return the whole configuration."""
     cache = cache_dir()
+    enabled = _flag("SUTRA_ENABLED", True)
     return Config(
-        enabled=_flag("SUTRA_ENABLED", True),
+        enabled=enabled,
         max_bytes=_int("SUTRA_MAX_BYTES", DEFAULT_MAX_BYTES),
         head_bytes=_int("SUTRA_HEAD_BYTES", DEFAULT_HEAD_BYTES, minimum=0),
         tail_bytes=_int("SUTRA_TAIL_BYTES", DEFAULT_TAIL_BYTES, minimum=0),
@@ -152,4 +186,10 @@ def resolve() -> Config:
         recovery_max_matches=_int("SUTRA_RECOVERY_MAX_MATCHES",
                                   DEFAULT_RECOVERY_MAX_MATCHES,
                                   minimum=1, maximum=HARD_RECOVERY_MAX_MATCHES),
+        # Disabling the plugin disables its prompt guidance too: reporting a
+        # mode that cannot act would make `sutra config` lie.
+        policy_mode=_policy_mode() if enabled else "off",
+        reuse=_flag("SUTRA_REUSE", True),
+        reuse_min_bytes=_int("SUTRA_REUSE_MIN_BYTES", DEFAULT_REUSE_MIN_BYTES,
+                             minimum=1024),
     )

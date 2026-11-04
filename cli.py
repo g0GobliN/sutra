@@ -249,6 +249,17 @@ def _rows() -> list[dict]:
     return rows
 
 
+def _optimization_line() -> str:
+    """One quiet line: what SUTRA will do for this profile, without internals."""
+    from . import configuration, policy
+
+    cfg = configuration()
+    return (f"sutra: optimization={'on' if cfg.enabled else 'off'} "
+            f"policy={policy.mode(cfg)} reuse={'on' if cfg.reuse else 'off'} "
+            f"recovery={'on' if cfg.store_enabled else 'off'} "
+            f"max_bytes={cfg.max_bytes}")
+
+
 def _status(as_json: bool = False) -> int:
     import json
 
@@ -293,6 +304,7 @@ def _status(as_json: bool = False) -> int:
                   f"plugin={row.get('plugin')} mcp={row.get('mcp')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"config={row.get('config')}")
+    print(_optimization_line())
     return 0 if configured else 1
 
 
