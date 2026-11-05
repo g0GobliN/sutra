@@ -211,7 +211,7 @@ def run_workload(workload: Workload, mode: str) -> dict[str, Any]:
                 mock.patch.object(sutra._store.secrets, "token_hex", fixed_token_hex):
             cfg = sutra.configuration()
             section = sutra.policy.section(cfg) if mode in {"balanced", "aggressive"} else ""
-            section_tokens = (count_tokens(section) or 0) if section else 0
+            section_tokens = count_tokens(section) if section else 0
             cumulative = 0
             cumulative_tokens = 0
             input_tokens = 0
