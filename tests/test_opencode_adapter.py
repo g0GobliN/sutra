@@ -218,6 +218,8 @@ def test_plugin_hook_allows_a_slow_but_successful_compression(paths, tmp_path):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
+    if os.name != "posix":
+        pytest.skip("the slow wrapper is a POSIX shell script")
     _, config = paths
     home = tmp_path / "home"
     wrapper = tmp_path / "slow-python"

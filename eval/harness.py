@@ -236,12 +236,19 @@ def run_workload(workload: Workload, mode: str) -> dict[str, Any]:
                     reuse_hits += 1
                 elif mode != "baseline":
                     reuse_misses += 1
-                visible_tokens = count_tokens(visible) or 0
-                cumulative_tokens += visible_tokens
+                visible_tokens = count_tokens(visible)
+                cumulative_tokens = (None if cumulative_tokens is None
+                                     or visible_tokens is None
+                                     else cumulative_tokens + visible_tokens)
                 # Every turn re-sends the tool results accumulated so far, plus
-                # the policy section when one is active.
-                turn_tokens = cumulative_tokens + (section_tokens or 0)
-                input_tokens += turn_tokens
+                # the policy section when one is active. Without the optional
+                # tokenizer the token columns stay unavailable rather than
+                # pretending the cost is zero.
+                turn_tokens = (None if cumulative_tokens is None
+                               or section_tokens is None
+                               else cumulative_tokens + section_tokens)
+                input_tokens = (None if input_tokens is None or turn_tokens is None
+                                else input_tokens + turn_tokens)
                 step_clues = []
                 # A clue must be recoverable from *this* step's retained original,
                 # not from an unrelated earlier entry that happens to contain it.
@@ -281,7 +288,8 @@ def run_workload(workload: Workload, mode: str) -> dict[str, Any]:
                     exact_restores += 1
                     if restored != step.output:
                         exact_failures += 1
-            final_context = cumulative_tokens + (section_tokens or 0)
+            final_context = (None if cumulative_tokens is None or section_tokens is None
+                             else cumulative_tokens + section_tokens)
             reuse_after = sutra.metrics_snapshot()["reuse"]
             reuse_state = {
                 "hits": int(reuse_after.get("hits", 0)) - int(reuse_before.get("hits", 0)),
@@ -299,7 +307,8 @@ def run_workload(workload: Workload, mode: str) -> dict[str, Any]:
         "input_context_tokens": input_tokens,
         "final_context_tokens": final_context,
         "policy_tokens": section_tokens,
-        "policy_overhead_tokens": (section_tokens or 0) * len(workload.steps),
+        "policy_overhead_tokens": (None if section_tokens is None
+                                   else section_tokens * len(workload.steps)),
         "original_bytes": original_bytes,
         "visible_bytes": visible_bytes,
         "compression_ms": round(compression_ms, 3),
@@ -350,20 +359,25 @@ def compare(baseline: dict[str, Any], optimized: dict[str, Any]) -> dict[str, An
     """Savings against the baseline, with the definitions written down."""
     base = baseline["input_context_tokens"]
     gross = optimized["input_context_tokens"]
+    overhead = optimized["policy_overhead_tokens"]
+    available = None not in (base, gross, overhead)
     # The policy is an additional cost: charge it on top of the optimized
     # tool-result context rather than crediting it as a saving.
-    net = gross + optimized["policy_overhead_tokens"]
+    net = gross + overhead if available else None
     return {
         "definition": (
             "token savings = (baseline tool-result context tokens - optimized "
             "tool-result context tokens) / baseline * 100; net also charges the "
-            "policy section on every turn"),
+            "policy section on every turn. unavailable when the optional "
+            "tokenizer is absent"),
         "input_tokens": base,
         "optimized_tokens": gross,
-        "policy_overhead_tokens": optimized["policy_overhead_tokens"],
+        "policy_overhead_tokens": overhead,
         "net_tokens": net,
-        "savings_pct": round(100 * (base - gross) / base, 2) if base else 0.0,
-        "net_savings_pct": round(100 * (base - net) / base, 2) if base else 0.0,
+        "savings_pct": (round(100 * (base - gross) / base, 2)
+                        if available and base else None),
+        "net_savings_pct": (round(100 * (base - net) / base, 2)
+                            if available and base else None),
     }
 
 
@@ -374,6 +388,12 @@ def run_all(workloads: Iterable[Workload],
     workloads = list(workloads)
     modes = list(modes)
     results = []
+
+    def add(current: Any, value: Any) -> Any:
+        """Sum, but keep the total unavailable if any contribution is."""
+        if current is None or value is None:
+            return None
+        return current + value
     totals: dict[str, dict[str, Any]] = {}
     for workload in workloads:
         by_mode = {}
@@ -424,9 +444,9 @@ def run_all(workloads: Iterable[Workload],
                         "policy_overhead_tokens", "original_bytes", "visible_bytes",
                         "restore_calls", "reuse_hits", "reuse_misses",
                         "reuse_metric_hits", "reuse_suppressed_bytes"):
-                aggregate[key] += row[key]
+                aggregate[key] = add(aggregate[key], row[key])
             for key in ("compression_ms", "restore_ms"):
-                aggregate[key] += row[key]
+                aggregate[key] = add(aggregate[key], row[key])
             for key in ("clues_total", "visible", "recoverable", "lost",
                         "protected_total", "protected_ok", "exact_restores",
                         "exact_restore_failures"):
@@ -476,10 +496,15 @@ def format_table(summary: dict[str, Any]) -> str:
         total = row["quality"]["clues_total"]
         task = f"{row['quality']['workloads_passed']}/{row['workloads']}"
         net = savings["net_tokens"] if savings else row["input_context_tokens"]
-        saved = f"{savings['savings_pct']}%" if savings else "—"
-        net_saved = f"{savings['net_savings_pct']}%" if savings else "—"
+        tokens = ("unavailable" if row["input_context_tokens"] is None
+                  else f"{row['input_context_tokens']:,}")
+        net_text = "unavailable" if net is None else f"{net:,}"
+        saved = (f"{savings['savings_pct']}%"
+                 if savings and savings["savings_pct"] is not None else "—")
+        net_saved = (f"{savings['net_savings_pct']}%"
+                     if savings and savings["net_savings_pct"] is not None else "—")
         lines.append(
-            f"| {mode} | {row['input_context_tokens']:,} | {net:,} | {saved} | "
+            f"| {mode} | {tokens} | {net_text} | {saved} | "
             f"{net_saved} | {kept}/{total} | {task} |")
     return "\n".join(lines)
 
