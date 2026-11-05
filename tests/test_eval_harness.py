@@ -32,10 +32,18 @@ def test_output_reduces_bytes_and_balanced_records_its_policy_cost():
                               modes=("baseline", "output", "balanced", "aggressive"))
     assert (summary["totals"]["output"]["visible_bytes"]
             < summary["totals"]["baseline"]["original_bytes"])
+    assert summary["totals"]["output"]["policy_overhead_tokens"] == 0
+    if not summary["environment"]["tokenizer"].startswith("tiktoken"):
+        # CI does not install the optional benchmark dependency. Token metrics
+        # must be explicitly unavailable, not silently zero.
+        assert summary["totals"]["balanced"]["policy_tokens"] is None
+        assert summary["totals"]["balanced"]["policy_overhead_tokens"] is None
+        assert summary["savings"]["balanced"]["net_tokens"] is None
+        assert summary["savings"]["balanced"]["net_savings_pct"] is None
+        return
     assert summary["totals"]["balanced"]["policy_tokens"] > 0
     assert (summary["totals"]["aggressive"]["policy_tokens"]
             > summary["totals"]["balanced"]["policy_tokens"])
-    assert summary["totals"]["output"]["policy_overhead_tokens"] == 0
     # The policy is a cost: net tokens can never be below optimized tokens.
     for mode in ("balanced", "aggressive"):
         savings = summary["savings"][mode]

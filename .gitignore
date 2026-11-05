@@ -46,6 +46,13 @@ hook_input.*
 # The SVG charts are kept: README embeds them.
 bench/*.json
 
+# Generated evaluation results (reproduce with eval/replay.py). Raw reports are
+# private evaluation material; never publish.
+eval/results/
+
+# Local worktrees (never publish)
+.worktrees/
+
 # Editor and OS noise
 .idea/
 .vscode/
