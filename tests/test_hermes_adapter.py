@@ -22,6 +22,17 @@ def _completed(returncode=0, stdout="", stderr=""):
     return types.SimpleNamespace(returncode=returncode, stdout=stdout, stderr=stderr)
 
 
+def _hermes_cli_works():
+    """Check if Hermes CLI binary actually works."""
+    import subprocess
+    try:
+        result = subprocess.run([shutil.which("hermes") or "hermes", "--version"],
+                               capture_output=True, text=True, timeout=10)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 @pytest.fixture()
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
@@ -158,7 +169,7 @@ def test_dry_run_writes_nothing(isolated, monkeypatch, capsys):
     assert "dry run" in capsys.readouterr().out
 
 
-@pytest.mark.skipif(shutil.which("hermes") is None, reason="hermes CLI not installed")
+@pytest.mark.skipif(shutil.which("hermes") is None or not _hermes_cli_works(), reason="hermes CLI not installed or not working")
 def test_real_hermes_plugin_round_trip_uses_an_isolated_home(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     import importlib
