@@ -22,7 +22,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install pytest
+      - run: pip install pytest tiktoken
       - name: Product suite
         run: python -m pytest tests -q
       - name: OpenCode feasibility spike
@@ -39,7 +39,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
-      - run: pip install pytest build
+      - run: pip install pytest build tiktoken
       - name: Product suite
         run: python -m pytest tests -q
       - name: Build and install the wheel
@@ -95,7 +95,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
-      - run: pip install pytest
+      - run: pip install pytest tiktoken
       - run: python -m pytest tests -q
 
   lint:
@@ -217,7 +217,7 @@ jobs:
         run: |
           git clone . sutra-main
           cd sutra-main
-          pip install pytest
+          pip install pytest tiktoken
           python -m pytest tests -q
           python -m pytest spikes -q
 
@@ -243,7 +243,7 @@ jobs:
         run: npm install --global @anthropic-ai/claude-code@2.1.268 @openai/codex@0.166.0
       - name: Run real-host adapter tests without authentication
         run: |
-          pip install pytest
+          pip install pytest tiktoken
           python -m pytest -q \
             tests/test_claude_installer.py::test_live_claude_rolls_back_when_the_server_cannot_connect \
             tests/test_codex_adapter.py::test_real_codex_round_trip_uses_an_isolated_home \
