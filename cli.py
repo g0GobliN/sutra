@@ -253,17 +253,18 @@ def _rows() -> list[dict]:
     })
     try:
         from . import openclaw
-        openclaw_path = openclaw.plugin_path()
-        rows.append({
-            "client": "openclaw",
-            "binary": shutil.which("openclaw"),
-            "config": str(openclaw_path),
-            "plugin": "installed" if openclaw.configured() else "not installed",
-            "automatic": openclaw.configured(),
-            "home": str(openclaw.default_home()),
-        })
-    except Exception as exc:  # a broken adapter is reported, not raised
-        rows.append({"client": "openclaw", "error": str(exc)})
+        if shutil.which("openclaw") or openclaw.plugin_path().exists():
+            openclaw_path = openclaw.plugin_path()
+            rows.append({
+                "client": "openclaw",
+                "binary": shutil.which("openclaw"),
+                "config": str(openclaw_path),
+                "plugin": "installed" if openclaw.configured() else "not installed",
+                "automatic": openclaw.configured(),
+                "home": str(openclaw.default_home()),
+            })
+    except Exception:  # a broken adapter or missing openclaw is silently skipped
+        pass
     try:
         from . import hermes
         if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():
