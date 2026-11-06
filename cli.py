@@ -97,7 +97,6 @@ def _install_one(client: str, args, *, required: bool) -> int:
         # still worth writing so it is ready when OpenClaw appears.
         if shutil.which("openclaw") is None:
             print("sutra: openclaw is not installed; skipped")
-            return 0
         return openclaw.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
