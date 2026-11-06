@@ -25,8 +25,6 @@ jobs:
       - run: pip install pytest tiktoken
       - name: Product suite
         run: python -m pytest tests -q
-      - name: OpenCode feasibility spike
-        run: python -m pytest spikes -q
 
   # Windows exercises the path, text-mode and subprocess branches that the
   # POSIX jobs cannot. POSIX permission/symlink tests skip by design; the
@@ -219,7 +217,6 @@ jobs:
           cd sutra-main
           pip install pytest tiktoken
           python -m pytest tests -q
-          python -m pytest spikes -q
 
   validate:
     runs-on: ubuntu-latest

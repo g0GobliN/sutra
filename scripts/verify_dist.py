@@ -32,7 +32,8 @@ IMPORT_NAME = "sutra"
 RUNTIME_MODULES = frozenset({
     "__init__", "claude_code", "cli", "codex", "config", "core", "discovery",
     "engine", "hermes", "hook", "installer", "jsonc", "mcp", "metrics",
-    "opencode", "policy", "recovery", "reuse", "runner", "store", "utf8",
+    "opencode", "openclaw", "policy", "recovery", "reuse", "runner",
+    "store", "utf8",
 })
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",
@@ -42,7 +43,7 @@ RUNTIME_SCRIPTS = frozenset({
 # only what an install needs); the sdist includes it explicitly through
 # `MANIFEST.in`, so its presence does not depend on the setuptools version.
 DEV_SCRIPTS = frozenset({"check_version.py"})
-PACKAGE_DATA = frozenset({"plugin.yaml", "opencode_plugin.js"})
+PACKAGE_DATA = frozenset({"plugin.yaml", "opencode_plugin.js", "openclaw_plugin.js"})
 
 # A path fragment that means a development artifact reached the archive.
 FORBIDDEN = (
