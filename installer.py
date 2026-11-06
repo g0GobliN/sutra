@@ -23,9 +23,9 @@ __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured"
 
 # Clients with a verified configuration path. ``hermes`` is native middleware;
 # ``claude`` is the native PostToolUse hook; ``opencode`` gets a generated
-# plugin; ``openc claw`` gets the generated OpenClaw plugin; ``codex`` gets a
+# plugin; ``openclaw`` gets the generated OpenClaw plugin; ``codex`` gets a
 # PostToolUse feedback hook plus MCP recovery.
-CLIENTS = ("hermes", "claude", "opencode", "openc claw", "codex")
+CLIENTS = ("hermes", "claude", "opencode", "openclaw", "codex")
 
 
 def opencode_config(explicit: str | None = None) -> pathlib.Path:

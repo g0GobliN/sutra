@@ -136,10 +136,10 @@ def test_node_absence_is_skipped_not_a_failure(installed):
 def test_cli_doctor_passes_openclaw_only(installed, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(claude_code, "binary", lambda: None)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-empty"))
-    assert cli.main(["doctor", "--client", "openc claw", "--json"]) == 0
+    assert cli.main(["doctor", "--client", "openclaw", "--json"]) == 0
     reports = json.loads(capsys.readouterr().out)
     assert len(reports) == 1
-    assert reports[0]["client"] == "openc claw"
+    assert reports[0]["client"] == "openclaw"
     assert reports[0]["ok"] is True
 
 
@@ -154,7 +154,7 @@ def test_cli_doctor_returns_nonzero_for_a_real_failure(tmp_path, monkeypatch, ca
     capsys.readouterr()  # discard the installer's success line
     monkeypatch.setattr(claude_code, "binary", lambda: None)
     monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(tmp_path / "claude-empty"))
-    assert cli.main(["doctor", "--client", "openc claw", "--json"]) == 1
+    assert cli.main(["doctor", "--client", "openclaw", "--json"]) == 1
     reports = json.loads(capsys.readouterr().out)
     assert reports[0]["status"] == "fail"
     assert reports[0]["ok"] is False

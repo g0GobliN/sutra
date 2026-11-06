@@ -137,3 +137,10 @@ gateway, real terminal tool, real middleware, real store, recovery through the
 host's Tool Search bridge) was verified manually on 2026-10-24 against Hermes
 Agent v0.22.2+3030.g4d04303; see the repository's baseline mission log for the
 transcript-level evidence.
+
+## OpenClaw adapter support
+
+The SUTRA core is compatible with OpenClaw's generated plugin contract. OpenClaw
+users can install the OpenClaw plugin via `sutra install --client openclaw`. Adapter
+support is verified with scripted providers; live host testing is pending (see
+integrations.md for per-environment status).

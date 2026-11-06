@@ -120,7 +120,7 @@ def test_dry_run_without_a_config_does_not_claim_an_install(paths, capsys):
     config.unlink()
     # Keep SUTRA_OPENCLAW_CONFIG set so plugin_path uses the temp dir,
     # not the real ~/.openclaw
-    assert cli.main(["install", "--client", "openc claw", "--dry-run"]) == 0
+    assert cli.main(["install", "--client", "openclaw", "--dry-run"]) == 0
     output = capsys.readouterr().out
     assert "dry run" in output
     assert "plugin is installed" not in output
@@ -132,7 +132,7 @@ def test_cli_install_without_a_config_still_installs_the_plugin(paths, capsys):
     config.unlink()  # no config file; the plugin does not need one
     import os
     os.environ["SUTRA_OPENCLAW_CONFIG"] = str(config_dir)
-    assert cli.main(["install", "--client", "openc claw"]) == 0
+    assert cli.main(["install", "--client", "openclaw"]) == 0
     assert openclaw.plugin_path(config_dir).is_file()
     output = capsys.readouterr().out
     assert "configured" in output
@@ -141,11 +141,11 @@ def test_cli_install_without_a_config_still_installs_the_plugin(paths, capsys):
 
 def test_cli_status_reports_the_plugin_as_automatic(paths, capsys):
     root, config_dir, config = paths
-    assert cli.main(["install", "--client", "openc claw"]) == 0
+    assert cli.main(["install", "--client", "openclaw"]) == 0
     capsys.readouterr()
     assert cli.main(["status", "--json"]) == 0
     rows = json.loads(capsys.readouterr().out)
-    row = next(item for item in rows if item["client"] == "openc claw")
+    row = next(item for item in rows if item["client"] == "openclaw")
     assert row["plugin"] == "installed"
     assert row["automatic"] is True
 
@@ -156,7 +156,7 @@ def test_status_succeeds_with_only_the_automatic_plugin(paths, capsys):
     config.unlink()  # no OpenClaw config means no MCP recovery server entry
     import os
     os.environ["SUTRA_OPENCLAW_CONFIG"] = str(config_dir)
-    assert cli.main(["install", "--client", "openc claw"]) == 0
+    assert cli.main(["install", "--client", "openclaw"]) == 0
     capsys.readouterr()
     assert cli.main(["status"]) == 0
     output = capsys.readouterr().out
