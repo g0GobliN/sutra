@@ -54,7 +54,8 @@ def plugin_path(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     return openclaw_config_dir(config_path) / "plugins" / PLUGIN_NAME
 
 
-def render(python: str | None = None, home: str | pathlib.Path | None = None) -> str:
+def render(python: str | None = None, home: str | pathlib.Path | None = None,
+           pythonpath: str = "") -> str:
     """The plugin text with the interpreter and store home embedded as JSON."""
     package = __package__ or "sutra"
     template = importlib.resources.files(package).joinpath("openclaw_plugin.js").read_text(
@@ -63,7 +64,8 @@ def render(python: str | None = None, home: str | pathlib.Path | None = None) ->
     home_path = pathlib.Path(home) if home is not None else default_home()
     return (template
             .replace("__SUTRA_PYTHON__", json.dumps(python or sys.executable))
-            .replace("__SUTRA_HOME__", json.dumps(str(home_path))))
+            .replace("__SUTRA_HOME__", json.dumps(str(home_path)))
+            .replace("__PYTHONPATH__", json.dumps(pythonpath)))
 
 
 def configured(config_path: str | pathlib.Path | None = None) -> bool:
@@ -269,12 +271,12 @@ const THRESHOLD = 24576
 const CLUE = __CLUE__
 const lines = Array.from({length: 3000}, (_, i) => "line " + i + " padding padding")
 lines[1500] = "CLUE: " + CLUE
-const output = {title: "bash", output: lines.join("\\n"), metadata: {exit: 0}}
+const output = {title: "bash", output: lines.join("\n"), metadata: {exit: 0}}
 function run(args, input) {
   return new Promise((resolve, reject) => {
     let settled = false
     const child = spawn(PYTHON, ["-m", "sutra.cli", ...args], {
-      env: { ...process.env, HERMES_HOME: __HOME__ },
+      env: { ...process.env, PYTHONPATH: __PYTHONPATH__, HERMES_HOME: __HOME__ },
       stdio: ["pipe", "pipe", "pipe"],
     })
     const timer = setTimeout(() => { if (!settled) { settled = true; child.kill("SIGKILL"); reject(new Error("timeout")) } }, TIMEOUT_MS)
@@ -293,7 +295,7 @@ async function compress(text) {
   const raw = await run(["compress", "--tool", "openc claw-doctor-probe"], text)
   return JSON.parse(raw)
 }
-const outcome = await compress(output)
+const outcome = await compress(output.output)
 assert.equal(outcome.changed, true)
 assert.ok(outcome.output.includes("[sutra:"))
 assert.ok(!outcome.output.includes(CLUE))
@@ -304,19 +306,21 @@ const restored = JSON.parse(restoredRaw)
 assert.equal(restored.status, "ok")
 assert.ok(restored.content.includes(CLUE))
 const diff = Array.from({length: 2000}, (_, i) =>
-  "diff --git a/f" + i + ".ts b/f" + i + ".ts\\n" +
-  "--- a/f" + i + ".ts\\n+++ b/f" + i + ".ts\\n@@ -1 +1 @@\\n" +
-  "+const x" + i + " = 1;").join("\\n")
-const protected = await run(["compress", "--tool", "openc claw-doctor-probe"], diff)
-const protectedOutcome = JSON.parse(protected)
+  "diff --git a/f" + i + ".ts b/f" + i + ".ts\n" +
+  "--- a/f" + i + ".ts\n+++ b/f" + i + ".ts\n@@ -1 +1 @@\n" +
+  "+const x" + i + " = 1;").join("\n")
+const protectedRaw = await run(["compress", "--tool", "openc claw-doctor-probe"], diff)
+const protectedOutcome = JSON.parse(protectedRaw)
 assert.equal(protectedOutcome.changed, false)
 assert.equal(protectedOutcome.output, diff)
 assert.ok(!protectedOutcome.output.includes("[sutra:"))
 console.log("openc claw doctor hook ok")
 '''
+        pythonpath = env.get("PYTHONPATH", "")
         script = (script
                   .replace("__PYTHON__", json.dumps(python))
                   .replace("__HOME__", json.dumps(str(home)))
+                  .replace("__PYTHONPATH__", json.dumps(pythonpath))
                   .replace("__CLUE__", json.dumps(DOCTOR_CLUE)))
         probe.write_text(script, encoding="utf-8")
         try:
@@ -417,20 +421,30 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
         return report
     checks.append(_check("interpreter", "pass", python))
 
-    with tempfile.TemporaryDirectory(prefix="sutra-openc claw-doctor-") as temporary:
-        root = pathlib.Path(temporary)
-        store = root / "store"
-        probe_home = root / "home"
-        probe_home.mkdir()
-        env = dict(os.environ)
-        env.update({
-            "SUTRA_ENABLED": "1", "SUTRA_STORE": "1",
-            "SUTRA_STORE_DIR": str(store),
-            "HERMES_HOME": str(probe_home),
-            "SUTRA_STATS_FILE": str(root / "stats.jsonl"),
-        })
-        checks.extend(_cli_probe(python, env))
-        checks.append(_node_probe(python, probe_home, env, node))
+    # Ensure the sutra package is importable in child processes by creating
+    # a temporary library directory with a 'sutra' symlink, mirroring the
+    # test fixture's setup. The package lives at the same level as this module.
+    package_dir = pathlib.Path(__file__).resolve().parent
+    with tempfile.TemporaryDirectory(prefix="sutra-lib-") as lib_root:
+        lib_path = pathlib.Path(lib_root) / "sutra"
+        lib_path.symlink_to(package_dir)
+        pythonpath = str(lib_path.parent)
+
+        with tempfile.TemporaryDirectory(prefix="sutra-openc claw-doctor-") as temporary:
+            root = pathlib.Path(temporary)
+            store = root / "store"
+            probe_home = root / "home"
+            probe_home.mkdir()
+            env = dict(os.environ)
+            env.update({
+                "SUTRA_ENABLED": "1", "SUTRA_STORE": "1",
+                "SUTRA_STORE_DIR": str(store),
+                "HERMES_HOME": str(probe_home),
+                "SUTRA_STATS_FILE": str(root / "stats.jsonl"),
+                "PYTHONPATH": pythonpath,
+            })
+            checks.extend(_cli_probe(python, env))
+            checks.append(_node_probe(python, probe_home, env, node))
     failed = any(check["status"] == "fail" for check in checks)
     skipped = any(check["status"] == "skip" for check in checks)
     report["status"] = "fail" if failed else ("partial" if skipped else "pass")
