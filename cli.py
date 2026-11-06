@@ -15,18 +15,19 @@ there is no daemon or network listener.
 from __future__ import annotations
 
 import argparse
+import shutil
 import sys
 
-from . import __version__, installer, runner
+from . import __version__, installer, openclaw, runner
 
 USAGE = """sutra {version}
 
 usage:
-  sutra install [--client hermes|claude|opencode|codex]... [--all] [--config PATH] [--dry-run]
-  sutra uninstall [--client hermes|claude|opencode|codex]... [--all] [--config PATH] [--dry-run]
+  sutra install [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
+  sutra uninstall [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
   sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
-  sutra doctor [--client hermes|claude|opencode|codex]... [--json]  (prove integrations)
+  sutra doctor [--client hermes|claude|opencode|openclaw|codex]... [--json]  (prove integrations)
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
@@ -91,6 +92,12 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print("sutra: codex is not installed; skipped")
             return 0
         return codex.install(dry_run=args.dry_run)
+    if client == "openclaw":
+        # OpenClaw may not be installed on this host yet; the plugin itself is
+        # still worth writing so it is ready when OpenClaw appears.
+        if shutil.which("openclaw") is None:
+            print("sutra: openclaw is not installed; skipped")
+        return openclaw.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
     if status:
@@ -130,6 +137,11 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
     if client == "codex":
         from . import codex
         return codex.uninstall(dry_run=args.dry_run)
+    if client == "openclaw":
+        if shutil.which("openclaw") is None:
+            print("sutra: openclaw is not installed; skipped")
+            return 0
+        return openclaw.uninstall(dry_run=args.dry_run)
     from . import opencode
     status = opencode.uninstall(dry_run=args.dry_run, config_path=args.config)
     path = installer.opencode_config(args.config)
@@ -174,6 +186,11 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
                 labels.append("opencode=configured, MCP skipped")
             else:
                 labels.append("opencode=not configured")
+        elif client == "openclaw":
+            if row.get("plugin") == "installed":
+                labels.append("openclaw=configured")
+            else:
+                labels.append("openclaw=not configured")
         else:
             if row.get("hook") != "installed":
                 labels.append("codex=not configured")
@@ -234,6 +251,20 @@ def _rows() -> list[dict]:
         "automatic": opencode.configured(),
         "home": str(opencode.default_home()),
     })
+    try:
+        from . import openclaw
+        if shutil.which("openclaw") or openclaw.plugin_path().exists():
+            openclaw_path = openclaw.plugin_path()
+            rows.append({
+                "client": "openclaw",
+                "binary": shutil.which("openclaw"),
+                "config": str(openclaw_path),
+                "plugin": "installed" if openclaw.configured() else "not installed",
+                "automatic": openclaw.configured(),
+                "home": str(openclaw.default_home()),
+            })
+    except Exception:  # a broken adapter or missing openclaw is silently skipped
+        pass
     try:
         from . import hermes
         if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():
@@ -299,6 +330,11 @@ def _status(as_json: bool = False) -> int:
                   f"trusted={trusted_text} mcp={row.get('mcp')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"tier={row.get('tier')} reason={row.get('host_limit')}")
+        elif row["client"] == "openclaw":
+            print(f"openclaw: binary={'yes' if row.get('binary') else 'no'} "
+                  f"plugin={row.get('plugin')} "
+                  f"automatic={'yes' if row.get('automatic') else 'no'} "
+                  f"config={row.get('config')}")
         else:
             print(f"opencode: binary={'yes' if row.get('binary') else 'no'} "
                   f"plugin={row.get('plugin')} mcp={row.get('mcp')} "
@@ -333,7 +369,7 @@ def _not_installed(client: str) -> dict:
 def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     import shutil
 
-    from . import claude_code, codex, hermes, opencode
+    from . import claude_code, codex, hermes, opencode, openclaw
 
     selected = clients or ["claude", "opencode", "hermes", "codex"]
     reports = []
@@ -354,6 +390,10 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
             elif client == "codex":
                 reports.append(codex.doctor() if (
                     codex.binary() or codex.config_path().exists())
+                    else _not_installed(client))
+            elif client == "openclaw":
+                reports.append(openclaw.doctor(node=shutil.which("node")) if (
+                    shutil.which("openclaw") or openclaw.plugin_path().exists())
                     else _not_installed(client))
         except Exception as exc:  # a broken adapter must not hide the other three
             reports.append({"client": client, "status": "fail", "ok": False,
@@ -377,6 +417,8 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
                 formatter = opencode.format_doctor
             elif client == "hermes":
                 formatter = hermes.format_doctor
+            elif client == "openclaw":
+                formatter = openclaw.format_doctor
             else:
                 formatter = codex.format_doctor
             print(formatter(report))
@@ -417,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
             prog="sutra doctor",
             description="Prove the installed automatic integrations work.")
         parser.add_argument("--client", action="append",
-                            choices=["hermes", "claude", "opencode", "codex"],
+                            choices=["hermes", "claude", "opencode", "openclaw", "codex"],
                             help="limit the probe to this client (repeatable)")
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])

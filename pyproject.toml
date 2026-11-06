@@ -55,6 +55,7 @@ version = { attr = "sutra.__version__" }
 sutra = [
     "plugin.yaml",
     "opencode_plugin.js",
+    "openclaw_plugin.js",
     "scripts/_sutra.py",
     "scripts/sutra-cli.py",
     "scripts/sutra-mcp-server.py",

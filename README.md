@@ -95,6 +95,7 @@ host adapter
   ├─ Claude Code: PostToolUse hook              automatic
   ├─ OpenCode: tool.execute.after plugin        automatic
   ├─ Codex: PostToolUse hook (trust)             automatic
+  ├─ OpenClaw: tool result plugin                automatic
   └─ other clients: CLI or MCP server           explicit calls
       │
       ▼
@@ -128,7 +129,7 @@ SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context e
 
 The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
 
-Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/JuliusBrussee/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
+Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/g0GobliN/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
 
 ## Evidence and benchmarks
 
@@ -203,13 +204,34 @@ git clone https://github.com/g0GobliN/sutra
 ~/.sutra-venv/bin/pip install ./sutra
 ```
 
-`sutra install` auto-detects Hermes, Claude Code, OpenCode and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. The command ends with a per-client summary (`configured`, `active`, `requires /hooks trust`, `skipped` or `failed`) and the next verification step. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
+`sutra install` auto-detects Hermes, Claude Code, OpenCode, OpenClaw and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. The command ends with a per-client summary (`configured`, `active`, `requires /hooks trust`, `skipped` or `failed`) and the next verification step. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
+
+### Adding OpenClaw support
+
+OpenClaw is a Node.js-based adapter. To enable it:
+
+1. Install Node.js 24 via nvm (if not already installed):
+   ```bash
+   nvm install 24
+   nvm use 24
+   ```
+2. Configure an isolated npm prefix (optional but recommended):
+   ```bash
+   export npm_config_prefix=$(pwd)/.npm-global   # or any isolated location
+   ```
+3. Install the OpenClaw client plugin:
+   ```bash
+   ~/.sutra-venv/bin/sutra install --client openclaw
+   ```
+   This registers the OpenClaw adapter and backs up any existing configuration.
+
+After installation, restart your host to load the new plugin.
 
 ```bash
 ~/.sutra-venv/bin/sutra uninstall        # remove only SUTRA-owned entries
 ```
 
-If you only want one client, use `--client hermes|claude|opencode|codex`. The installer's behaviour and evidence are recorded in [docs/automatic-install.md](https://github.com/g0GobliN/sutra/blob/main/docs/automatic-install.md).
+If you only want one client, use `--client hermes|claude|opencode|openclaw|codex`. The installer's behaviour and evidence are recorded in [docs/automatic-install.md](https://github.com/g0GobliN/sutra/blob/main/docs/automatic-install.md).
 
 ## Supported integrations
 
@@ -218,6 +240,7 @@ If you only want one client, use `--client hermes|claude|opencode|codex`. The in
 | **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5; install/validate rechecked on 0.22.7 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
 | **Claude Code** | Automatic — `PostToolUse` hook + MCP recovery | 2.1.268 | Result replaced before the model reads it; start a new session; hook and MCP must share a store |
 | **OpenCode** | Automatic — generated `tool.execute.after` plugin + MCP recovery | 1.19.5 | Oversized string results replaced in place; restart OpenCode |
+| **OpenClaw** | Automatic — generated `tool result` plugin | 2026.11.1 | Tool results compressed and recovered via `sutra_restore`; restart OpenClaw |
 | **Codex CLI** | **Automatic — `PostToolUse` feedback hook + MCP recovery** | 0.166.0 | Compressed result replaces the model-visible tool output; trust the hook once via `/hooks`; start a new session. Codex truncates very large output before the hook, so only the supplied text is compressible and recoverable |
 | **Any MCP client** | Explicit | protocol `2024-11-05` | Register `python -m sutra.mcp`; MCP registration is not interception |
 | **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.13 | `sutra compress` / `sutra restore` as JSON; one process per call |
@@ -261,7 +284,6 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 ```bash
 python3 -m venv .venv && .venv/bin/pip install pytest ruff
 .venv/bin/python -m pytest tests -q
-.venv/bin/python -m pytest spikes -q
 .venv/bin/ruff check .
 ```
 

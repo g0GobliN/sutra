@@ -23,6 +23,8 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
+| `SUTRA_OPENCLAW_HOME` | `$HERMES_HOME` | Path to the directory where OpenClaw stores its configuration and cached data. |
+| `SUTRA_OPENCLAW_CONFIG` | `~/.config/openclaw/config.yaml` | YAML configuration file for OpenClaw; loaded at startup and referenced by the plugin. |
 
 ## Store behaviour
 
