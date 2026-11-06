@@ -153,7 +153,7 @@ def status() -> dict:
     }
 
 
-DOCTOR_CLUE = "sutra-openc claw-doctor-7Q"
+DOCTOR_CLUE = "sutra-openclaw-doctor-7Q"
 DOCTOR_LINES = 3000
 DOCTOR_ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 
@@ -187,7 +187,7 @@ def _cli_probe(python: str, env: dict) -> list[dict]:
     lines[len(lines) // 2] = f"CLUE: {DOCTOR_CLUE}"
     payload = "\n".join(lines)
     try:
-        result = _cli_call(python, ["compress", "--tool", "openc claw-doctor"],
+        result = _cli_call(python, ["compress", "--tool", "openclaw-doctor"],
                            payload, env)
     except (OSError, subprocess.SubprocessError) as exc:
         return [_check("cli_roundtrip", "fail", f"compress did not run: {exc}"),
@@ -230,7 +230,7 @@ def _cli_probe(python: str, env: dict) -> list[dict]:
         f"+const x{index} = 1;"
         for index in range(2000))
     try:
-        protected = _cli_call(python, ["compress", "--tool", "openc claw-doctor"],
+        protected = _cli_call(python, ["compress", "--tool", "openclaw-doctor"],
                               diff, env)
         protected_outcome = json.loads(protected.stdout)
     except (OSError, subprocess.SubprocessError, ValueError) as exc:
@@ -260,7 +260,7 @@ def _node_probe(python: str, home: pathlib.Path, env: dict,
     node_path = node if node is not None else shutil.which("node")
     if not node_path:
         return _check("plugin_hook", "skip", "node is not installed")
-    with tempfile.TemporaryDirectory(prefix="sutra-openc claw-hook-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="sutra-openclaw-hook-") as temporary:
         root = pathlib.Path(temporary)
         probe = root / "probe.mjs"
         script = r'''import assert from "node:assert/strict"
@@ -292,7 +292,7 @@ function run(args, input) {
   })
 }
 async function compress(text) {
-  const raw = await run(["compress", "--tool", "openc claw-doctor-probe"], text)
+  const raw = await run(["compress", "--tool", "openclaw-doctor-probe"], text)
   return JSON.parse(raw)
 }
 const outcome = await compress(output.output)
@@ -309,12 +309,12 @@ const diff = Array.from({length: 2000}, (_, i) =>
   "diff --git a/f" + i + ".ts b/f" + i + ".ts\n" +
   "--- a/f" + i + ".ts\n+++ b/f" + i + ".ts\n@@ -1 +1 @@\n" +
   "+const x" + i + " = 1;").join("\n")
-const protectedRaw = await run(["compress", "--tool", "openc claw-doctor-probe"], diff)
+const protectedRaw = await run(["compress", "--tool", "openclaw-doctor-probe"], diff)
 const protectedOutcome = JSON.parse(protectedRaw)
 assert.equal(protectedOutcome.changed, false)
 assert.equal(protectedOutcome.output, diff)
 assert.ok(!protectedOutcome.output.includes("[sutra:"))
-console.log("openc claw doctor hook ok")
+console.log("openclaw doctor hook ok")
 '''
         pythonpath = env.get("PYTHONPATH", "")
         script = (script
@@ -343,7 +343,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
     """
     plugin = pathlib.Path(path) if path is not None else plugin_path()
     checks: list[dict] = []
-    report: dict = {"client": "openc claw", "plugin": str(plugin),
+    report: dict = {"client": "openclaw", "plugin": str(plugin),
                     "checks": checks, "ok": False, "status": "fail"}
     try:
         text = plugin.read_text(encoding="utf-8")
@@ -430,7 +430,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
         lib_path.symlink_to(package_dir)
         pythonpath = str(lib_path.parent)
 
-        with tempfile.TemporaryDirectory(prefix="sutra-openc claw-doctor-") as temporary:
+        with tempfile.TemporaryDirectory(prefix="sutra-openclaw-doctor-") as temporary:
             root = pathlib.Path(temporary)
             store = root / "store"
             probe_home = root / "home"
@@ -459,7 +459,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
 
 def format_doctor(report: dict) -> str:
     if "error" in report:
-        return f"openc claw: error: {report['error']}"
+        return f"openclaw: error: {report['error']}"
     checks = report.get("checks") or []
     summary = " ".join(f"{check['name']}={check['status']}" for check in checks)
     if not summary:
@@ -470,4 +470,4 @@ def format_doctor(report: dict) -> str:
     automatic = "yes" if status == "pass" else ("partial" if status == "partial" else "no")
     detail = failed or skipped
     suffix = f" detail={detail['detail']}" if detail else ""
-    return f"openc claw: {summary} automatic={automatic}{suffix}"
+    return f"openclaw: {summary} automatic={automatic}{suffix}"

@@ -23,11 +23,11 @@ from . import __version__, installer, openclaw, runner
 USAGE = """sutra {version}
 
 usage:
-  sutra install [--client hermes|claude|opencode|openc claw|codex]... [--all] [--config PATH] [--dry-run]
-  sutra uninstall [--client hermes|claude|opencode|openc claw|codex]... [--all] [--config PATH] [--dry-run]
+  sutra install [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
+  sutra uninstall [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
   sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
-  sutra doctor [--client hermes|claude|opencode|openc claw|codex]... [--json]  (prove integrations)
+  sutra doctor [--client hermes|claude|opencode|openclaw|codex]... [--json]  (prove integrations)
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
@@ -92,7 +92,7 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print("sutra: codex is not installed; skipped")
             return 0
         return codex.install(dry_run=args.dry_run)
-    if client == "openc claw":
+    if client == "openclaw":
         # OpenClaw may not be installed on this host yet; the plugin itself is
         # still worth writing so it is ready when OpenClaw appears.
         if shutil.which("openclaw") is None:
@@ -138,7 +138,7 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
     if client == "codex":
         from . import codex
         return codex.uninstall(dry_run=args.dry_run)
-    if client == "openc claw":
+    if client == "openclaw":
         if shutil.which("openclaw") is None:
             print("sutra: openclaw is not installed; skipped")
             return 0
@@ -187,11 +187,11 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
                 labels.append("opencode=configured, MCP skipped")
             else:
                 labels.append("opencode=not configured")
-        elif client == "openc claw":
+        elif client == "openclaw":
             if row.get("plugin") == "installed":
-                labels.append("openc claw=configured")
+                labels.append("openclaw=configured")
             else:
-                labels.append("openc claw=not configured")
+                labels.append("openclaw=not configured")
         else:
             if row.get("hook") != "installed":
                 labels.append("codex=not configured")
@@ -256,7 +256,7 @@ def _rows() -> list[dict]:
         from . import openclaw
         openclaw_path = openclaw.plugin_path()
         rows.append({
-            "client": "openc claw",
+            "client": "openclaw",
             "binary": shutil.which("openclaw"),
             "config": str(openclaw_path),
             "plugin": "installed" if openclaw.configured() else "not installed",
@@ -264,7 +264,7 @@ def _rows() -> list[dict]:
             "home": str(openclaw.default_home()),
         })
     except Exception as exc:  # a broken adapter is reported, not raised
-        rows.append({"client": "openc claw", "error": str(exc)})
+        rows.append({"client": "openclaw", "error": str(exc)})
     try:
         from . import hermes
         if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():
@@ -330,8 +330,8 @@ def _status(as_json: bool = False) -> int:
                   f"trusted={trusted_text} mcp={row.get('mcp')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"tier={row.get('tier')} reason={row.get('host_limit')}")
-        elif row["client"] == "openc claw":
-            print(f"openc claw: binary={'yes' if row.get('binary') else 'no'} "
+        elif row["client"] == "openclaw":
+            print(f"openclaw: binary={'yes' if row.get('binary') else 'no'} "
                   f"plugin={row.get('plugin')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"config={row.get('config')}")
@@ -391,7 +391,7 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
                 reports.append(codex.doctor() if (
                     codex.binary() or codex.config_path().exists())
                     else _not_installed(client))
-            elif client == "openc claw":
+            elif client == "openclaw":
                 reports.append(openclaw.doctor(node=shutil.which("node")) if (
                     shutil.which("openclaw") or openclaw.plugin_path().exists())
                     else _not_installed(client))
@@ -417,7 +417,7 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
                 formatter = opencode.format_doctor
             elif client == "hermes":
                 formatter = hermes.format_doctor
-            elif client == "openc claw":
+            elif client == "openclaw":
                 formatter = openclaw.format_doctor
             else:
                 formatter = codex.format_doctor
@@ -459,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
             prog="sutra doctor",
             description="Prove the installed automatic integrations work.")
         parser.add_argument("--client", action="append",
-                            choices=["hermes", "claude", "opencode", "openc claw", "codex"],
+                            choices=["hermes", "claude", "opencode", "openclaw", "codex"],
                             help="limit the probe to this client (repeatable)")
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
