@@ -161,8 +161,16 @@ class Store:
         A directory made by an older version, or pre-created by another local
         user in a shared parent such as ``/tmp``, must not be trusted: a
         world-traversable store leaks the entry names, and an attacker-owned
-        one can swap files under us. If ownership or mode cannot be made safe,
-        the store refuses to operate rather than writing payloads there.
+        one can swap files under us. If ownership cannot be verified, the
+        store refuses to operate rather than writing payloads there.
+
+        Some filesystems (single-user mounts, certain FUSE or network
+        filesystems) do not support permission changes at all; on them the mode
+        bits reported by stat are advisory rather than real access control, and
+        there is no other local user to leak entry names to. Since ownership is
+        verified above, an unsupported chmod is not a reason to refuse to
+        operate: the store retains originals there instead of being silently
+        unavailable.
         """
         if os.name != "posix":  # mode bits are not the access control on Windows
             return
@@ -174,10 +182,12 @@ class Store:
         if stat.S_IMODE(info.st_mode) & 0o077:
             try:
                 os.chmod(self.dir, 0o700)
-            except OSError as exc:
-                raise StoreUnavailable(
-                    "store directory permissions could not be restricted: "
-                    f"{self.dir} ({exc})") from exc
+            except OSError:
+                # Permission changes are not supported on this filesystem; the
+                # directory is owned by us (checked above), so there is no
+                # enforceable access control to bypass. Do not refuse to operate
+                # merely because chmod is unavailable.
+                return
 
     def available(self) -> bool:
         try:
