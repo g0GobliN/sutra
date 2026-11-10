@@ -1,0 +1,1 @@
+src/strict.ts(2,13): error TS18047: 's' is possibly 'null'.
