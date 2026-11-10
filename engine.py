@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import config, utf8
+from .parsers import PARSER_REGISTRY, Limits as ParserLimits
 
 logger = logging.getLogger(__name__)
 
@@ -617,6 +618,35 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
                      rule="traceback" if omitted else "ansi", omitted_bytes=omitted,
                      partial=bool(omitted) or deduped)
         return out, stats
+
+    # --- structured CLI parsers (TEXT kind only) ---------------------------
+    # After classification, before the head-tail fallback: empty, patch, JSON
+    # and traceback payloads have all returned above, so reaching here means
+    # cls.kind == KIND_TEXT. Git diffs are already rejected by the KIND_PATCH
+    # check above, so they never reach a parser.
+    parser = PARSER_REGISTRY.find(text)
+    if parser is not None:
+        try:
+            result = parser.compress(text, ParserLimits(
+                max_bytes=max_bytes, head_bytes=head_bytes,
+                tail_bytes=tail_bytes))
+        except Exception:  # fail open: parser trouble never breaks output
+            logger.exception("sutra: parser %r failed; falling through",
+                             parser.name)
+            result = None
+        if result is not None and result.text != text:
+            out = result.text
+            # Format preservation: an original JSON document must stay JSON.
+            if _parses_as_json(text) and not _parses_as_json(out):
+                logger.debug("sutra: parser %r changed JSON shape; "
+                             "keeping original", parser.name)
+            else:
+                ob = len(out.encode("utf-8", "replace"))
+                stats.update(compressed_bytes=ob, changed=True,
+                             rule=f"parser:{parser.name}",
+                             omitted_bytes=max(0, original_bytes - ob),
+                             partial=True)
+                return out, stats
 
     head, tail = _limits(max_bytes, head_bytes, tail_bytes, reserve)
     if head + tail <= 0:
