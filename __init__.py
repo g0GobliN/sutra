@@ -33,6 +33,11 @@ change:
   SUTRA_MAX_BYTES               only results larger than this are rewritten (default 24576)
   SUTRA_HEAD_BYTES              bytes kept from the start (default 12288)
   SUTRA_TAIL_BYTES              bytes kept from the end (default 6144)
+  SUTRA_MAX_TOKENS          advisory token ceiling per result (default unset;
+                            the estimate sizes the byte budget; invalid or
+                            negative values disable the token budget)
+  SUTRA_TOKENIZER           tiktoken or byte-estimate (default byte-estimate;
+                            tiktoken is optional and never required)
   SUTRA_STATS_FILE              where the saving log lives (default $HERMES_HOME/cache/sutra-stats.jsonl)
   SUTRA_STATS_MAX_BYTES         rotate the log at this size (default 5 MiB)
   SUTRA_STORE                   "0" stops retaining originals (default "1")

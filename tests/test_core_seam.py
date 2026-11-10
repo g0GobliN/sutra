@@ -154,3 +154,43 @@ def test_the_runner_handover_keeps_the_shared_loader_importable():
                             capture_output=True, text=True, timeout=120)
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout)["enabled"] is True
+
+
+def test_compression_stats_is_typed_but_dict_like(sutra):
+    out, stats = sutra.compress("small output")
+    assert type(stats).__name__ == "CompressionStats"
+    # the seam and telemetry both import from core; the same type
+    assert sutra.engine.CompressionStats is sutra.core.CompressionStats
+    assert stats["rule"] == "none"            # mapping reads still work
+    assert stats["changed"] is False
+    assert stats.get("rule") == "none"
+    assert stats.get("absent", "fallback") == "fallback"
+    assert "rule" in stats and "absent" not in stats
+    assert dict(stats)["changed"] is False
+    assert stats.as_dict()["original_bytes"] == len("small output".encode("utf-8"))
+
+
+def test_core_exports_the_adaptive_budget_structures(sutra):
+    assert sutra.core.Limits is sutra.engine.Limits
+    limits = sutra.core.Limits(max_bytes=100, head_bytes=60, tail_bytes=40)
+    assert (limits.max_bytes, limits.head_bytes, limits.tail_bytes) == (100, 60, 40)
+
+
+def test_budget_contract_reports_exceeded_bytes_and_tokens(sutra):
+    limits = sutra.core.Limits(max_bytes=100, head_bytes=60, tail_bytes=40)
+    over = sutra.core.budget_contract(
+        original_bytes=1000, compressed_bytes=150, limits=limits)
+    assert over.satisfied is False
+    assert over.exceeded_by == 50
+    assert over.token_estimate is None and over.token_budget is None
+
+    fits = sutra.core.budget_contract(
+        original_bytes=1000, compressed_bytes=90, limits=limits)
+    assert fits.satisfied is True
+    assert fits.exceeded_by == 0
+
+    tokens_over = sutra.core.budget_contract(
+        original_bytes=100, compressed_bytes=50, limits=limits,
+        token_estimate=50, token_budget=10)
+    assert tokens_over.satisfied is False
+    assert tokens_over.tokens_exceeded is True

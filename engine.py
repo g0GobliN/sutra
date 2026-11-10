@@ -20,8 +20,8 @@ import io
 import json
 import logging
 import re
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import asdict, dataclass, fields
+from typing import Any, Iterator
 
 from . import config, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
@@ -92,6 +92,58 @@ class Limits:
     max_bytes: int
     head_bytes: int
     tail_bytes: int
+
+
+@dataclass(frozen=True)
+class CompressionStats:
+    """The typed record of one compression decision.
+
+    What ``engine.compress`` returns: bytes in, bytes out, the rule that
+    decided, and the budget verdicts. Dict-style reads (``stats["rule"]``)
+    keep working; ``as_dict()`` is the plain-dict view the seam and telemetry
+    write.
+    """
+
+    original_bytes: int
+    compressed_bytes: int
+    changed: bool
+    rule: str
+    omitted_bytes: int
+    partial: bool
+    fail_open: bool = False
+    token_estimate: int | None = None
+    budget_exceeded: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+    # --- mapping protocol: dict-style reads keep working ------------------
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key) from None
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            return default
+
+    def keys(self) -> list[str]:
+        return [field.name for field in fields(self)]
+
+    def items(self) -> list[tuple[str, Any]]:
+        return [(field.name, getattr(self, field.name)) for field in fields(self)]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.keys())
+
+    def __len__(self) -> int:
+        return len(self.keys())
+
+    def __contains__(self, key: object) -> bool:
+        return key in self.keys()
 
 
 def config_from_env() -> Limits:
@@ -551,6 +603,13 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
     if json_items or cfg.json_items:
         _warn_json_items_retired()
 
+    # A token budget is an advisory ceiling on estimated tokens: convert it
+    # to bytes conservatively and let the normal head/tail split honour it.
+    token_estimate = config.estimated_tokens(text, cfg.tokenizer)
+    token_budget = cfg.max_tokens
+    if token_budget is not None:
+        max_bytes = min(max_bytes, token_budget * config.BYTES_PER_TOKEN_ESTIMATE)
+
     original_bytes = len(text.encode("utf-8", "replace"))
     stats: dict[str, Any] = {
         "original_bytes": original_bytes,
@@ -559,6 +618,8 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
         "rule": "none",
         "omitted_bytes": 0,
         "partial": False,
+        "token_estimate": token_estimate,
+        "budget_exceeded": token_budget is not None and token_estimate > token_budget,
     }
     if original_bytes <= max_bytes:
         return text, stats
@@ -682,7 +743,7 @@ def _warn_json_items_retired() -> None:
 def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
              tail_bytes: int | None = None, json_items: int | None = None,
              ref: Ref | None = None, marker_reserve: int | None = None,
-             cfg: config.Config | None = None) -> tuple[str, dict[str, Any]]:
+             cfg: config.Config | None = None) -> tuple[str, CompressionStats]:
     """Compress one result, with the format invariant enforced last.
 
     If the input was a JSON document and the output no longer parses, the
@@ -692,29 +753,26 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
     """
     original_bytes = utf8_byte_length(text)
     if original_bytes is None:
-        return text, {
-            "original_bytes": 0,
-            "compressed_bytes": 0,
-            "changed": False,
-            "rule": "invalid-utf8-kept",
-            "omitted_bytes": 0,
-            "partial": False,
-        }
+        return text, CompressionStats(
+            original_bytes=0, compressed_bytes=0, changed=False,
+            rule="invalid-utf8-kept", omitted_bytes=0, partial=False,
+        )
     try:
         out, stats = _compress_impl(text, cfg=cfg, max_bytes=max_bytes, head_bytes=head_bytes,
                                     tail_bytes=tail_bytes, json_items=json_items, ref=ref,
                                     marker_reserve=marker_reserve)
     except Exception:  # fail open: never let a compressor break a tool result
         logger.exception("sutra: compression failed; returning the original")
-        return text, {"original_bytes": original_bytes, "compressed_bytes": original_bytes,
-                      "changed": False, "rule": "fail-open", "omitted_bytes": 0,
-                      "fail_open": True}
+        stats = {"original_bytes": original_bytes, "compressed_bytes": original_bytes,
+                 "changed": False, "rule": "fail-open", "omitted_bytes": 0,
+                 "partial": False, "fail_open": True}
+        return text, CompressionStats(**stats)
+    stats = CompressionStats(**stats)
     if out != text and not _parses_as_json(out) and _parse_json_document(text) is not None:
-        return text, {
-            "original_bytes": original_bytes,
-            "compressed_bytes": original_bytes,
-            "changed": False,
-            "rule": "json-kept",
-            "omitted_bytes": 0,
-        }
+        return text, CompressionStats(
+            original_bytes=original_bytes, compressed_bytes=original_bytes,
+            changed=False, rule="json-kept", omitted_bytes=0, partial=False,
+            token_estimate=stats.token_estimate,
+            budget_exceeded=stats.budget_exceeded,
+        )
     return out, stats

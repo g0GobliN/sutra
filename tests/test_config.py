@@ -8,6 +8,7 @@ own parse of the environment.
 from __future__ import annotations
 
 import json
+import logging
 import os
 
 import pytest
@@ -144,3 +145,72 @@ def test_invalid_values_fall_back_in_one_place(sutra, monkeypatch, name, value):
         "SUTRA_RECOVERY_MAX_MATCHES": "recovery_max_matches",
     }[name]
     assert resolved[field] == _DEFAULTS[field]
+
+
+def test_max_tokens_is_absent_by_default(sutra):
+    cfg = sutra.configuration()
+    assert cfg.max_tokens is None
+    assert cfg.tokenizer == "byte-estimate"
+    resolved = cfg.as_dict()
+    assert resolved["max_tokens"] is None
+    assert resolved["tokenizer"] == "byte-estimate"
+
+
+def test_max_tokens_env_var_wins(sutra, monkeypatch):
+    monkeypatch.setenv("SUTRA_MAX_TOKENS", "9")
+    assert sutra.configuration().max_tokens == 9
+
+
+def test_max_tokens_caps_the_byte_budget_at_compress_time(sutra, monkeypatch):
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "1000000")  # byte budget alone keeps all of it
+    monkeypatch.setenv("SUTRA_MAX_TOKENS", "1")        # ~= at most four bytes
+    text = "x" * 60
+    out, stats = sutra.compress(text)
+    assert stats["budget_exceeded"] is True
+    assert stats["token_estimate"] is not None and stats["token_estimate"] > 1
+    assert stats["rule"] == "budget-too-small"         # token ceiling wins
+    assert out == text                                 # fail-open: nothing invented
+
+
+def test_token_budget_elides_when_it_is_under_the_byte_budget(sutra, monkeypatch):
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "1000000")
+    monkeypatch.setenv("SUTRA_MAX_TOKENS", "300")      # 1200-byte cap
+    text = "line one\n" + "m" * 5000 + "\nline two\n"
+    out, stats = sutra.compress(text)
+    assert stats["rule"] == "head-tail"
+    assert stats["changed"] is True and out != text
+    assert "[sutra:" in out
+
+
+@pytest.mark.parametrize("name,value", [
+    ("SUTRA_MAX_TOKENS", "not-a-number"),
+    ("SUTRA_MAX_TOKENS", "-5"),
+])
+def test_invalid_max_tokens_warns_once_and_disables(sutra, monkeypatch,
+                                                    caplog, name, value):
+    monkeypatch.setenv(name, value)
+    with caplog.at_level(logging.WARNING, logger="sutra.config"):
+        sutra.configuration()
+        sutra.configuration()  # same problem, same process: one warning only
+    messages = [record.getMessage() for record in caplog.records]
+    matched = [m for m in messages if name in m]
+    assert len(matched) == 1, matched
+    assert sutra.configuration().max_tokens is None
+
+
+def test_unknown_tokenizer_warns_once_and_falls_back(sutra, monkeypatch,
+                                                      caplog):
+    monkeypatch.setenv("SUTRA_TOKENIZER", "not-a-tokenizer")
+    with caplog.at_level(logging.WARNING, logger="sutra.config"):
+        sutra.configuration()
+        sutra.configuration()
+    messages = [record.getMessage() for record in caplog.records]
+    matched = [m for m in messages if "SUTRA_TOKENIZER" in m]
+    assert len(matched) == 1, matched
+    assert sutra.configuration().tokenizer == "byte-estimate"
+    # the fallback still counts tokens (byte-based estimate)
+    assert sutra.config.estimated_tokens("x" * 8, "not-a-tokenizer") == 2
+
+
+def test_max_field_pointer_is_256_utf8_bytes(sutra):
+    assert sutra.config.MAX_FIELD_POINTER == 256

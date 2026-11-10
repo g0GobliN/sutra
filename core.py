@@ -23,7 +23,7 @@ from typing import Any
 from . import config as _config
 from . import engine, metrics, recovery, reuse as _reuse
 from . import store as _store
-from .engine import Ref
+from .engine import CompressionStats, Limits, Ref
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,48 @@ def should_bypass(tool_name: str | None) -> bool:
         name.endswith("__" + tool) for tool in NO_COMPRESS_TOOLS)
 
 
+@dataclass(frozen=True)
+class Contract:
+    """Whether one compressed result fits its budget, stated explicitly.
+
+    ``satisfied`` is False when the compressed text still exceeds the byte
+    budget, or when the estimated tokens exceed the token budget.
+    ``exceeded_by`` is how many bytes over the byte budget it is (zero when
+    it fits). Hosts call ``budget_contract`` to explain *why* a result was
+    kept or elided; it never changes the result.
+    """
+
+    limits: Limits
+    satisfied: bool
+    exceeded_by: int = 0
+    token_estimate: int | None = None
+    token_budget: int | None = None
+    tokens_exceeded: bool = False
+
+
+def budget_contract(*, original_bytes: int, compressed_bytes: int,
+                    limits: Limits, token_estimate: int | None = None,
+                    token_budget: int | None = None) -> Contract:
+    """Report whether a result fits its budget, explicitly.
+
+    A host passes the engine's stats and the resolved limits; the result is
+    the contract verdict, not a new transformation.
+    """
+    byte_ok = compressed_bytes <= limits.max_bytes
+    exceeded_by = max(0, compressed_bytes - limits.max_bytes)
+    tokens_exceeded = (token_budget is not None
+                       and token_estimate is not None
+                       and token_estimate > token_budget)
+    return Contract(
+        limits=limits,
+        satisfied=byte_ok and not tokens_exceeded,
+        exceeded_by=exceeded_by,
+        token_estimate=token_estimate,
+        token_budget=token_budget,
+        tokens_exceeded=tokens_exceeded,
+    )
+
+
 def _record_compression(stats: dict[str, Any], cfg: _config.Config) -> None:
     """Best-effort hand-off to the one telemetry owner."""
     try:
@@ -73,6 +115,9 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
     """Compress one string, retaining the original first when it is rewritten."""
     started = time.perf_counter()
     out, stats = engine.compress(text, cfg=cfg)
+    # engine.compress returns the typed record; the seam mutates a plain dict
+    # (stored / id / duration_ms / tool) before telemetry sees it.
+    stats = dict(stats)
     stats.setdefault("stored", False)
     stats.setdefault("id", None)
     if stats.get("changed"):
@@ -87,6 +132,7 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                     text, ref=Ref(entry.id, cfg.store_ttl_hours), cfg=cfg)
                 if kept_stats.get("changed"):
                     out, stats = kept_out, kept_stats
+                    stats = dict(stats)
                     stats["stored"] = True
                     stats["id"] = entry.id
                 else:
@@ -241,9 +287,13 @@ def outcome_json(outcome: Outcome) -> dict[str, Any]:
 
 
 __all__ = [
+    "CompressionStats",
+    "Contract",
+    "Limits",
     "NO_COMPRESS_TOOLS",
     "Outcome",
     "TEXT_KEYS",
+    "budget_contract",
     "outcome_json",
     "process_result",
     "process_text",

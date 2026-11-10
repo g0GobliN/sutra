@@ -13,9 +13,9 @@ at import: the host sets the environment before the plugin is used, and callers
 (tests, operators) may change it between calls. The cost is a dozen dictionary
 lookups.
 
-Every name, default and precedence rule is unchanged. Parsing an invalid value
-logs one warning per problem per process and falls back to the documented
-default.
+Every existing name, default and precedence rule is unchanged. Parsing an
+invalid value logs one warning per problem per process and falls back to the
+documented default.
 """
 
 from __future__ import annotations
@@ -50,6 +50,18 @@ POLICY_MODES = ("off", "balanced", "aggressive")
 # The smallest output worth remembering for exact-duplicate reuse. Below this a
 # marker costs about as much context as the repeat it would replace.
 DEFAULT_REUSE_MIN_BYTES = 4096
+
+# Advisory token ceiling per result. ``None`` means no token budget. The count
+# is an estimate (byte-based unless tiktoken is importable); it sizes the byte
+# budget and never invents exact token counts. An unreadable or negative value
+# disables the token budget with one warning per process.
+DEFAULT_MAX_TOKENS: int | None = None
+DEFAULT_TOKENIZER = "byte-estimate"
+TOKENIZERS = ("tiktoken", "byte-estimate")
+# One token is at least one byte, so four bytes per token is a safe upper bound
+# when converting a token ceiling into a byte budget: a result larger than that
+# cannot possibly fit within max_tokens tokens.
+BYTES_PER_TOKEN_ESTIMATE = 4
 
 # One contract for the JSON pointer quoted in a marker, shared by the producer
 # (engine) and the consumer (recovery). Measured in UTF-8 bytes: it also bounds
@@ -116,6 +128,65 @@ def _policy_mode() -> str:
     return value
 
 
+def _optional_int(name: str, default: int | None) -> int | None:
+    """Read an int from the environment; invalid or negative falls back."""
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        _warn_once(f"{name}={raw!r} is not an integer; using {default}")
+        return default
+    if value < 0:
+        _warn_once(f"{name}={value} is negative; {name} disabled")
+        return None
+    return value
+
+
+def _tokenizer() -> str:
+    """Read ``SUTRA_TOKENIZER``; unrecognised warns and uses the default."""
+    raw = os.environ.get("SUTRA_TOKENIZER")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_TOKENIZER
+    value = str(raw).strip().lower()
+    if value not in TOKENIZERS:
+        _warn_once(f"SUTRA_TOKENIZER={raw!r} is not one of "
+                   f"{', '.join(TOKENIZERS)}; using {DEFAULT_TOKENIZER}")
+        return DEFAULT_TOKENIZER
+    return value
+
+
+def estimated_tokens(text: str, tokenizer: str | None = None) -> int:
+    """Estimate the token count of ``text``.
+
+    ``tiktoken`` (cl100k_base) counts exactly when requested and importable;
+    otherwise a byte-based estimate (``ceil(bytes / 4)``) is used. It is an
+    estimate: the byte budget it feeds is deliberately conservative, never
+    exact, and lone surrogates never break it.
+    """
+    name = tokenizer or DEFAULT_TOKENIZER
+    if name not in TOKENIZERS:
+        name = DEFAULT_TOKENIZER
+    if name == "tiktoken":
+        try:
+            import tiktoken  # type: ignore[import-not-found]  # optional: exact counts when present
+        except ImportError:
+            logger.debug("sutra: tiktoken not installed; byte-based token "
+                         "estimate")
+            name = "byte-estimate"
+    if name == "byte-estimate":
+        encoded = text.encode("utf-8", "replace")
+        return (len(encoded) + BYTES_PER_TOKEN_ESTIMATE - 1) // BYTES_PER_TOKEN_ESTIMATE
+    try:
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text))
+    except Exception:  # lone surrogates and anything else: bytes always work
+        logger.debug("sutra: tiktoken encode failed; byte-based token estimate")
+        encoded = text.encode("utf-8", "replace")
+        return (len(encoded) + BYTES_PER_TOKEN_ESTIMATE - 1) // BYTES_PER_TOKEN_ESTIMATE
+
+
 def hermes_home() -> str:
     """The active Hermes home; the plugin host sets ``HERMES_HOME`` per profile."""
     return os.path.expanduser(os.environ.get("HERMES_HOME") or "~/.hermes")
@@ -147,6 +218,8 @@ class Config:
     policy_mode: str = "off"
     reuse: bool = False
     reuse_min_bytes: int = DEFAULT_REUSE_MIN_BYTES
+    max_tokens: int | None = None
+    tokenizer: str = DEFAULT_TOKENIZER
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -192,4 +265,6 @@ def resolve() -> Config:
         reuse=_flag("SUTRA_REUSE", True),
         reuse_min_bytes=_int("SUTRA_REUSE_MIN_BYTES", DEFAULT_REUSE_MIN_BYTES,
                              minimum=1024),
+        max_tokens=_optional_int("SUTRA_MAX_TOKENS", DEFAULT_MAX_TOKENS),
+        tokenizer=_tokenizer(),
     )

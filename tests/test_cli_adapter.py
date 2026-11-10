@@ -123,8 +123,10 @@ def test_config_reports_resolved_values_without_secrets():
     assert result.returncode == 0
     config = json.loads(result.stdout)
     assert config["max_bytes"] == 24576
+    assert config["max_tokens"] is None
+    assert config["tokenizer"] == "byte-estimate"
     assert "key" not in json.dumps(config).lower()
-    assert "token" not in json.dumps(config).lower()
+    assert "secret" not in json.dumps(config).lower()
 
 
 def test_oversized_input_is_refused_cleanly():
