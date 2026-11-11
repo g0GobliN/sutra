@@ -24,6 +24,7 @@ true, so registration order is significance order: specific formats first.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -58,6 +59,17 @@ __all__ = [
     "TscParser",
     "VitestParser",
     "YarnParser",
+    "ParsedOutput",
+    "AnsibleParser",
+    "HelmParser",
+    "ArgoCDParser",
+    "FluxParser",
+    "TalosctlParser",
+    "CiliumParser",
+    "IstioctlParser",
+    "VeleroParser",
+    "KubebuilderParser",
+    "OperatorSdkParser",
 ]
 
 
@@ -115,6 +127,25 @@ class Limits:
     max_bytes: int
     head_bytes: int
     tail_bytes: int
+
+
+@dataclass(frozen=True)
+class ParsedOutput:
+    """Structured result of parsing one CLI tool's output.
+
+    ``rows`` holds table rows as ``{column: value}`` mappings (header names
+    are normalised to lower case), ``key_values`` holds ``key: value`` /
+    ``key=value`` fields, and ``raw`` is the original input text for
+    reference. ``tool`` and ``subcommand`` identify the CLI family and the
+    subcommand that produced the output.
+    """
+
+    tool: str
+    command: str
+    subcommand: str | None
+    rows: list[dict[str, str]]
+    key_values: dict[str, str]
+    raw: str
 
 
 # --------------------------------------------------------------------------- #
@@ -364,6 +395,446 @@ class _BaseParser(Parser):
             out_lines.append(line)
             i += 1
         return self._emit(out_lines, text, limits)
+
+
+class _CliParser(Parser):
+    """Base for structured CLI output parsers (helm, argocd, flux, ...).
+
+    Unlike the compression parsers above, these extract structured table and
+    key-value data from a CLI tool's output. Their main entry point is
+    :meth:`parse`, which returns a :class:`ParsedOutput`.
+
+    The compression contract (``detect``, ``extract_evidence``,
+    ``find_repetitive_sections``, ``compress``) is implemented as fail-open
+    no-ops: these parsers are registered for discovery and structured
+    ``parse()``, not for byte-bounded compression. ``detect`` must be
+    overridden by each subclass and must be specific enough not to match
+    unrelated output.
+    """
+
+    name = ""
+
+    def detect(self, text: str) -> bool:
+        raise NotImplementedError
+
+    def extract_evidence(self, text: str) -> Evidence:
+        return Evidence(family=self.name)
+
+    def find_repetitive_sections(self, text: str) -> list[Section]:
+        return []
+
+    def compress(self, text: str, limits: Limits) -> CompressedResult:
+        # Structured parsers do not compress; return input unchanged.
+        return CompressedResult(text=text, changed=False)
+
+    def fallback(self, text: str) -> str:
+        return text
+
+    def parse(self, text: str) -> ParsedOutput:
+        raise NotImplementedError
+
+
+# --------------------------------------------------------------------------- #
+# Shared helpers for structured CLI output parsing
+# --------------------------------------------------------------------------- #
+
+_WS_SPLIT = re.compile(r"\s{2,}|\t")
+_SEPARATOR_RE = re.compile(r"^[\s\-:|+]+$")
+_KV_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*[:=]\s*(.*)\s*$")
+_HOST_STATUS_RE = re.compile(r"^(\S+)\s*\|\s*(\S+)\s*=>\s*(.*)$", re.MULTILINE)
+
+
+def _split_row(line: str) -> list[str]:
+    """Split one table row into cells on runs of whitespace or tabs."""
+    return [cell for cell in _WS_SPLIT.split(line.strip()) if cell]
+
+
+def _parse_table(text: str) -> list[dict[str, str]]:
+    """Parse whitespace-delimited table output into ``{column: value}`` rows.
+
+    The first non-blank line is the header; a separator line (only dashes,
+    colons, pipes and spaces) is skipped. Header names are normalised to
+    lower case. Data rows are split on whitespace and zipped with the header;
+    missing cells are blank and extra cells are dropped.
+    """
+    lines = [ln.rstrip("\n") for ln in text.splitlines() if ln.strip()]
+    header: list[str] | None = None
+    rows: list[dict[str, str]] = []
+    for line in lines:
+        if _SEPARATOR_RE.fullmatch(line.strip()):
+            continue
+        if header is None:
+            header = [col.lower() for col in _split_row(line)]
+            continue
+        cells = _split_row(line)
+        row: dict[str, str] = {}
+        for idx, col in enumerate(header):
+            row[col] = cells[idx] if idx < len(cells) else ""
+        rows.append(row)
+    if header is None:
+        return []
+    return rows
+
+
+def _parse_key_values(text: str) -> dict[str, str]:
+    """Extract ``key: value`` / ``key=value`` fields from ``text``."""
+    values: dict[str, str] = {}
+    for line in text.splitlines():
+        match = _KV_RE.match(line.strip())
+        if match:
+            values[match.group(1)] = match.group(2).strip()
+    return values
+
+
+def _has_structure(text: str) -> bool:
+    """True when ``text`` looks like structured table / key-value output."""
+    return bool(_parse_table(text)) or bool(_parse_key_values(text)) or any(
+        "|" in line or "\t" in line for line in text.splitlines()
+    )
+
+
+def _word_in(text: str, word: str) -> bool:
+    """True when ``word`` appears as a standalone token in ``text``.
+
+    Avoids substring false positives (e.g. ``age`` matching ``storage``).
+    """
+    return re.search(
+        r"(?<![A-Za-z0-9_])" + re.escape(word) + r"(?![A-Za-z0-9_])", text
+    ) is not None
+
+
+def _detect_subcommand(text: str, known: tuple[str, ...]) -> str | None:
+    """Return the first known subcommand token found in ``text``."""
+    for token in text.split():
+        candidate = token.lstrip("-")
+        if candidate in known:
+            return candidate
+    return None
+
+
+def _json_scalar(value) -> str:
+    """Coerce one JSON value into a short string for key/value output."""
+    if isinstance(value, (dict, list)):
+        return json.dumps(value, sort_keys=True)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if value is None:
+        return ""
+    return str(value)
+
+
+class AnsibleParser(_CliParser):
+    """Ansible: ``ansible <host> -m <module>`` and ``ansible-inventory --list``."""
+
+    name = "ansible"
+    PRIMARY_SUBCOMMAND = "ansible"
+    SUBCOMMANDS = ("inventory", "playbook", "ansible")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        if _HOST_STATUS_RE.search(clean):
+            return True
+        stripped = clean.strip()
+        if stripped.startswith("{") and '"' in clean:
+            return True
+        return "ansible" in clean.lower() and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        key_values: dict[str, str] = _parse_key_values(text)
+        rows: list[dict[str, str]] = []
+
+        # ansible-inventory --list emits JSON.
+        stripped = text.strip()
+        if stripped.startswith("{") or stripped.startswith("["):
+            try:
+                data = json.loads(stripped)
+            except json.JSONDecodeError:
+                data = None
+            if isinstance(data, dict):
+                key_values = {k: _json_scalar(v) for k, v in data.items()}
+            elif isinstance(data, list):
+                rows = [{"item": _json_scalar(v)} for v in data]
+
+        # ansible <host> -m ping style:  host | STATUS => {...}
+        lines = text.splitlines()
+        for idx, line in enumerate(lines):
+            match = _HOST_STATUS_RE.match(line.strip())
+            if not match:
+                continue
+            host, status = match.group(1), match.group(2)
+            payload_lines = [match.group(3).strip()]
+            # Collect indented continuation lines (multi-line JSON payload),
+            # including a lone closing bracket that ends the payload.
+            j = idx + 1
+            while j < len(lines) and lines[j]:
+                stripped_j = lines[j].strip()
+                if lines[j][0] not in " \t" and stripped_j not in ("}", "]"):
+                    break
+                payload_lines.append(stripped_j)
+                j += 1
+            payload = " ".join(payload_lines)
+            inner: dict[str, str] = {}
+            try:
+                inner = json.loads(payload) if payload.startswith("{") else {}
+            except json.JSONDecodeError:
+                inner = {}
+            rows.append({
+                "host": host,
+                "status": status,
+                "payload": payload,
+                **{k: _json_scalar(v) for k, v in inner.items()},
+            })
+
+        if not rows and not key_values:
+            rows = _parse_table(text)
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class HelmParser(_CliParser):
+    """Helm: ``helm list``, ``helm status <release>``, ``helm repo list``."""
+
+    name = "helm"
+    PRIMARY_SUBCOMMAND = "list"
+    SUBCOMMANDS = ("list", "status", "repo", "get", "install", "uninstall",
+                   "upgrade", "rollback")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "chart") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class ArgoCDParser(_CliParser):
+    """Argo CD: ``argocd app list``, ``argocd app get <name>``."""
+
+    name = "argocd"
+    PRIMARY_SUBCOMMAND = "app"
+    SUBCOMMANDS = ("app", "app list", "app get", "app sync", "login", "logout")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "syncpolicy") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class FluxParser(_CliParser):
+    """Flux: ``flux get kustomizations``, ``flux get sources``."""
+
+    name = "flux"
+    PRIMARY_SUBCOMMAND = "get"
+    SUBCOMMANDS = ("get", "source", "kustomization", "helmrelease", "notify")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "age") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class TalosctlParser(_CliParser):
+    """Talosctl: ``talosctl get nodes``, ``talosctl get clusters``."""
+
+    name = "talosctl"
+    PRIMARY_SUBCOMMAND = "get"
+    SUBCOMMANDS = ("get", "nodes", "clusters", "version", "dashboard")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "role") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class CiliumParser(_CliParser):
+    """Cilium: ``cilium status``, ``cilium service list``, ``cilium endpoint list``."""
+
+    name = "cilium"
+    PRIMARY_SUBCOMMAND = "status"
+    SUBCOMMANDS = ("status", "service", "endpoint", "config", "trace")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "controller") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class IstioctlParser(_CliParser):
+    """Istioctl: ``istioctl version``, ``istioctl proxy-config``."""
+
+    name = "istioctl"
+    PRIMARY_SUBCOMMAND = "version"
+    SUBCOMMANDS = ("version", "proxy-config", "analyze", "dashboard")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "mesh") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class VeleroParser(_CliParser):
+    """Velero: ``velero get backups``, ``velero get restore``."""
+
+    name = "velero"
+    PRIMARY_SUBCOMMAND = "get"
+    SUBCOMMANDS = ("get", "backup", "restore", "schedule", "delete")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "expires") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class KubebuilderParser(_CliParser):
+    """Kubebuilder: ``kubebuilder version``, ``kubebuilder create api``."""
+
+    name = "kubebuilder"
+    PRIMARY_SUBCOMMAND = "version"
+    SUBCOMMANDS = ("version", "create", "init", "edit")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "version") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
+
+
+class OperatorSdkParser(_CliParser):
+    """Operator SDK: ``operator-sdk version``, ``operator-sdk generate``."""
+
+    name = "operator-sdk"
+    PRIMARY_SUBCOMMAND = "version"
+    SUBCOMMANDS = ("version", "generate", "run", "bundle")
+
+    def detect(self, text: str) -> bool:
+        clean = _strip_ansi(text)
+        return _word_in(clean.lower(), "commit") and _has_structure(clean)
+
+    def parse(self, text: str) -> ParsedOutput:
+        subcommand = _detect_subcommand(text, self.SUBCOMMANDS) or self.PRIMARY_SUBCOMMAND
+        rows = _parse_table(text)
+        key_values = _parse_key_values(text)
+        # Key/value output (e.g. ``version: 1.22.0``) is sometimes misread as a
+        # degenerate single-column table.  Prefer the key/value interpretation
+        # when that happens.
+        if key_values and rows and all(len(row) <= 1 for row in rows):
+            rows = []
+        if not rows and not key_values and text.strip():
+            rows = [{"output": line} for line in text.splitlines() if line.strip()]
+        return ParsedOutput(tool=self.name, command=self.name,
+                            subcommand=subcommand, rows=rows,
+                            key_values=key_values, raw=text)
 
 
 # --------------------------------------------------------------------------- #
@@ -710,3 +1181,15 @@ register_parser(PnpmParser())
 register_parser(YarnParser())
 register_parser(DockerBuildParser())
 register_parser(NodeStackTraceParser())
+
+# Structured CLI output parsers for Kubernetes / DevOps tooling (v0.6.1).
+register_parser(AnsibleParser())
+register_parser(HelmParser())
+register_parser(ArgoCDParser())
+register_parser(FluxParser())
+register_parser(TalosctlParser())
+register_parser(CiliumParser())
+register_parser(IstioctlParser())
+register_parser(VeleroParser())
+register_parser(OperatorSdkParser())
+register_parser(KubebuilderParser())

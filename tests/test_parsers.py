@@ -24,10 +24,21 @@ Evidence = parsers.Evidence
 Section = parsers.Section
 CompressedResult = parsers.CompressedResult
 Limits = parsers.Limits
+ParsedOutput = parsers.ParsedOutput
 
 CargoCheckParser = parsers.CargoCheckParser
 CargoTestParser = parsers.CargoTestParser
 DockerBuildParser = parsers.DockerBuildParser
+AnsibleParser = parsers.AnsibleParser
+ArgoCDParser = parsers.ArgoCDParser
+CiliumParser = parsers.CiliumParser
+FluxParser = parsers.FluxParser
+HelmParser = parsers.HelmParser
+IstioctlParser = parsers.IstioctlParser
+KubebuilderParser = parsers.KubebuilderParser
+OperatorSdkParser = parsers.OperatorSdkParser
+TalosctlParser = parsers.TalosctlParser
+VeleroParser = parsers.VeleroParser
 ESLintParser = parsers.ESLintParser
 GoCompilerParser = parsers.GoCompilerParser
 GoTestParser = parsers.GoTestParser
@@ -59,6 +70,20 @@ ALL_PARSERS = [
     YarnParser(),
     DockerBuildParser(),
     NodeStackTraceParser(),
+]
+
+# Structured CLI output parsers added for v0.6.1 (Kubernetes / DevOps tooling).
+CLI_ALL_PARSERS = [
+    AnsibleParser(),
+    HelmParser(),
+    ArgoCDParser(),
+    FluxParser(),
+    TalosctlParser(),
+    CiliumParser(),
+    IstioctlParser(),
+    VeleroParser(),
+    KubebuilderParser(),
+    OperatorSdkParser(),
 ]
 
 FAMILIES = [p.name for p in ALL_PARSERS]
@@ -483,3 +508,232 @@ def test_public_compress_reports_parser_rule(sutra):
     assert stats["rule"] == "parser:jest"
     assert "Expected: 5" in out
     assert "adds 2 + 2 to equal 5" in out
+
+
+# --- v0.6.1: structured CLI output parsers (Kubernetes / DevOps tooling) ----
+
+HELM_LIST = (
+    "NAME            NAMESPACE       REVISION  UPDATED             STATUS      CHART                         APP VERSION\n"
+    "nginx-ingress   ingress-nginx   1         2026-01-01T00:00:00Z  deployed    nginx-ingress-4.0.0             4.0.0\n"
+    "prometheus      monitoring      3         2026-02-01T00:00:00Z  deployed    kube-prometheus-stack-50.0.0    50.0.0\n"
+)
+
+ARGOCD_APP_LIST = (
+    "NAME                          CLUSTER                 NAMESPACE   PROJECT     STATUS  HEALTH   SYNCPOLICY  CONDITION\n"
+    "sock-shop                     cluster.local           default     default     Healthy     Healthy     <none>      Pruned\n"
+    "bookinfo                      cluster.local           default     default     Healthy Healthy    <none>      Pruned\n"
+)
+
+FLUX_KUSTOMIZATIONS = (
+    "NAME                          NAMESPACE   AGE\n"
+    "podinfo                       default     5m\n"
+    "guestbook                     default     10m\n"
+)
+
+TALOSCTL_NODES = (
+    "NAME                         IP              VERSION   ROLE\n"
+    "controlplane-1               192.168.1.10    1.8.3     controlplane\n"
+    "worker-1                     192.168.1.20    1.8.3     worker\n"
+)
+
+CILIUM_STATUS = (
+    "CONTROLLER   STATUS   VERSION\n"
+    "k8s          ok       1.16.0\n"
+)
+
+ISTIOCTL_VERSION = (
+    "version: 1.22.0\n"
+    "revision: abc123def\n"
+    "mesh: enabled\n"
+)
+
+VELERO_BACKUPS = (
+    "NAME                     STATUS      CREATED                         EXPIRES   STORAGE LOCATION   SELECTOR\n"
+    "full-cluster-backup      Completed   2026-01-01T00:00:00Z            30d       default              <none>\n"
+)
+
+OPERATOR_SDK_VERSION = (
+    "version: v1.30.1\n"
+    "commit: abc123def\n"
+)
+
+KUBEBUILDER_VERSION = (
+    "version: 0.8.0\n"
+)
+
+ANSIBLE_PING = (
+    "localhost | SUCCESS => {\n"
+    '    "changed": false,\n'
+    '    "ping": "pong"\n'
+    "}\n"
+)
+
+ANSIBLE_INVENTORY = (
+    "{\n"
+    '  "all": {\n'
+    '    "hosts": {\n'
+    '      "web1": {},\n'
+    '      "web2": {}\n'
+    "    }\n"
+    "  }\n"
+    "}\n"
+)
+
+CLI_SAMPLES = {
+    "ansible": ANSIBLE_PING,
+    "helm": HELM_LIST,
+    "argocd": ARGOCD_APP_LIST,
+    "flux": FLUX_KUSTOMIZATIONS,
+    "talosctl": TALOSCTL_NODES,
+    "cilium": CILIUM_STATUS,
+    "istioctl": ISTIOCTL_VERSION,
+    "velero": VELERO_BACKUPS,
+    "kubebuilder": KUBEBUILDER_VERSION,
+    "operator-sdk": OPERATOR_SDK_VERSION,
+}
+
+CLI_PRIMARY_SUBCOMMAND = {
+    "ansible": "ansible",
+    "helm": "list",
+    "argocd": "app",
+    "flux": "get",
+    "talosctl": "get",
+    "cilium": "status",
+    "istioctl": "version",
+    "velero": "get",
+    "kubebuilder": "version",
+    "operator-sdk": "version",
+}
+
+
+@pytest.mark.parametrize("parser_cls", [type(p) for p in CLI_ALL_PARSERS])
+def test_cli_parser_has_family_name(parser_cls):
+    assert parser_cls.name
+
+
+@pytest.mark.parametrize("parser_cls", [type(p) for p in CLI_ALL_PARSERS])
+def test_cli_parser_detects_own_sample(parser_cls):
+    assert parser_cls().detect(CLI_SAMPLES[parser_cls.name]) is True
+
+
+@pytest.mark.parametrize("parser", CLI_ALL_PARSERS)
+def test_cli_parser_rejects_plain_text(parser):
+    assert parser.detect(PLAIN_TEXT) is False
+    assert parser.detect("") is False
+
+
+@pytest.mark.parametrize("name", sorted(CLI_SAMPLES))
+def test_cli_registry_finds_own_parser(name):
+    found = PARSER_REGISTRY.find(CLI_SAMPLES[name])
+    assert found is not None and found.name == name
+
+
+@pytest.mark.parametrize("name", sorted(CLI_SAMPLES))
+def test_cli_parse_returns_parsed_output(name):
+    parser = PARSER_REGISTRY.find(CLI_SAMPLES[name])
+    out = parser.parse(CLI_SAMPLES[name])
+    assert isinstance(out, ParsedOutput)
+    assert out.tool == name
+    assert out.command == name
+    assert out.subcommand == CLI_PRIMARY_SUBCOMMAND[name]
+    assert out.raw == CLI_SAMPLES[name]
+
+
+def test_helm_list_parses_rows():
+    out = HelmParser().parse(HELM_LIST)
+    assert out.subcommand == "list"
+    assert len(out.rows) == 2
+    assert out.rows[0]["name"] == "nginx-ingress"
+    assert out.rows[0]["namespace"] == "ingress-nginx"
+    assert out.rows[0]["chart"] == "nginx-ingress-4.0.0"
+    assert out.rows[0]["app version"] == "4.0.0"
+    assert out.rows[1]["name"] == "prometheus"
+    assert out.rows[1]["status"] == "deployed"
+    assert out.key_values == {}
+
+
+def test_argocd_app_list_parses_rows():
+    out = ArgoCDParser().parse(ARGOCD_APP_LIST)
+    assert out.subcommand == "app"
+    assert len(out.rows) == 2
+    assert out.rows[0]["name"] == "sock-shop"
+    assert out.rows[0]["syncpolicy"] == "<none>"
+    assert out.rows[1]["name"] == "bookinfo"
+
+
+def test_flux_get_kustomizations_parses_rows():
+    out = FluxParser().parse(FLUX_KUSTOMIZATIONS)
+    assert out.subcommand == "get"
+    assert len(out.rows) == 2
+    assert out.rows[0]["name"] == "podinfo"
+    assert out.rows[0]["namespace"] == "default"
+    assert out.rows[0]["age"] == "5m"
+
+
+def test_talosctl_get_nodes_parses_rows():
+    out = TalosctlParser().parse(TALOSCTL_NODES)
+    assert out.subcommand == "get"
+    assert len(out.rows) == 2
+    assert out.rows[0]["name"] == "controlplane-1"
+    assert out.rows[0]["ip"] == "192.168.1.10"
+    assert out.rows[0]["role"] == "controlplane"
+    assert out.rows[1]["name"] == "worker-1"
+    assert out.rows[1]["role"] == "worker"
+
+
+def test_cilium_status_parses_rows():
+    out = CiliumParser().parse(CILIUM_STATUS)
+    assert out.subcommand == "status"
+    assert len(out.rows) == 1
+    assert out.rows[0]["controller"] == "k8s"
+    assert out.rows[0]["status"] == "ok"
+    assert out.rows[0]["version"] == "1.16.0"
+
+
+def test_istioctl_version_parses_key_values():
+    out = IstioctlParser().parse(ISTIOCTL_VERSION)
+    assert out.subcommand == "version"
+    assert out.key_values == {
+        "version": "1.22.0",
+        "revision": "abc123def",
+        "mesh": "enabled",
+    }
+    assert out.rows == []
+
+
+def test_velero_get_backups_parses_rows():
+    out = VeleroParser().parse(VELERO_BACKUPS)
+    assert out.subcommand == "get"
+    assert len(out.rows) == 1
+    assert out.rows[0]["name"] == "full-cluster-backup"
+    assert out.rows[0]["status"] == "Completed"
+    assert out.rows[0]["expires"] == "30d"
+
+
+def test_kubebuilder_version_parses_key_values():
+    out = KubebuilderParser().parse(KUBEBUILDER_VERSION)
+    assert out.subcommand == "version"
+    assert out.key_values == {"version": "0.8.0"}
+
+
+def test_operator_sdk_version_parses_key_values():
+    out = OperatorSdkParser().parse(OPERATOR_SDK_VERSION)
+    assert out.subcommand == "version"
+    assert out.key_values == {"version": "v1.30.1", "commit": "abc123def"}
+
+
+def test_ansible_ping_parses_host_rows():
+    out = AnsibleParser().parse(ANSIBLE_PING)
+    assert out.subcommand == "ansible"
+    assert len(out.rows) == 1
+    assert out.rows[0]["host"] == "localhost"
+    assert out.rows[0]["status"] == "SUCCESS"
+    assert out.rows[0]["ping"] == "pong"
+    assert out.rows[0]["changed"] == "false"
+
+
+def test_ansible_inventory_parses_json_key_values():
+    out = AnsibleParser().parse(ANSIBLE_INVENTORY)
+    assert out.subcommand == "ansible"
+    assert "all" in out.key_values
+    assert out.key_values["all"].startswith("{")
