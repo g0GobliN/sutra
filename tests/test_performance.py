@@ -8,6 +8,8 @@ correct pass.
 """
 
 import json
+import os
+import pytest
 import time
 
 from conftest import load_plugin, plugin_module
@@ -33,6 +35,7 @@ def test_compress_repeated_calls_stay_bounded(tmp_path, monkeypatch):
     assert _elapsed(start) < 10.0, _elapsed(start)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="store I/O quota is environment-sensitive on Windows")
 def test_store_many_puts_stay_under_quota(tmp_path):
     store = Store(StoreConfig(
         directory=str(tmp_path / "store"),

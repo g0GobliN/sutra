@@ -32,7 +32,7 @@ IMPORT_NAME = "sutra"
 RUNTIME_MODULES = frozenset({
     "__init__", "claude_code", "cli", "codex", "config", "core", "discovery",
     "engine", "hermes", "hook", "installer", "jsonc", "mcp", "metrics",
-    "opencode", "openclaw", "policy", "recovery", "reuse", "runner",
+    "opencode", "openclaw", "parsers", "policy", "recovery", "reuse", "runner",
     "store", "utf8",
 })
 RUNTIME_SCRIPTS = frozenset({
