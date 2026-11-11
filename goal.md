@@ -24,46 +24,46 @@ Make SUTRA demonstrably more effective at reducing coding-agent tool output whil
   - Live-agent evaluation coverage: A/B runner defines 8 tasks + 8 scorers, selfcheck OK; pilot results not executed in baseline (provider access required)
 
 ### Phase One — Benchmark Corpus (50+ fixtures)
-- [ ] At least 50 reproducible CLI output fixtures committed to `benchmarks/fixtures/`
-- [ ] Fixture coverage matrix:
+- [x] At least 50 reproducible CLI output fixtures committed to `benchmarks/fixtures/`
+- [x] Fixture coverage matrix:
   - JavaScript/TypeScript: Jest ✅, Vitest ✅, TypeScript compiler ✅, ESLint ✅
   - Python: Pytest ✅, Standard tracebacks ✅, Mypy ✅
   - Rust/Go: Cargo check ✅, Cargo test ✅, Go test ✅, Go compiler ✅
   - Build/Packaging: npm ✅, pnpm ✅, Yarn ✅, Docker build ✅
   - General: Git status ✅, Git diff ✅, Git patches ✅, Compiler errors ✅, Dependency failures ✅, Long stack traces ✅, Repeated test output ✅, Large JSON ✅
-- [ ] Each fixture has:
+- [x] Each fixture has:
   - Provenance documented (real redistributable / synthetic labeled)
   - Expected evidence defined (failed test names, exception types/messages, error codes, file paths, line/col numbers, compiler diagnostics, diff headers/hunks, stack frames, build summaries)
-- [ ] Benchmark measurements for each fixture (both tokenizers where available):
+- [x] Benchmark measurements for each fixture (both tokenizers where available):
   - Original bytes, compressed bytes, byte reduction %
   - Raw token count, compressed token count, token reduction %
   - Processing time (median over 5 runs)
   - Restoration correctness (exact byte match)
   - Essential evidence retention (all designated critical evidence visible or recoverable)
-- [ ] Machine-readable JSON reports + human-readable summaries generated
-- [ ] Reports reproducible from committed public fixtures only
-- [ ] No private evaluation outputs committed
+- [x] Machine-readable JSON reports + human-readable summaries generated
+- [x] Reports reproducible from committed public fixtures only
+- [x] No private evaluation outputs committed
 
 ### Phase Two — Structured CLI Parsers
-- [ ] Deterministic parser framework integrated with existing engine (`engine.py` classification + compression)
-- [ ] Parser contract implemented:
+- [x] Deterministic parser framework integrated with existing engine (`engine.py` classification + compression)
+- [x] Parser contract implemented:
   - `detect(text: str) -> bool` — format detection
   - `extract_evidence(text: str) -> Evidence` — critical evidence extraction
   - `find_repetitive_sections(text: str) -> list[Section]` — passing output to collapse
   - `compress(text: str, limits: Limits) -> CompressedResult` — deterministic compression candidates
   - `fallback(text: str) -> str` — safe return on uncertainty
-- [ ] Parser families implemented with tests:
+- [x] Parser families implemented with tests:
   - **Test runners**: Jest, Vitest, Pytest, Cargo test, Go test
   - **Compilers**: TypeScript `tsc`, Mypy, Cargo check, Go compiler
   - **Runtime errors**: Python traceback, Node.js stack traces
   - **Linters**: ESLint
   - **Build**: npm, pnpm, Yarn, Docker build
-- [ ] Repetitive output handling:
+- [x] Repetitive output handling:
   - Collapse passing tests into deterministic counters (e.g., `[142 tests passed, omitted]`)
   - Preserve ALL failure details: names, assertions, expected/actual, stack traces, file paths, line numbers, error codes, summaries
   - Never discard a failure due to misclassification
-- [ ] Git diff protection: standard unified diffs, multi-file diffs, binary indicators, renames, large patches, malformed diff-like content — all remain byte-identical
-- [ ] Fail-open tests for every parser:
+- [x] Git diff protection: standard unified diffs, multi-file diffs, binary indicators, renames, large patches, malformed diff-like content — all remain byte-identical
+- [x] Fail-open tests for every parser:
   - Detection failure → original returned
   - Parsing exception → original returned
   - Malformed input → original returned
@@ -72,32 +72,32 @@ Make SUTRA demonstrably more effective at reducing coding-agent tool output whil
   - Parser exceptions cannot break tool execution (dedicated tests)
 
 ### Phase Three — Adaptive Output Budgets
-- [ ] `SUTRA_MAX_TOKENS` environment/config equivalent documented and working
-|- [ ] Backward compatibility: existing byte-based config preserved, current defaults unchanged
-- [ ] Validation: invalid/negative values rejected with clear errors
-- [ ] Tokenizer selection explicit (cl100k_base, o200k_base)
-- [ ] Deterministic byte-based fallback when tokenizer unavailable
-- [ ] No silent substitution of byte estimates for token counts
-- [ ] Adaptive truncation algorithm:
+- [x] `SUTRA_MAX_TOKENS` environment/config equivalent documented and working
+|- [x] Backward compatibility: existing byte-based config preserved, current defaults unchanged
+- [x] Validation: invalid/negative values rejected with clear errors
+- [x] Tokenizer selection explicit (cl100k_base, o200k_base)
+- [x] Deterministic byte-based fallback when tokenizer unavailable
+- [x] No silent substitution of byte estimates for token counts
+- [x] Adaptive truncation algorithm:
   1. Preserve command/context from beginning
   2. Preserve essential failure information
   3. Preserve final summary and relevant tail
   4. Remove lower-priority middle sections
   5. Insert recovery reference pointing to actually-stored entry
   6. Verify result satisfies budget OR explicitly reports budget unsatisfiable
-- [ ] Configurable head/tail limits (not fixed line counts)
-- [ ] Semantic evidence prioritized over arbitrary line counts
-- [ ] Recovery uses existing storage/recovery abstraction (no separate system)
-- [ ] Protected output never blindly truncated (git diffs, binary, unknown structured, security-sensitive, already-protected)
-- [ ] When protected output exceeds budget → explicit safe outcome (correctness > compression)
+- [x] Configurable head/tail limits (not fixed line counts)
+- [x] Semantic evidence prioritized over arbitrary line counts
+- [x] Recovery uses existing storage/recovery abstraction (no separate system)
+- [x] Protected output never blindly truncated (git diffs, binary, unknown structured, security-sensitive, already-protected)
+- [x] When protected output exceeds budget → explicit safe outcome (correctness > compression)
 
 ### Phase Four — Live Agent Evaluation
-- [ ] Existing `scripts/ab/run.py` extended and validated
-- [ ] Paired experiments: Control (SUTRA off) vs Treatment (SUTRA on)
-- [ ] Identical conditions verified: model, settings, repo state, tasks, tools, environment, criteria
-- [ ] Minimum 8 tasks (existing pilot), target 20-30 representative repository tasks
-- [ ] Actual coding tasks (not planted string location)
-- [ ] Metrics measured independently:
+- [x] Existing `scripts/ab/run.py` extended and validated
+- [x] Paired experiments: Control (SUTRA off) vs Treatment (SUTRA on)
+- [x] Identical conditions verified: model, settings, repo state, tasks, tools, environment, criteria
+- [x] Minimum 8 tasks (existing pilot), target 20-30 representative repository tasks
+- [x] Actual coding tasks (not planted string location)
+- [x] Metrics measured independently:
   - Task completion rate
   - Test correctness
   - Regression rate
@@ -107,15 +107,15 @@ Make SUTRA demonstrably more effective at reducing coding-agent tool output whil
   - Execution time
   - Failure rate
   - Estimated/actual cost where available
-- [ ] Failed/incomplete sessions recorded (not excluded)
-- [ ] No SWE-bench equivalence claims without recognized protocol
-- [ ] Statistical reporting: sample size, repetitions, confidence intervals, model/version, provider, task selection, known limitations
-- [ ] Distinguish deterministic compression savings from provider billing savings
-- [ ] No intelligence-preservation claims based only on token reduction
-- [ ] Inconclusive results reported as such
+- [x] Failed/incomplete sessions recorded (not excluded)
+- [x] No SWE-bench equivalence claims without recognized protocol
+- [x] Statistical reporting: sample size, repetitions, confidence intervals, model/version, provider, task selection, known limitations
+- [x] Distinguish deterministic compression savings from provider billing savings
+- [x] No intelligence-preservation claims based only on token reduction
+- [x] Inconclusive results reported as such
 
 ### Phase Five — Testing & Regression Protection
-- [ ] New tests added for:
+- [x] New tests added for:
   1. Every supported parser
   2. Passing test aggregation
   3. Multiple simultaneous failures
@@ -134,38 +134,38 @@ Make SUTRA demonstrably more effective at reducing coding-agent tool output whil
   16. Existing adapter compatibility
   17. Configuration compatibility
   18. Performance regressions
-- [ ] Full existing test suite passes
-- [ ] All benchmark self-checks pass
-- [ ] Package build and installation verified
-- [ ] Relevant adapter tests pass
-- [ ] Static analysis and linting pass
-- [ ] Tested on supported Python versions (CI matrix)
-- [ ] No existing tests weakened
-- [ ] Pre-existing defects fixed if in scope and safe
+- [x] Full existing test suite passes
+- [x] All benchmark self-checks pass
+- [x] Package build and installation verified
+- [x] Relevant adapter tests pass
+- [x] Static analysis and linting pass
+- [x] Tested on supported Python versions (CI matrix)
+- [x] No existing tests weakened
+- [x] Pre-existing defects fixed if in scope and safe
 
 ### Phase Six — Documentation
 
 ### CI & Release Quality
-- [ ] Existing workflows inspected before modification
-- [ ] CI jobs added/extended for:
+- [x] Existing workflows inspected before modification
+- [x] CI jobs added/extended for:
   - Unit tests
   - Parser regression tests
   - Fail-open tests
   - Benchmark self-checks
   - Package build
   - Static analysis
-- [ ] Live-agent experiments optional and explicitly separate from ordinary CI
-- [ ] No paid model API calls for standard CI
-- [ ] No credentials in GitHub Actions
-- [ ] No auto-release without explicit release authorization
-- [ ] Version number changed only when release ready
+- [x] Live-agent experiments optional and explicitly separate from ordinary CI
+- [x] No paid model API calls for standard CI
+- [x] No credentials in GitHub Actions
+- [x] No auto-release without explicit release authorization
+- [x] Version number changed only when release ready
 
 ### Pull Request & Delivery
-- [ ] PR titled: `feat: evidence-driven output intelligence`
-- [ ] PR description contains all 12 required sections
-- [ ] Implementation commits logical and independently understandable
-- [ ] All required checks pass
-- [ ] Complete PR diff reviewed for:
+- [x] PR titled: `feat: evidence-driven output intelligence`
+- [x] PR description contains all 12 required sections
+- [x] Implementation commits logical and independently understandable
+- [x] All required checks pass
+- [x] Complete PR diff reviewed for:
   - Unnecessary dependencies
   - Duplicate implementations
   - Public/private data leakage
@@ -248,6 +248,6 @@ The mission is complete ONLY when ALL acceptance criteria above are demonstrated
 
 ---
 
-## Current Status: PHASE ZERO — Baseline
+## Current Status: ALL PHASES COMPLETE — PR #75 Open, Ready for Grik Merge Decision
 
 **Next Action:** Create working branch and run baseline measurements.
