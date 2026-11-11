@@ -4,6 +4,9 @@
 
 # SUTRA
 
+[![PyPI version](https://img.shields.io/pypi/v/sutra-agent.svg)](https://pypi.org/project/sutra-agent/)
+[![Python versions](https://img.shields.io/pypi/pyversions/sutra-agent.svg)](https://pypi.org/project/sutra-agent/)
+
 **Less output. More signal.**
 
 SUTRA is a deterministic cost-optimization middleware for AI coding agents. It reduces the context an agent spends on tool output, replaces exact repeats with a reference instead of re-sending them, and offers bounded cost-aware execution guidance — while keeping every omitted byte recoverable. A large log costs less on every following turn, without a model paraphrasing it.
