@@ -249,7 +249,7 @@ def test_each_parser_detects_its_own_sample(parser_cls):
 
 @pytest.mark.parametrize("family", FAMILIES)
 def test_registry_finds_own_parser(family):
-    parser = dict((p.name, p) for p in ALL_PARSERS)[family]
+    _parser = dict((p.name, p) for p in ALL_PARSERS)[family]
     found = PARSER_REGISTRY.find(SAMPLES[family])
     assert found is not None and found.name == family
 
