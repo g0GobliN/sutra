@@ -141,6 +141,8 @@ def test_store_refuses_a_symlink_directory(tmp_path):
 
 
 def test_new_store_directory_is_mode_0700_and_files_are_0600(tmp_path):
+    if os.name == "nt":
+        pytest.skip("Unix permission bits are not meaningful on Windows")
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         pytest.skip("mode bits are not enforced for root")
     store = Store(_config(tmp_path / "store"))
