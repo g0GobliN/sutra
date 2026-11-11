@@ -1,7 +1,0 @@
-SUTRA client detection (read-only)
-hermes    installed  tier=automatic  automatic=yes  mechanism=native tool_execution middleware  evidence=executable /home/goblin01/.local/bin/hermes (version unavailable: version probe timed out); config /home/goblin01/.hermes-archive/profiles/forge/config.yaml
-claude    installed  tier=automatic  automatic=yes  mechanism=PostToolUse hook (updatedToolOutput) + MCP recovery  evidence=executable /home/goblin01/.local/bin/claude (2.1.268)
-opencode  not installed  tier=not installed  mechanism=none  evidence=no executable or config evidence
-cursor    not installed  tier=not installed  mechanism=none  evidence=no executable or config evidence
-codex     not installed  tier=not installed  mechanism=none  evidence=no executable or config evidence
-windsurf  not installed  tier=not installed  mechanism=none  evidence=no executable or config evidence

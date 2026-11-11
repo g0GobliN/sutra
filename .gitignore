@@ -69,6 +69,24 @@ Thumbs.db
 # Imported conversation cache (local only, never part of the repository)
 .cloud-attachments/
 
+# Internal agent instructions and working notes (kept on disk, never publish)
+SOUL.md
+soul.md
+goal.md
+idea.md
+*.local.md
+docs/*.local.md
+
+# Runtime artifacts (never publish)
+compressed.json
+detect.txt
+doctor.json
+restored.json
+
+# Internal bench scripts
+bench/corpus.py
+bench/corpus_summary.md
+
 # Logs and temp files
 *.log
 *.tmp
