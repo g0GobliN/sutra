@@ -186,23 +186,87 @@ Read the full threat model in [SECURITY.md](https://github.com/g0GobliN/sutra/bl
 
 The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrelated package.
 
-```bash
-python3 -m venv ~/.sutra-venv
-~/.sutra-venv/bin/pip install sutra-agent
-#~/.sutra-venv/bin/sutra --version        # sutra 0.6.0
+### Quick start (Linux / macOS)
 
-~/.sutra-venv/bin/sutra detect           # read-only: what is installed
+```bash
+# 1. Create venv
+python3 -m venv ~/.sutra-venv
+
+# 2. Install
+~/.sutra-venv/bin/pip install sutra-agent
+
+# 3. Verify
+~/.sutra-venv/bin/sutra --version
+
+# 4. Detect what's installed (read-only)
+~/.sutra-venv/bin/sutra detect
+
+# 5. Preview changes (dry-run)
 ~/.sutra-venv/bin/sutra install --dry-run
-~/.sutra-venv/bin/sutra install          # configure every detected client
-~/.sutra-venv/bin/sutra doctor           # prove the installed paths
+
+# 6. Install for all detected clients
+~/.sutra-venv/bin/sutra install
+
+# 7. Verify installation
+~/.sutra-venv/bin/sutra doctor
 ```
 
-To work from a checkout instead (contributors or unreleased changes):
+### Quick start (Windows PowerShell)
+
+```powershell
+# 1. Create venv
+python -m venv $env:USERPROFILE\.sutra-venv
+
+# 2. Install
+$env:USERPROFILE\.sutra-venv\Scripts\pip.exe install sutra-agent
+
+# 3. Verify
+$env:USERPROFILE\.sutra-venv\Scripts\sutra.exe --version
+
+# 4. Detect what's installed (read-only)
+$env:USERPROFILE\.sutra-venv\Scripts\sutra.exe detect
+
+# 5. Preview changes (dry-run)
+$env:USERPROFILE\.sutra-venv\Scripts\sutra.exe install --dry-run
+
+# 6. Install for all detected clients
+$env:USERPROFILE\.sutra-venv\Scripts\sutra.exe install
+
+# 7. Verify installation
+$env:USERPROFILE\.sutra-venv\Scripts\sutra.exe doctor
+```
+
+### One-liner (Linux / macOS)
 
 ```bash
+python3 -m venv ~/.sutra-venv && ~/.sutra-venv/bin/pip install sutra-agent && ~/.sutra-venv/bin/sutra --version && ~/.sutra-venv/bin/sutra detect && ~/.sutra-venv/bin/sutra install --dry-run
+```
+
+### One-liner (Windows PowerShell)
+
+```powershell
+python -m venv $env:USERPROFILE\.sutra-venv; $env:USERPROFILE\.sutra-venv\Scripts\pip.exe install sutra-agent; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe --version; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe detect; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe install --dry-run
+```
+
+### From source (contributors / unreleased changes)
+
+```bash
+# Linux / macOS
 git clone https://github.com/g0GobliN/sutra
 ~/.sutra-venv/bin/pip install ./sutra
+
+# Windows PowerShell
+git clone https://github.com/g0GobliN/sutra
+$env:USERPROFILE\.sutra-venv\Scripts\pip.exe install .\sutra
 ```
+
+### Notes
+
+- **Python 3.11+** required
+- **Virtual environment** strongly recommended (avoids PATH conflicts)
+- Run `sutra install` **after** installing/updating any AI client you want integrated
+- Restart the AI client after `sutra install` to load plugins/hooks
+- Codex CLI requires one-time trust: run `/hooks` in Codex and approve the SUTRA entry
 
 `sutra install` auto-detects Hermes, Claude Code, OpenCode, OpenClaw and Codex. Each change is backed up first and can be removed with `sutra uninstall`; `--dry-run` prints the change and writes nothing. The command ends with a per-client summary (`configured`, `active`, `requires /hooks trust`, `skipped` or `failed`) and the next verification step. Restart the host after installing a plugin or hook. Codex also requires a one-time trust review: run `/hooks` and trust the SUTRA `PostToolUse` entry before it can replace results.
 
