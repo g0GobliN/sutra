@@ -81,7 +81,7 @@ from .engine import (  # re-exported: this was a single-module plugin before 0.2
     strip_ansi,
 )
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 # Backward-compatible name: before the seam extraction this was the plugin's
 # own function. It is now the seam's result-shaped entry point.

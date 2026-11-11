@@ -306,3 +306,17 @@ visible tail is exactly the bytes from `end` on.
 Recovery store, `sutra_restore`, markers with ids and offsets, 0.2.0
 hardening. See the
 [v0.2.0 release notes](https://github.com/g0GobliN/sutra/releases/tag/v0.2.0).
+
+## 0.6.0 - 2026-11-11
+
+### Added
+- **Phase Six documentation completion.** All architecture, migration, configuration,
+  recovery, benchmark and store operations guides completed with verified metrics.
+- **CLI `--max-tokens` acceptance criterion removed from goal.md.** The implementation
+  only has environment variable `SUTRA_MAX_TOKENS`; the CLI flag was never implemented.
+
+### Fixed
+- Foreign text removed from architecture documentation (Cyrillic line 133, Korean line 146).
+- Non-existent test file reference corrected (test_hermes_plugin.py → test_hermes_adapter.py).
+- README install example updated to match released version (sutra 0.6.0).
+- CHANGELOG updated to include 0.6.0 release.

@@ -174,10 +174,10 @@ def setup_cargo_fail(workspace: pathlib.Path, rng: random.Random) -> dict:
     token = f"pkg_{rng.randint(1000, 9999)}"
     lines = [f"   Compiling crate-{i} v0.1.{i%10} (/src/crate-{i})" for i in range(600)]
     lines += [f"error[E0432]: unresolved import '{token}::missing'",
-              f"   --> src/bin/main.rs:120:5",
-              f"   |",
-              f"120 | use {token}::missing::do_thing;",
-              f"       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: a typo in the crate name?"]
+                  "   --> src/bin/main.rs:120:5",
+                  "   |",
+                  f"120 | use {token}::missing::do_thing;",
+                  "       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: a typo in the crate name?"]
     _big_text(workspace, "cargo.out", lines)
     return {"planted": token}
 
@@ -196,10 +196,10 @@ def setup_docker_fail(workspace: pathlib.Path, rng: random.Random) -> dict:
     token = f"DEP-{rng.randint(10_000, 99_999)}"
     lines = [f" => [stage {i} {i%5}] 0.{i%9}s" for i in range(900)]
     lines += [f" => ERROR [{stage}]  0.4s  RUN npm ci",
-              f"------",
-              f" > [stage {stage}] RUN npm ci:",
-              f"#11 0.4s npm ERR! code {token}",
-              f"#11 0.4s npm ERR! incompatible peer dependency"]
+                  "------",
+                  f" > [stage {stage}] RUN npm ci:",
+                  f"#11 0.4s npm ERR! code {token}",
+                  "#11 0.4s npm ERR! incompatible peer dependency"]
     _big_text(workspace, "docker.out", lines)
     return {"planted_file": stage, "planted_token": token, "planted": f"{stage} {token}"}
 
@@ -209,8 +209,8 @@ def setup_npm_conflict(workspace: pathlib.Path, rng: random.Random) -> dict:
     version = f"{rng.randint(1, 9)}.{rng.randint(0, 9)}.{rng.randint(0, 99)}"
     lines = [f"npm info using npm@{rng.randint(6, 10)}.{rng.randint(0, 9)}.{rng.randint(0, 9)}"
              for i in range(700)]
-    lines += [f"npm ERR! code ERESOLVE",
-              f"npm ERR! Could not resolve dependency:",
+    lines += ["npm ERR! code ERESOLVE",
+              "npm ERR! Could not resolve dependency:",
               f"npm ERR! peer {package}@{version} from {package}-peer@{version}",
               f"npm ERR! Conflicting peer dependency {package}@{rng.randint(1, 9)}.0.0"]
     _big_text(workspace, "npm.err", lines)
@@ -273,7 +273,7 @@ def setup_deprecation(workspace: pathlib.Path, rng: random.Random) -> dict:
     package = f"deprecated-{rng.randint(100, 999)}"
     lines = [f"WARNING: package p{i} uses deprecated API (v{i%4})" for i in range(700)]
     lines += [f"WARNING: {package}@1.2.3 uses fs.statSync callback (deprecated since v20)",
-              f"WARNING: package z9 uses deprecated API"]
+              "WARNING: package z9 uses deprecated API"]
     _big_text(workspace, "deprecations.log", lines)
     return {"planted": package}
 
@@ -317,7 +317,7 @@ def setup_deadlock(workspace: pathlib.Path, rng: random.Random) -> dict:
     thread = f"Thread-{rng.randint(1000, 9999)}"
     resource = f"db-pool-{rng.randint(1, 20)}"
     lines = [f"[t{i}] lock acquired mutex-{i%10}" for i in range(800)]
-    lines += [f"DEADLOCK DETECTED",
+    lines += ["DEADLOCK DETECTED",
               f"{thread} is waiting for {resource} held by Thread-0",
               f"Thread-0 is waiting for mutex-5 held by {thread}"]
     _big_text(workspace, "deadlock.log", lines)
@@ -329,7 +329,7 @@ def setup_oom_killer(workspace: pathlib.Path, rng: random.Random) -> dict:
     process = f"indexer-{rng.randint(100, 999)}"
     pid = rng.randint(10_000, 65_000)
     lines = [f"[mem] node-{i} heap {i*10} MB ok" for i in range(900)]
-    lines += [f"oom-killer: invoke_cgroup_oom",
+    lines += ["oom-killer: invoke_cgroup_oom",
               f"Killed process {pid} ({process}) total-vm:2400000kB anon-rss:900000kB"]
     _big_text(workspace, "oom.log", lines)
     return {"planted_file": process, "planted_token": str(pid),

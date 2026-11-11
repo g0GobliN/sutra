@@ -12,8 +12,6 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_STATS_FILE` | `$HERMES_HOME/cache/sutra-stats.jsonl` | where savings are recorded |
 | `SUTRA_STATS_MAX_BYTES` | `5242880` | rotate the log at this size (one `.1` file is kept) |
 | `SUTRA_STORE` | `1` | `0` stops retaining originals; markers then say "not retained" |
-| `SUTRA_STORE_DIR` | `$HERMES_HOME/cache/sutra-store` | where originals live |
-| `SUTRA_STORE_TTL_HOURS` | `168` | how long an original is kept (seven days) |
 | `SUTRA_STORE_MAX_BYTES` | `134217728` | total size of the store (128 MiB) |
 | `SUTRA_STORE_MAX_ENTRY_BYTES` | `33554432` | largest single original retained (32 MiB) |
 | `SUTRA_STORE_MAX_ENTRIES` | `2000` | most originals retained |
@@ -23,8 +21,6 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
-| `SUTRA_OPENCLAW_HOME` | `$HERMES_HOME` | Path to the directory where OpenClaw stores its configuration and cached data. |
-| `SUTRA_OPENCLAW_CONFIG` | `~/.config/openclaw/config.yaml` | YAML configuration file for OpenClaw; loaded at startup and referenced by the plugin. |
 
 ## Store behaviour
 

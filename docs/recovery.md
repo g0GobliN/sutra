@@ -192,13 +192,16 @@ the work would only relabel the cost. The enforced work bounds are structural:
 - returned content, at most 64 KiB (`SUTRA_RECOVERY_MAX_BYTES` defaults to
   8 KiB; the JSON envelope adds a small metadata header);
 - at most 20 matching lines (5 by default);
-- at most a 200-character literal query.
+| returned content, at most 64 KiB (`SUTRA_RECOVERY_MAX_BYTES` defaults to
+  8 KiB; the JSON envelope adds a small metadata header);
+| at most 20 matching lines (5 by default);
+| at most a 200-character literal query.
 
 Work is linear in the entry size, and an entry above the per-entry cap is never
 retained. Measured on a 32,000,001-byte plain entry and a 32,400,015-byte JSON
-document, just under the 32 MiB default cap, with the repository's `.venv`
-(Python 3.13.5). The plugin itself is validated against Hermes Agent
-v0.22.2+3030.g4d04303 (Python 3.14.7).
+document, just under the 32 MiB default cap, with the repository's `.venv` and Hermes Agent.
+
+The plugin itself is validated against Hermes Agent v0.22.2+3030.g4d04303.
 
 The latest `bench/retrieval.json` was recorded at **load 22.36 on 4 CPUs (5.59
 per CPU)** and records `"representative": false`. It is a contended sample, not
