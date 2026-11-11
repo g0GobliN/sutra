@@ -92,6 +92,9 @@ SUTRA_V*_AUDIT_REPORT.md
 SUTRA_v*_ARCHITECTURE_AUDIT.md
 SUTRA_V*_RELEASE_REPORT.md
 
+# GitHub internal templates (never publish)
+.github/PR_DESCRIPTION.md
+
 # Logs and temp files
 *.log
 *.tmp
