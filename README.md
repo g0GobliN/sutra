@@ -186,6 +186,26 @@ Read the full threat model in [SECURITY.md](https://github.com/g0GobliN/sutra/bl
 
 The distribution is `sutra-agent`; the `sutra` name on PyPI belongs to an unrelated package.
 
+### Recommended — PyPI (simplest)
+
+```bash
+# Linux / macOS
+pip install sutra-agent
+
+# Windows PowerShell
+pip install sutra-agent
+```
+
+### Universal installer (copy-paste, handles Python + venv + PATH)
+
+```bash
+# Linux / macOS
+curl -fsSL https://raw.githubusercontent.com/g0GobliN/sutra/main/scripts/install.sh | bash
+
+# Windows PowerShell
+irm https://raw.githubusercontent.com/g0GobliN/sutra/main/scripts/install.ps1 | iex
+```
+
 ### Quick start (Linux / macOS)
 
 ```bash
