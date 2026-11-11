@@ -35,7 +35,7 @@ import secrets
 import stat
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from . import config
@@ -68,6 +68,11 @@ class _Accounting:
     bytes: int = 0
     writes: int = 0
     swept_at: float = 0.0
+    # id -> (created_at, size_bytes, metadata mtime) for entries this process
+    # wrote. Sweeps age and size entries from memory instead of re-reading and
+    # re-parsing every metadata file on disk; metadata is re-verified only when
+    # its mtime changed (or the entry was never indexed by this process).
+    index: dict[str, tuple[float, int, float]] = field(default_factory=dict)
 
 
 _ACCOUNTING_LOCK = threading.Lock()
@@ -269,6 +274,16 @@ class Store:
             self._write_atomic(data_path, data)
             self._write_atomic(meta_path,
                                json.dumps(meta, sort_keys=True).encode("utf-8"))
+            # Remember what we retained so sweeps can age and size this entry
+            # from memory instead of re-reading its metadata file every time.
+            try:
+                meta_mtime = os.stat(meta_path).st_mtime
+            except OSError:
+                meta_mtime = created
+            key = self._accounting_key()
+            with _ACCOUNTING_LOCK:
+                usage = _ACCOUNTING.setdefault(key, _Accounting())
+                usage.index[entry_id] = (created, len(data), meta_mtime)
             # Enforce the budget *after* writing, so the store is never over the
             # limit while a marker claims the original is available. Most writes
             # are under budget and skip the sweep entirely.
@@ -336,6 +351,11 @@ class Store:
                 logger.debug("sutra: could not delete %s (%s)", path, exc)
         if removed:
             self._note_removed(size)
+            key = self._accounting_key()
+            with _ACCOUNTING_LOCK:
+                usage = _ACCOUNTING.get(key)
+                if usage is not None:
+                    usage.index.pop(entry_id, None)
 
     # -- reads --------------------------------------------------------------
 
@@ -441,6 +461,12 @@ class Store:
 
         Returns a small report; never raises. Safe to run concurrently with
         readers, which see either a complete entry or a missing one.
+
+        Entries written by this process are aged and sized from an in-process
+        index instead of re-reading their metadata files on every sweep.
+        Indexed metadata is trusted only while its mtime is unchanged: a missing
+        or rewritten metadata file falls back to re-reading it, and an entry
+        whose metadata cannot be read is treated as an orphan.
         """
         now = time.time() if now is None else now
         report = {"expired": 0, "orphans": 0, "temp": 0, "quota": 0, "bytes": 0}
@@ -452,6 +478,11 @@ class Store:
         live: list[tuple[float, int, str]] = []
         data_names = {n[:-len(DATA_SUFFIX)] for n in names
                       if n.endswith(DATA_SUFFIX) and not n.startswith(TMP_PREFIX)}
+        key = self._accounting_key()
+        with _ACCOUNTING_LOCK:
+            usage = _ACCOUNTING.get(key)
+            index = dict(usage.index) if usage else {}
+        discards: list[str] = []  # indexed entries removed during this sweep
         for name in names:
             path = os.path.join(self.dir, name)
             if name.startswith(TMP_PREFIX):
@@ -463,21 +494,60 @@ class Store:
             if not name.endswith(DATA_SUFFIX):
                 continue
             stem = name[:-len(DATA_SUFFIX)]
-            meta = self._read_meta(stem)
-            if meta is None:
-                if self._age(path, now) > TMP_MAX_AGE_SECONDS:
-                    report["bytes"] += int(self._age(path, now, size=True))
-                    self._unlink(path)
-                    # Its metadata is what made this an orphan; drop it too, or
-                    # it outlives every prune and is never accounted for.
-                    self._unlink(self.meta_path(stem))
-                    report["orphans"] += 1
-                continue
-            try:
-                created = float(meta.get("created_at"))
-            except (TypeError, ValueError):
-                created = now - self._age(path, now)
-            size = self._age(path, now, size=True)
+            tracked = index.get(stem)
+            if tracked is not None:
+                created, size, meta_mtime = tracked
+                try:
+                    info = os.stat(self.meta_path(stem))
+                except OSError:
+                    info = None
+                if info is None or info.st_mtime != meta_mtime:
+                    # Metadata was deleted or rewritten outside this process:
+                    # re-read it, then treat the entry like an unindexed one.
+                    meta = self._read_meta(stem)
+                    if meta is None:
+                        if self._age(path, now) > TMP_MAX_AGE_SECONDS:
+                            report["bytes"] += int(self._age(path, now, size=True))
+                            self._unlink(path)
+                            # Its metadata is what made this an orphan; drop it
+                            # too, or it outlives every prune.
+                            self._unlink(self.meta_path(stem))
+                            report["orphans"] += 1
+                            discards.append(stem)
+                        continue
+                    try:
+                        created = float(meta.get("created_at"))
+                    except (TypeError, ValueError):
+                        created = now - self._age(path, now)
+                    size = self._age(path, now, size=True)
+                    try:
+                        meta_info = os.stat(self.meta_path(stem))
+                    except OSError:
+                        meta_info = None
+                    if meta_info is not None:
+                        index[stem] = (created, int(size), meta_info.st_mtime)
+            else:
+                meta = self._read_meta(stem)
+                if meta is None:
+                    if self._age(path, now) > TMP_MAX_AGE_SECONDS:
+                        report["bytes"] += int(self._age(path, now, size=True))
+                        self._unlink(path)
+                        # Its metadata is what made this an orphan; drop it too,
+                        # or it outlives every prune and is never accounted for.
+                        self._unlink(self.meta_path(stem))
+                        report["orphans"] += 1
+                    continue
+                try:
+                    created = float(meta.get("created_at"))
+                except (TypeError, ValueError):
+                    created = now - self._age(path, now)
+                size = self._age(path, now, size=True)
+                try:
+                    meta_info = os.stat(self.meta_path(stem))
+                except OSError:
+                    meta_info = None
+                if meta_info is not None:
+                    index[stem] = (created, int(size), meta_info.st_mtime)
             if ttl_seconds and now - created > ttl_seconds:
                 report["bytes"] += int(size)
                 self.delete(stem)
@@ -503,13 +573,14 @@ class Store:
                 total -= size
                 report["quota"] += 1
                 report["bytes"] += size
-        key = self._accounting_key()
         with _ACCOUNTING_LOCK:
             usage = _ACCOUNTING.get(key) or _Accounting()
             usage.entries = len(live)
             usage.bytes = total
             usage.writes = 0
             usage.swept_at = now
+            for stem in discards:
+                usage.index.pop(stem, None)
             _ACCOUNTING[key] = usage
         _record_cleanup(report)
         return report
