@@ -1,0 +1,17 @@
+{
+  "fixture": "python/pytest/pytest_passing.txt",
+  "provenance": "real",
+  "source_tool": "pytest",
+  "source_command": "python3 -m pytest on three passing tests (baseline/control)",
+  "description": "Pytest all-passing output (baseline/control).",
+  "category": "python/pytest",
+  "expected_evidence": [
+    "PASSED",
+    "3 passed"
+  ],
+  "critical_evidence": [
+    "3 passed"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pytest output (control/case)."
+}

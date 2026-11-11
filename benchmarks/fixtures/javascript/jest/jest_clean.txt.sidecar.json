@@ -1,0 +1,20 @@
+{
+  "fixture": "javascript/jest/jest_clean.txt",
+  "provenance": "real",
+  "source_tool": "jest",
+  "source_command": "jest (v29.7.0) run on a single passing test file",
+  "description": "Jest test suite, all passing (baseline/control).",
+  "category": "javascript/jest",
+  "expected_evidence": [
+    "PASS ./sum_clean.test.js",
+    "adds 2 + 2 to equal 4",
+    "Test Suites: 1 passed, 1 total",
+    "Tests: 1 passed, 1 total"
+  ],
+  "critical_evidence": [
+    "PASS",
+    "1 passed"
+  ],
+  "toolchain_available": true,
+  "notes": "Real jest output (control/case)."
+}

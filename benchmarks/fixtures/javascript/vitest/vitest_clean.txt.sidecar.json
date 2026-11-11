@@ -1,0 +1,17 @@
+{
+  "fixture": "javascript/vitest/vitest_clean.txt",
+  "provenance": "real",
+  "source_tool": "vitest",
+  "source_command": "vitest (v4.1.12) run on a single passing test file",
+  "description": "Vitest clean/passing output (baseline/control).",
+  "category": "javascript/vitest",
+  "expected_evidence": [
+    "Test Files 1 passed (1)",
+    "Tests 1 passed (1)"
+  ],
+  "critical_evidence": [
+    "1 passed"
+  ],
+  "toolchain_available": true,
+  "notes": "Real vitest output (control/case)."
+}

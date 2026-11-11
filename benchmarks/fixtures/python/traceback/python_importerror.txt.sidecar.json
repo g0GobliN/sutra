@@ -1,0 +1,17 @@
+{
+  "fixture": "python/traceback/python_importerror.txt",
+  "provenance": "real",
+  "source_tool": "python3",
+  "source_command": "python3 importing a non-existent module",
+  "description": "Python ModuleNotFoundError traceback.",
+  "category": "python/traceback",
+  "expected_evidence": [
+    "ModuleNotFoundError",
+    "No module named"
+  ],
+  "critical_evidence": [
+    "ModuleNotFoundError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real Python traceback."
+}

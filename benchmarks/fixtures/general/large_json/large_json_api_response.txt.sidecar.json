@@ -1,0 +1,19 @@
+{
+  "fixture": "general/large_json/large_json_api_response.txt",
+  "provenance": "real",
+  "source_tool": "python3 (generated)",
+  "source_command": "python3 json.dump of a 500-item simulated API response",
+  "description": "Large JSON payload (~480 KB) simulating an API response.",
+  "category": "general/large_json",
+  "expected_evidence": [
+    "request_id",
+    "results",
+    "trace_id"
+  ],
+  "critical_evidence": [
+    "request_id",
+    "results"
+  ],
+  "toolchain_available": true,
+  "notes": "Generated JSON (not tool output); representative of large-json evidence."
+}

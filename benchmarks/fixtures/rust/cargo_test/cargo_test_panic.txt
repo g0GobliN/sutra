@@ -1,0 +1,22 @@
+   Compiling cargo_proj v0.1.0 (./cargo_proj)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.15s
+     Running unittests src/main.rs (target/debug/deps/cargo_proj-c7e8be2c10809589)
+
+running 1 test
+test tests::panics ... FAILED
+
+failures:
+
+---- tests::panics stdout ----
+
+thread 'tests::panics' (115027) panicked at src/main.rs:4:19:
+simulated out-of-memory
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::panics
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--bin cargo_proj`

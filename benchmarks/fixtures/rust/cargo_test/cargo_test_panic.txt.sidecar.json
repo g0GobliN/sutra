@@ -1,0 +1,19 @@
+{
+  "fixture": "rust/cargo_test/cargo_test_panic.txt",
+  "provenance": "real",
+  "source_tool": "cargo",
+  "source_command": "cargo test with a test that panics",
+  "description": "Cargo test panic output.",
+  "category": "rust/cargo_test",
+  "expected_evidence": [
+    "panicked",
+    "simulated out-of-memory",
+    "test result: FAILED"
+  ],
+  "critical_evidence": [
+    "panicked",
+    "test result: FAILED"
+  ],
+  "toolchain_available": true,
+  "notes": "Real cargo output."
+}

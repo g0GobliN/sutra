@@ -1,0 +1,21 @@
+{
+  "fixture": "javascript/eslint/eslint_errors.txt",
+  "provenance": "real",
+  "source_tool": "eslint",
+  "source_command": "eslint (v6.4.0) with eslint:recommended on a JS file with lint errors",
+  "description": "ESLint lint errors (unused vars, eval).",
+  "category": "javascript/eslint",
+  "expected_evidence": [
+    "src/app.js",
+    "error",
+    "no-unused-vars",
+    "5 problems (5 errors, 0 warnings)"
+  ],
+  "critical_evidence": [
+    "src/app.js",
+    "no-unused-vars",
+    "5 errors"
+  ],
+  "toolchain_available": true,
+  "notes": "Real eslint output."
+}

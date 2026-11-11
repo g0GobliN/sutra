@@ -1,0 +1,19 @@
+{
+  "fixture": "go/compiler/go_compiler_syntax_error.txt",
+  "provenance": "synthetic",
+  "source_tool": "go (not installed)",
+  "source_command": "go build (synthetic; Go toolchain missing)",
+  "description": "Synthetic Go compiler syntax errors (real output shape).",
+  "category": "go/compiler",
+  "expected_evidence": [
+    "cannot convert",
+    "expected declaration",
+    "syntax error"
+  ],
+  "critical_evidence": [
+    "cannot convert",
+    "syntax error"
+  ],
+  "toolchain_available": false,
+  "notes": "SYNTHETIC: Go compiler is not installed; this captures a real output shape."
+}

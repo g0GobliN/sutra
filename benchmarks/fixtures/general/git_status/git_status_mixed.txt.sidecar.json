@@ -1,0 +1,20 @@
+{
+  "fixture": "general/git_status/git_status_mixed.txt",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git status with staged, modified, and untracked changes",
+  "description": "Git status: mixed working tree state.",
+  "category": "general/git_status",
+  "expected_evidence": [
+    " M src/a.py",
+    "M  src/b.py",
+    "?? src/c.py"
+  ],
+  "critical_evidence": [
+    " M src/a.py",
+    "M  src/b.py",
+    "?? src/c.py"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output."
+}

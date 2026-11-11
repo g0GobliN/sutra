@@ -1,0 +1,23 @@
+{
+  "fixture": "python/mypy/mypy_type_errors.txt",
+  "provenance": "real",
+  "source_tool": "mypy",
+  "source_command": "mypy (v2.4.1) on a Python file with type errors",
+  "description": "Mypy type errors with file:line diagnostics and error codes.",
+  "category": "python/mypy",
+  "expected_evidence": [
+    "code.py",
+    "error:",
+    "[assignment]",
+    "[arg-type]",
+    "[operator]",
+    "Found 3 errors"
+  ],
+  "critical_evidence": [
+    "code.py",
+    "error:",
+    "Found 3 errors"
+  ],
+  "toolchain_available": true,
+  "notes": "Real mypy output. mypy installed in a venv (network available)."
+}

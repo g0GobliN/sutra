@@ -1,0 +1,4 @@
+main.c: In function ‘main’:
+main.c:4:13: error: initialization of ‘int’ from ‘const char *’ makes integer from pointer without a cast [-Wint-conversion]
+    4 |     int x = msg;          // error: incompatible pointer to integer
+      |             ^~~

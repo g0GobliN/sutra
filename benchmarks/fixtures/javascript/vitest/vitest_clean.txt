@@ -1,0 +1,9 @@
+
+ RUN  v4.1.12 ./vitest_proj
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  10:48:14
+   Duration  495ms (transform 36ms, setup 0ms, import 58ms, tests 8ms, environment 0ms)
+

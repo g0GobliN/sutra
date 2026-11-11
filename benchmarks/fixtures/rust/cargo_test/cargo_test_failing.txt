@@ -1,0 +1,25 @@
+   Compiling cargo_proj v0.1.0 (./cargo_proj)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.46s
+     Running unittests src/main.rs (target/debug/deps/cargo_proj-c7e8be2c10809589)
+
+running 2 tests
+test tests::it_works ... ok
+test tests::it_fails ... FAILED
+
+failures:
+
+---- tests::it_fails stdout ----
+
+thread 'tests::it_fails' (113280) panicked at src/main.rs:6:21:
+assertion `left == right` failed
+  left: 4
+ right: 5
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    tests::it_fails
+
+test result: FAILED. 1 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `--bin cargo_proj`

@@ -1,0 +1,17 @@
+{
+  "fixture": "python/traceback/python_nameerror.txt",
+  "provenance": "real",
+  "source_tool": "python3",
+  "source_command": "python3 referencing an undefined name",
+  "description": "Python NameError traceback.",
+  "category": "python/traceback",
+  "expected_evidence": [
+    "NameError",
+    "name 'undefined_name' is not defined"
+  ],
+  "critical_evidence": [
+    "NameError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real Python traceback."
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "client": "claude",
+    "settings": "/tmp/smoke-home/.claude/settings.json",
+    "hook": false,
+    "mcp": "not configured",
+    "probe": "hook is not installed in the user settings",
+    "ok": false,
+    "status": "fail"
+  },
+  {
+    "client": "opencode",
+    "status": "not-installed",
+    "ok": true,
+    "automatic": false,
+    "probe": "client is not installed"
+  },
+  {
+    "client": "hermes",
+    "binary": "/home/goblin01/.local/bin/hermes",
+    "home": "/home/goblin01/.hermes-archive/profiles/forge",
+    "plugin": "/home/goblin01/.hermes-archive/profiles/forge/plugins/sutra",
+    "installed": false,
+    "enabled": null,
+    "automatic": false,
+    "tier": "automatic",
+    "ok": false,
+    "status": "fail",
+    "probe": "the SUTRA Hermes plugin is not installed"
+  },
+  {
+    "client": "codex",
+    "status": "not-installed",
+    "ok": true,
+    "automatic": false,
+    "probe": "client is not installed"
+  }
+]

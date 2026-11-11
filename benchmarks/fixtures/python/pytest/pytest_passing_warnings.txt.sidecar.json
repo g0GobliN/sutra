@@ -1,0 +1,20 @@
+{
+  "fixture": "python/pytest/pytest_passing_warnings.txt",
+  "provenance": "real",
+  "source_tool": "pytest",
+  "source_command": "python3 -m pytest emitting a DeprecationWarning",
+  "description": "Pytest passing test with a warning summary.",
+  "category": "python/pytest",
+  "expected_evidence": [
+    "test_warns",
+    "PASSED",
+    "warnings summary",
+    "DeprecationWarning"
+  ],
+  "critical_evidence": [
+    "PASSED",
+    "warnings summary"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pytest output."
+}

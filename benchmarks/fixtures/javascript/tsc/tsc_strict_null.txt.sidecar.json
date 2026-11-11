@@ -1,0 +1,19 @@
+{
+  "fixture": "javascript/tsc/tsc_strict_null.txt",
+  "provenance": "real",
+  "source_tool": "tsc",
+  "source_command": "tsc --noEmit --strict on code using a possibly-null value",
+  "description": "TypeScript strictNullChecks error (object is possibly null).",
+  "category": "javascript/tsc",
+  "expected_evidence": [
+    "strict.ts",
+    "error TS18047",
+    "'s' is possibly 'null'"
+  ],
+  "critical_evidence": [
+    "strict.ts",
+    "error TS18047"
+  ],
+  "toolchain_available": true,
+  "notes": "Real tsc output."
+}

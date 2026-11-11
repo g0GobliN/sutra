@@ -1,0 +1,17 @@
+{
+  "fixture": "general/repeated_test_output/repeated_pytest_output.txt",
+  "provenance": "real",
+  "source_tool": "pytest",
+  "source_command": "python3 -m pytest on 200 test cases",
+  "description": "Pytest repeated test output (200 passing tests).",
+  "category": "general/repeated_test_output",
+  "expected_evidence": [
+    "passed",
+    "200"
+  ],
+  "critical_evidence": [
+    "passed"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pytest output."
+}

@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "./crash2.py", line 6, in load
+    fetch()
+    ~~~~~^^
+  File "./crash2.py", line 2, in fetch
+    raise KeyError("missing_config")
+KeyError: 'missing_config'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "./crash2.py", line 10, in <module>
+    load()
+    ~~~~^^
+  File "./crash2.py", line 8, in load
+    raise RuntimeError("configuration load failed") from e
+RuntimeError: configuration load failed

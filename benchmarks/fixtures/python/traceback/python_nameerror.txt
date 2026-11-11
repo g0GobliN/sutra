@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "./name_err.py", line 3, in <module>
+    compute()
+    ~~~~~~~^^
+  File "./name_err.py", line 2, in compute
+    return undefined_name + 1
+           ^^^^^^^^^^^^^^
+NameError: name 'undefined_name' is not defined

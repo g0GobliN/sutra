@@ -1,0 +1,18 @@
+{
+  "fixture": "python/pytest/pytest_skipped.txt",
+  "provenance": "real",
+  "source_tool": "pytest",
+  "source_command": "python3 -m pytest with a skipped test",
+  "description": "Pytest skipped test output.",
+  "category": "python/pytest",
+  "expected_evidence": [
+    "test_skipped",
+    "SKIPPED",
+    "not implemented yet"
+  ],
+  "critical_evidence": [
+    "SKIPPED"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pytest output."
+}

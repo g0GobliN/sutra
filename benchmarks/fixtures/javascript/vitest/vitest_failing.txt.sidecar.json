@@ -1,0 +1,21 @@
+{
+  "fixture": "javascript/vitest/vitest_failing.txt",
+  "provenance": "real",
+  "source_tool": "vitest",
+  "source_command": "vitest (v4.1.12) run on a project with a failing assertion + throwing test",
+  "description": "Vitest failing test output with stack frames.",
+  "category": "javascript/vitest",
+  "expected_evidence": [
+    "FAIL",
+    "expected 'a' to be 'b'",
+    "AssertionError",
+    "Tests  1 failed"
+  ],
+  "critical_evidence": [
+    "FAIL",
+    "Tests  1 failed",
+    "AssertionError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real vitest output."
+}

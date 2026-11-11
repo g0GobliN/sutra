@@ -1,0 +1,16 @@
+{
+  "fixture": "rust/cargo_check/cargo_check_clean.txt",
+  "provenance": "real",
+  "source_tool": "cargo",
+  "source_command": "cargo check on clean Rust code (baseline/control)",
+  "description": "Cargo check clean output (baseline/control).",
+  "category": "rust/cargo_check",
+  "expected_evidence": [
+    "Finished"
+  ],
+  "critical_evidence": [
+    "Finished"
+  ],
+  "toolchain_available": true,
+  "notes": "Real cargo output (control/case)."
+}

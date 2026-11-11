@@ -1,0 +1,17 @@
+{
+  "fixture": "general/git_status/git_status_clean.txt",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git status on a clean working tree",
+  "description": "Git status clean output (baseline/control).",
+  "category": "general/git_status",
+  "expected_evidence": [
+    "nothing to commit",
+    "working tree clean"
+  ],
+  "critical_evidence": [
+    "working tree clean"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output (control/case)."
+}

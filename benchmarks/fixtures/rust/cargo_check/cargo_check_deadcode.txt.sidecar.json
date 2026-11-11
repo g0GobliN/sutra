@@ -1,0 +1,19 @@
+{
+  "fixture": "rust/cargo_check/cargo_check_deadcode.txt",
+  "provenance": "real",
+  "source_tool": "cargo",
+  "source_command": "cargo check on Rust code with an unused function",
+  "description": "Cargo check dead-code warning.",
+  "category": "rust/cargo_check",
+  "expected_evidence": [
+    "warning: unused",
+    "unused_fn",
+    "dead_code"
+  ],
+  "critical_evidence": [
+    "warning",
+    "unused_fn"
+  ],
+  "toolchain_available": true,
+  "notes": "Real cargo output."
+}

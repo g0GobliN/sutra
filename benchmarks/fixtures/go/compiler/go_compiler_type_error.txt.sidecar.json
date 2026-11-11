@@ -1,0 +1,19 @@
+{
+  "fixture": "go/compiler/go_compiler_type_error.txt",
+  "provenance": "synthetic",
+  "source_tool": "go (not installed)",
+  "source_command": "go build (synthetic; Go toolchain missing)",
+  "description": "Synthetic Go compiler type errors (real output shape).",
+  "category": "go/compiler",
+  "expected_evidence": [
+    "cannot use",
+    "mismatched types",
+    "undefined"
+  ],
+  "critical_evidence": [
+    "cannot use",
+    "undefined"
+  ],
+  "toolchain_available": false,
+  "notes": "SYNTHETIC: Go compiler is not installed; this captures a real output shape."
+}

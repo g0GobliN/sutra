@@ -1,0 +1,11 @@
+    Checking cargo_proj v0.1.0 (./cargo_proj)
+warning: unused import: `std::collections::HashMap`
+ --> src/main.rs:1:5
+  |
+1 | use std::collections::HashMap;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: `cargo_proj` (bin "cargo_proj") generated 1 warning (run `cargo fix --bin "cargo_proj" -p cargo_proj` to apply 1 suggestion)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.10s

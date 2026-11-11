@@ -1,0 +1,21 @@
+{
+  "fixture": "javascript/tsc/tsc_type_errors.txt",
+  "provenance": "real",
+  "source_tool": "tsc",
+  "source_command": "tsc --noEmit --strict on a TypeScript file with type errors",
+  "description": "TypeScript compiler type errors with file:line:col diagnostics.",
+  "category": "javascript/tsc",
+  "expected_evidence": [
+    "src/index.ts",
+    "error TS2322",
+    "error TS2339",
+    "Type 'number' is not assignable to type 'string'"
+  ],
+  "critical_evidence": [
+    "src/index.ts",
+    "error TS",
+    "Type 'number'"
+  ],
+  "toolchain_available": true,
+  "notes": "Real tsc output. Absolute typescript lib path masked."
+}

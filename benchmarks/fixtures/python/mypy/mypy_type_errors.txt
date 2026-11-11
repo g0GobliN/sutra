@@ -1,0 +1,4 @@
+code.py:4: error: Incompatible types in assignment (expression has type "str", variable has type "int")  [assignment]
+code.py:5: error: Argument 1 to "greet" has incompatible type "int"; expected "str"  [arg-type]
+code.py:6: error: Unsupported operand types for + ("int" and "str")  [operator]
+Found 3 errors in 1 file (checked 1 source file)

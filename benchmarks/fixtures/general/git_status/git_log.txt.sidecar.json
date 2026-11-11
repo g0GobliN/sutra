@@ -1,0 +1,19 @@
+{
+  "fixture": "general/git_status/git_log.txt",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git log --oneline -8",
+  "description": "Git recent commit history.",
+  "category": "general/git_status",
+  "expected_evidence": [
+    "commit",
+    "snapshot",
+    "init"
+  ],
+  "critical_evidence": [
+    "snapshot",
+    "init"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output."
+}

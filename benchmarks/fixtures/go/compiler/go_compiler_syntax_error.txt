@@ -1,0 +1,5 @@
+# command-line-arguments
+./main.go:4:12: cannot convert "not a number" (type untyped string constant) to type int
+./main.go:6:2: expected declaration, found '}'
+./main.go:6:2: non-declaration statement outside function body
+./main.go:9:1: syntax error: unexpected semicolon or newline before }

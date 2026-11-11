@@ -1,0 +1,5 @@
+--- PASS: TestAdd (0.00s)
+--- PASS: TestDivideByZero (0.00s)
+--- PASS: TestStringConcat (0.00s)
+ok  	command-line-arguments	0.021s
+PASS

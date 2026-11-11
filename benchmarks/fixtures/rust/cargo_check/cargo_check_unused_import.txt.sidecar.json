@@ -1,0 +1,17 @@
+{
+  "fixture": "rust/cargo_check/cargo_check_unused_import.txt",
+  "provenance": "real",
+  "source_tool": "cargo",
+  "source_command": "cargo check on Rust code with an unused import",
+  "description": "Cargo check unused-import warning.",
+  "category": "rust/cargo_check",
+  "expected_evidence": [
+    "warning: unused import",
+    "HashMap"
+  ],
+  "critical_evidence": [
+    "warning: unused import"
+  ],
+  "toolchain_available": true,
+  "notes": "Real cargo output."
+}

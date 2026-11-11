@@ -1,0 +1,18 @@
+{
+  "fixture": "general/long_stack_trace/python_recursion_error.txt",
+  "provenance": "real",
+  "source_tool": "python3",
+  "source_command": "python3 deep recursion causing RecursionError",
+  "description": "Python long stack trace (RecursionError, repeated frames).",
+  "category": "general/long_stack_trace",
+  "expected_evidence": [
+    "RecursionError",
+    "maximum recursion depth",
+    "previous line repeated"
+  ],
+  "critical_evidence": [
+    "RecursionError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real Python traceback."
+}

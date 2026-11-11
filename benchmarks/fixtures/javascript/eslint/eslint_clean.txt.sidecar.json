@@ -1,0 +1,12 @@
+{
+  "fixture": "javascript/eslint/eslint_clean.txt",
+  "provenance": "real",
+  "source_tool": "eslint",
+  "source_command": "eslint on a clean JS file (zero problems)",
+  "description": "ESLint clean output (baseline/control).",
+  "category": "javascript/eslint",
+  "expected_evidence": [],
+  "critical_evidence": [],
+  "toolchain_available": true,
+  "notes": "Real eslint output; empty stdout means success."
+}

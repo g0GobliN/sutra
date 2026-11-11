@@ -1,0 +1,19 @@
+{
+  "fixture": "rust/cargo_test/cargo_test_failing.txt",
+  "provenance": "real",
+  "source_tool": "cargo",
+  "source_command": "cargo test with a failing assertion",
+  "description": "Cargo test failure with panicked assertion.",
+  "category": "rust/cargo_test",
+  "expected_evidence": [
+    "test it_fails ... FAILED",
+    "assertion failed",
+    "test result: FAILED"
+  ],
+  "critical_evidence": [
+    "FAILED",
+    "test result: FAILED"
+  ],
+  "toolchain_available": true,
+  "notes": "Real cargo output."
+}

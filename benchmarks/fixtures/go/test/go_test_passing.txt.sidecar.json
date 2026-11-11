@@ -1,0 +1,18 @@
+{
+  "fixture": "go/test/go_test_passing.txt",
+  "provenance": "synthetic",
+  "source_tool": "go (not installed)",
+  "source_command": "go test (synthetic; Go toolchain missing)",
+  "description": "Synthetic Go test all-passing (real output shape, control/case).",
+  "category": "go/test",
+  "expected_evidence": [
+    "--- PASS",
+    "ok",
+    "PASS"
+  ],
+  "critical_evidence": [
+    "PASS"
+  ],
+  "toolchain_available": false,
+  "notes": "SYNTHETIC: Go toolchain is not installed; this captures a real output shape."
+}

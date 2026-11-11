@@ -1,0 +1,12 @@
+{
+  "fixture": "javascript/tsc/tsc_clean.txt",
+  "provenance": "real",
+  "source_tool": "tsc",
+  "source_command": "tsc --noEmit on a clean TypeScript file (zero errors)",
+  "description": "TypeScript compiler clean compile (baseline/control).",
+  "category": "javascript/tsc",
+  "expected_evidence": [],
+  "critical_evidence": [],
+  "toolchain_available": true,
+  "notes": "Real tsc output; empty stdout means success."
+}

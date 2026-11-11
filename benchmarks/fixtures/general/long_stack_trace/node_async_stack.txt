@@ -1,0 +1,11 @@
+Error: deep failure at step 0
+    at step (./async_chain.js:2:21)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)
+    at step (./async_chain.js:3:10)

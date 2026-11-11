@@ -1,0 +1,19 @@
+{
+  "fixture": "python/pytest/pytest_collection_error.txt",
+  "provenance": "real",
+  "source_tool": "pytest",
+  "source_command": "python3 -m pytest on a file with a syntax error (collection error)",
+  "description": "Pytest collection error (SyntaxError during collection).",
+  "category": "python/pytest",
+  "expected_evidence": [
+    "SyntaxError",
+    "ERROR collecting",
+    "test_bad_collect.py"
+  ],
+  "critical_evidence": [
+    "SyntaxError",
+    "ERROR collecting"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pytest output."
+}

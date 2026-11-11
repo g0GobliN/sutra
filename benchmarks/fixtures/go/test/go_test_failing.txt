@@ -1,0 +1,12 @@
+--- FAIL: TestAdd (0.00s)
+    main_test.go:10: expected 5, got 4
+    Error Trace: main_test.go:10
+    Error: Got an unexpected error
+    Error: expected 5 but got 4
+    stack: main_test.go:10
+--- FAIL: TestDivideByZero (0.00s)
+    main_test.go:22: panic: runtime error: integer divide by zero [recovered]
+        main_test.go:22 +0x1a
+FAIL
+FAIL	command-line-arguments	0.024s
+FAIL

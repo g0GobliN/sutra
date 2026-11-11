@@ -1,0 +1,16 @@
+{
+  "fixture": "python/mypy/mypy_clean.txt",
+  "provenance": "real",
+  "source_tool": "mypy",
+  "source_command": "mypy on a clean Python file (baseline/control)",
+  "description": "Mypy clean output (baseline/control).",
+  "category": "python/mypy",
+  "expected_evidence": [
+    "Success: no issues found"
+  ],
+  "critical_evidence": [
+    "Success: no issues found"
+  ],
+  "toolchain_available": true,
+  "notes": "Real mypy output (control/case)."
+}

@@ -1,0 +1,19 @@
+{
+  "fixture": "javascript/node/node_reference_error.txt",
+  "provenance": "real",
+  "source_tool": "node",
+  "source_command": "node running a script that references an undefined variable",
+  "description": "Node.js ReferenceError with stack frames.",
+  "category": "javascript/node",
+  "expected_evidence": [
+    "ReferenceError",
+    "nonexistentVariable is not defined",
+    "ref_err.js"
+  ],
+  "critical_evidence": [
+    "ReferenceError",
+    "ref_err.js"
+  ],
+  "toolchain_available": true,
+  "notes": "Real node output."
+}

@@ -1,0 +1,19 @@
+{
+  "fixture": "general/long_stack_trace/node_async_stack.txt",
+  "provenance": "real",
+  "source_tool": "node",
+  "source_command": "node deep async call chain throwing an error",
+  "description": "Node.js long async stack trace (repeated step frames).",
+  "category": "general/long_stack_trace",
+  "expected_evidence": [
+    "Error",
+    "deep failure at step 0",
+    "at step"
+  ],
+  "critical_evidence": [
+    "Error",
+    "at step"
+  ],
+  "toolchain_available": true,
+  "notes": "Real node output."
+}

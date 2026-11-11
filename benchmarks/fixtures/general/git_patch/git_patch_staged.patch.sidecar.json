@@ -1,0 +1,20 @@
+{
+  "fixture": "general/git_patch/git_patch_staged.patch",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git diff --cached --no-color (patch ready to apply)",
+  "description": "Git staged patch (unified diff, no color).",
+  "category": "general/git_patch",
+  "expected_evidence": [
+    "diff --git",
+    "@@",
+    "--- a/",
+    "+++ b/"
+  ],
+  "critical_evidence": [
+    "diff --git",
+    "@@"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output."
+}

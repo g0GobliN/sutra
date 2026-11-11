@@ -1,0 +1,18 @@
+{
+  "fixture": "javascript/node/node_unhandled_rejection.txt",
+  "provenance": "real",
+  "source_tool": "node",
+  "source_command": "node running a script with an unhandled promise rejection",
+  "description": "Node.js unhandled promise rejection warning.",
+  "category": "javascript/node",
+  "expected_evidence": [
+    "unhandled.js",
+    "boom async"
+  ],
+  "critical_evidence": [
+    "unhandled.js",
+    "boom async"
+  ],
+  "toolchain_available": true,
+  "notes": "Real node output."
+}

@@ -1,0 +1,22 @@
+{
+  "fixture": "python/traceback/traceback_chained.txt",
+  "provenance": "real",
+  "source_tool": "python3",
+  "source_command": "python3 running a script with a chained exception (raise ... from)",
+  "description": "Python chained-exception traceback (KeyError -> RuntimeError).",
+  "category": "python/traceback",
+  "expected_evidence": [
+    "Traceback",
+    "RuntimeError",
+    "configuration load failed",
+    "KeyError",
+    "The above exception was the direct cause"
+  ],
+  "critical_evidence": [
+    "Traceback",
+    "RuntimeError",
+    "KeyError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real Python traceback."
+}

@@ -1,0 +1,30 @@
+
+ RUN  v4.1.12 ./vitest_proj
+
+ ❯ sample.test.ts (3 tests | 1 failed) 21ms
+   × fails 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  sample.test.ts > fails
+AssertionError: expected 'a' to be 'b' // Object.is equality
+
+Expected: "b"
+Received: "a"
+
+ ❯ sample.test.ts:3:35
+      1| import { expect, test } from 'vitest'
+      2| test('adds', () => { expect(1 + 1).toBe(2) })
+      3| test('fails', () => { expect('a').toBe('b') })
+       |                                   ^
+      4| test('throws', () => { expect(() => { throw new Error("boom") }).toThr…
+      5|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 2 passed (3)
+   Start at  10:48:05
+   Duration  483ms (transform 35ms, setup 0ms, import 57ms, tests 21ms, environment 0ms)
+

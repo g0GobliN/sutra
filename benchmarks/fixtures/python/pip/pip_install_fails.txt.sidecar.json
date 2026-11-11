@@ -1,0 +1,19 @@
+{
+  "fixture": "python/pip/pip_install_fails.txt",
+  "provenance": "real",
+  "source_tool": "pip",
+  "source_command": "pip install of a non-existent package",
+  "description": "Pip install failure (externally-managed-environment / resolution).",
+  "category": "python/pip",
+  "expected_evidence": [
+    "error:",
+    "externally-managed-environment",
+    "PEP 668"
+  ],
+  "critical_evidence": [
+    "externally-managed-environment",
+    "PEP 668"
+  ],
+  "toolchain_available": true,
+  "notes": "Real pip output (PEP 668 externally-managed-environment)."
+}

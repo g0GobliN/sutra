@@ -1,0 +1,10 @@
+./unhandled.js:1
+setTimeout(() => { Promise.reject(new Error("boom async")); }, 50);
+                                  ^
+
+Error: boom async
+    at Timeout._onTimeout (./unhandled.js:1:35)
+    at listOnTimeout (node:internal/timers:581:17)
+    at process.processTimers (node:internal/timers:519:7)
+
+Node.js v20.19.2

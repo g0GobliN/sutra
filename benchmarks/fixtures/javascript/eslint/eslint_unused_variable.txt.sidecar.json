@@ -1,0 +1,20 @@
+{
+  "fixture": "javascript/eslint/eslint_unused_variable.txt",
+  "provenance": "real",
+  "source_tool": "eslint",
+  "source_command": "eslint on a JS file with a single unused variable",
+  "description": "ESLint single unused-variable error.",
+  "category": "javascript/eslint",
+  "expected_evidence": [
+    "src/warns.js",
+    "error",
+    "no-unused-vars",
+    "'unused' is assigned a value but never used"
+  ],
+  "critical_evidence": [
+    "src/warns.js",
+    "no-unused-vars"
+  ],
+  "toolchain_available": true,
+  "notes": "Real eslint output."
+}

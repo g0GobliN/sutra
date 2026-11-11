@@ -1,0 +1,20 @@
+{
+  "fixture": "general/git_diff/git_diff_unstaged.txt",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git diff (unstaged changes)",
+  "description": "Git unstaged diff (unified diff).",
+  "category": "general/git_diff",
+  "expected_evidence": [
+    "diff --git",
+    "@@",
+    "-y=2",
+    "+y=22"
+  ],
+  "critical_evidence": [
+    "diff --git",
+    "@@"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output."
+}

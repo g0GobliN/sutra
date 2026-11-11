@@ -1,0 +1,8 @@
+PASS ./sum_clean.test.js
+  ✓ adds 2 + 2 to equal 4 (5 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       1 passed, 1 total
+Snapshots:   0 total
+Time:        0.648 s
+Ran all test suites matching /sum_clean.test.js/i.

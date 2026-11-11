@@ -1,0 +1,7 @@
+diff --git a/src/b.py b/src/b.py
+index 0a4dc54..5e12f49 100644
+--- a/src/b.py
++++ b/src/b.py
+@@ -1 +1 @@
+-y=2
++y=22

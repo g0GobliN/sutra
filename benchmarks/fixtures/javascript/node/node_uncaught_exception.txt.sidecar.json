@@ -1,0 +1,19 @@
+{
+  "fixture": "javascript/node/node_uncaught_exception.txt",
+  "provenance": "real",
+  "source_tool": "node",
+  "source_command": "node running a script that throws an uncaught TypeError",
+  "description": "Node.js uncaught exception (TypeError: Cannot read properties of undefined).",
+  "category": "javascript/node",
+  "expected_evidence": [
+    "TypeError",
+    "Cannot read properties",
+    "TypeError"
+  ],
+  "critical_evidence": [
+    "TypeError",
+    "crash_node.js"
+  ],
+  "toolchain_available": true,
+  "notes": "Real node output."
+}

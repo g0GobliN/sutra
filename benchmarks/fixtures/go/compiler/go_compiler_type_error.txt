@@ -1,0 +1,4 @@
+# command-line-arguments
+./main.go:7:16: cannot use getMessage() (type string) as type int in assignment
+./main.go:10:9: undefined: unknownFunction
+./main.go:12:26: invalid operation: msg + 42 (mismatched types string and int)

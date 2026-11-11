@@ -1,0 +1,19 @@
+{
+  "fixture": "python/traceback/traceback_valueerror.txt",
+  "provenance": "real",
+  "source_tool": "python3",
+  "source_command": "python3 running a script that raises ValueError",
+  "description": "Python ValueError traceback.",
+  "category": "python/traceback",
+  "expected_evidence": [
+    "Traceback",
+    "ValueError",
+    "invalid denominator"
+  ],
+  "critical_evidence": [
+    "Traceback",
+    "ValueError"
+  ],
+  "toolchain_available": true,
+  "notes": "Real Python traceback."
+}

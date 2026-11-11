@@ -1,0 +1,19 @@
+{
+  "fixture": "go/test/go_test_failing.txt",
+  "provenance": "synthetic",
+  "source_tool": "go (not installed)",
+  "source_command": "go test (synthetic; Go toolchain missing)",
+  "description": "Synthetic Go test failure (real output shape).",
+  "category": "go/test",
+  "expected_evidence": [
+    "--- FAIL",
+    "expected 5, got 4",
+    "FAIL"
+  ],
+  "critical_evidence": [
+    "--- FAIL",
+    "FAIL"
+  ],
+  "toolchain_available": false,
+  "notes": "SYNTHETIC: Go toolchain is not installed; this captures a real output shape."
+}

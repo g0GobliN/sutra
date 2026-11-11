@@ -1,0 +1,23 @@
+{
+  "fixture": "javascript/jest/jest_failing.txt",
+  "provenance": "real",
+  "source_tool": "jest",
+  "source_command": "jest (v29.7.0) run on a project with one passing + one failing test",
+  "description": "Jest test suite with one failure (toBe equality mismatch).",
+  "category": "javascript/jest",
+  "expected_evidence": [
+    "FAIL ./sum.test.js",
+    "adds 2 + 2 to equal 5",
+    "Expected: 5",
+    "Received: 4",
+    "Test Suites: 1 failed, 1 total",
+    "Tests: 1 failed, 1 passed, 2 total"
+  ],
+  "critical_evidence": [
+    "FAIL ./sum.test.js",
+    "Received: 4",
+    "1 failed"
+  ],
+  "toolchain_available": true,
+  "notes": "Real jest output. jest was installed locally via npm (network available)."
+}

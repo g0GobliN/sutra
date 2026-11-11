@@ -1,0 +1,21 @@
+{
+  "fixture": "general/compiler_errors/gcc_type_error.txt",
+  "provenance": "real",
+  "source_tool": "gcc",
+  "source_command": "gcc -Wall on a C file with an incompatible pointer-to-int assignment",
+  "description": "GCC compiler error with file:line:col and diagnostic flag.",
+  "category": "general/compiler_errors",
+  "expected_evidence": [
+    "main.c",
+    "error:",
+    "makes integer from pointer without a cast",
+    "[-Wint-conversion]"
+  ],
+  "critical_evidence": [
+    "main.c",
+    "error:",
+    "makes integer from pointer"
+  ],
+  "toolchain_available": true,
+  "notes": "Real gcc output."
+}

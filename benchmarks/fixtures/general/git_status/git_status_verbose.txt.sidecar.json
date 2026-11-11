@@ -1,0 +1,20 @@
+{
+  "fixture": "general/git_status/git_status_verbose.txt",
+  "provenance": "real",
+  "source_tool": "git",
+  "source_command": "git status (long form) on mixed working tree",
+  "description": "Git status long-form output.",
+  "category": "general/git_status",
+  "expected_evidence": [
+    "modified:   src/a.py",
+    "modified:   src/b.py",
+    "Untracked files:",
+    "src/c.py"
+  ],
+  "critical_evidence": [
+    "modified:",
+    "Untracked files:"
+  ],
+  "toolchain_available": true,
+  "notes": "Real git output."
+}
