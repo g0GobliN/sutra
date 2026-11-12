@@ -22,6 +22,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@60edb5dd545a775178f526ca47175911c1d5c8d7 # v4
+        with:
+          node-version: "20"
       - run: pip install pytest tiktoken
       - run: pip install -e .
       - name: Product suite
@@ -98,6 +101,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@60edb5dd545a775178f526ca47175911c1d5c8d7 # v4
+        with:
+          node-version: "20"
       - run: pip install pytest tiktoken
       - run: pip install -e .
       - run: python -m pytest tests -q
@@ -217,6 +223,9 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@60edb5dd545a775178f526ca47175911c1d5c8d7 # v4
+        with:
+          node-version: "20"
       - name: Run the suite from a hyphen-named clone (tarball-style)
         run: |
           git clone . sutra-main
