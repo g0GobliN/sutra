@@ -83,7 +83,8 @@ def _run(args: list[str], timeout: int = 45):
     try:
         return subprocess.run(
             [executable, *args], capture_output=True, text=True,
-            timeout=timeout, env=env, stdin=subprocess.DEVNULL)
+            encoding="utf-8", errors="replace", timeout=timeout,
+            env=env, stdin=subprocess.DEVNULL)
     except (OSError, subprocess.SubprocessError):
         return None
 
@@ -486,6 +487,7 @@ def _probe(command: str, python: str) -> tuple[bool, str]:
                 argv = [python, str(hook_script())]
             result = subprocess.run(
                 argv, input=json.dumps(payload), capture_output=True, text=True,
+                encoding="utf-8", errors="replace",
                 timeout=HOOK_TIMEOUT_SECONDS, env=env)
             response = json.loads(result.stdout or "{}")
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
