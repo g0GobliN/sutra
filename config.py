@@ -58,6 +58,14 @@ DEFAULT_REUSE_MIN_BYTES = 4096
 DEFAULT_MAX_TOKENS: int | None = None
 DEFAULT_TOKENIZER = "byte-estimate"
 TOKENIZERS = ("tiktoken", "byte-estimate")
+
+# OpenTelemetry telemetry: off by default so imports and exports are zero-cost
+# when not used. ``SUTRA_TELEMETRY_ENDPOINT`` is the OTLP HTTP endpoint (e.g.
+# ``http://localhost:4318/v1/metrics``). ``SUTRA_TELEMETRY_SAMPLE_RATE`` is a
+# float in [0, 1] for trace sampling (metrics are always exported).
+DEFAULT_TELEMETRY_ENABLED = False
+DEFAULT_TELEMETRY_ENDPOINT = "http://localhost:4318/v1/metrics"
+DEFAULT_TELEMETRY_SAMPLE_RATE = 1.0
 # One token is at least one byte, so four bytes per token is a safe upper bound
 # when converting a token ceiling into a byte budget: a result larger than that
 # cannot possibly fit within max_tokens tokens.
@@ -69,6 +77,26 @@ BYTES_PER_TOKEN_ESTIMATE = 4
 # pointer would exceed it is not elided, because a lossy pointer is worse than
 # none — the agent would be told to ask for bytes at the wrong place.
 MAX_FIELD_POINTER = 256
+
+def _float(name: str, default: float, *, minimum: float | None = None,
+         maximum: float | None = None) -> float:
+    """Read a float from the environment; invalid or out-of-range falls back."""
+    raw = os.environ.get(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        value = float(str(raw).strip())
+    except (TypeError, ValueError):
+        _warn_once(f"{name}={raw!r} is not a float; using {default}")
+        return default
+    if minimum is not None and value < minimum:
+        _warn_once(f"{name}={value} is below the minimum {minimum}; using {default}")
+        return default
+    if maximum is not None and value > maximum:
+        _warn_once(f"{name}={value} is above the maximum {maximum}; using {default}")
+        return default
+    return value
+
 
 _FALSEY = frozenset({"0", "false", "off", "no"})
 _warned: set[str] = set()
@@ -220,6 +248,9 @@ class Config:
     reuse_min_bytes: int = DEFAULT_REUSE_MIN_BYTES
     max_tokens: int | None = None
     tokenizer: str = DEFAULT_TOKENIZER
+    telemetry_enabled: bool = DEFAULT_TELEMETRY_ENABLED
+    telemetry_endpoint: str = DEFAULT_TELEMETRY_ENDPOINT
+    telemetry_sample_rate: float = DEFAULT_TELEMETRY_SAMPLE_RATE
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -267,4 +298,10 @@ def resolve() -> Config:
                              minimum=1024),
         max_tokens=_optional_int("SUTRA_MAX_TOKENS", DEFAULT_MAX_TOKENS),
         tokenizer=_tokenizer(),
+        telemetry_enabled=_flag("SUTRA_TELEMETRY", DEFAULT_TELEMETRY_ENABLED),
+        telemetry_endpoint=os.environ.get("SUTRA_TELEMETRY_ENDPOINT")
+        or DEFAULT_TELEMETRY_ENDPOINT,
+        telemetry_sample_rate=_float("SUTRA_TELEMETRY_SAMPLE_RATE",
+                                     DEFAULT_TELEMETRY_SAMPLE_RATE,
+                                     minimum=0.0, maximum=1.0),
     )

@@ -33,7 +33,7 @@ RUNTIME_MODULES = frozenset({
     "__init__", "claude_code", "cli", "codex", "config", "core", "discovery",
     "engine", "hermes", "hook", "installer", "jsonc", "mcp", "metrics",
     "opencode", "openclaw", "parsers", "policy", "recovery", "reuse", "runner",
-    "store", "utf8",
+    "store", "telemetry", "utf8",
 })
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",
@@ -133,8 +133,11 @@ def check_wheel(wheel: pathlib.Path, problems: list[str]) -> str | None:
                          "Description-Content-Type: text/markdown"):
             if expected not in metadata:
                 _fail(problems, f"wheel: METADATA lacks {expected!r}")
-        if re.search(r"^Requires-Dist:", metadata, re.MULTILINE):
-            _fail(problems, "wheel: the distribution must stay dependency-free")
+        # Only unconditional Requires-Dist entries are forbidden; optional deps (with extra == "...") are fine.
+        for line in metadata.splitlines():
+            if line.startswith("Requires-Dist:") and "extra ==" not in line:
+                _fail(problems, "wheel: the distribution must stay dependency-free")
+                break
 
         entry_points = reader(f"{distinfo}/entry_points.txt").decode("utf-8", "replace")
         for line in ("sutra = sutra.cli:main", "sutra-mcp = sutra.mcp:main",

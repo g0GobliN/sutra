@@ -22,7 +22,11 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
       - run: pip install pytest tiktoken
+      - run: pip install -e .
       - name: Product suite
         run: python -m pytest tests -q
 
@@ -42,6 +46,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest build tiktoken
+      - run: pip install -e .
       - name: Product suite
         run: python -m pytest tests -q
       - name: Build and install the wheel
@@ -97,7 +102,11 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.13"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
       - run: pip install pytest tiktoken
+      - run: pip install -e .
       - run: python -m pytest tests -q
 
   lint:
@@ -215,11 +224,15 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.12"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
       - name: Run the suite from a hyphen-named clone (tarball-style)
         run: |
           git clone . sutra-main
           cd sutra-main
           pip install pytest tiktoken
+          pip install -e .
           python -m pytest tests -q
 
   validate:

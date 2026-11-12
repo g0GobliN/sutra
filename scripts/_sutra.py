@@ -7,7 +7,6 @@ Code hook, keeps the path/loader logic in one place.
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 import sys
 
@@ -17,11 +16,12 @@ _NAME = "sutra_adapter_runtime"  # unique: never collide with the test loader
 
 def load_sutra():
     """Import the package once per process, or return the loaded module."""
-    if _NAME in sys.modules:
-        return sys.modules[_NAME]
-    spec = importlib.util.spec_from_file_location(
-        _NAME, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_NAME] = module
-    spec.loader.exec_module(module)
-    return module
+    if "sutra" in sys.modules:
+        return sys.modules["sutra"]
+    # Ensure the repo root (package root) is in sys.path for editable installs
+    # where the package lives at the repo root (not in a subdirectory).
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    import sutra
+    return sutra

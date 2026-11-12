@@ -26,6 +26,20 @@ classifiers = [
 ]
 dependencies = []
 
+[project.optional-dependencies]
+telemetry = [
+    "opentelemetry-api>=1.24",
+    "opentelemetry-sdk>=1.24",
+    "opentelemetry-exporter-otlp-proto-http>=1.24",
+]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=4",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.6",
+    "mypy>=1.10",
+]
+
 [project.urls]
 Homepage = "https://sutra-alive.vercel.app/"
 Repository = "https://github.com/g0GobliN/sutra"
