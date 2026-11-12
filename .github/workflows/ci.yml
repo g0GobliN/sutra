@@ -257,6 +257,7 @@ jobs:
         run: npm install --global @anthropic-ai/claude-code@2.1.268 @openai/codex@0.166.0
       - name: Run real-host adapter tests without authentication
         run: |
+          pip install -e .
           pip install pytest tiktoken
           python -m pytest -q \
             tests/test_claude_installer.py::test_live_claude_rolls_back_when_the_server_cannot_connect \
