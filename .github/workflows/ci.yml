@@ -23,6 +23,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest tiktoken
+      - run: pip install -e .
       - name: Product suite
         run: python -m pytest tests -q
 
@@ -98,6 +99,7 @@ jobs:
         with:
           python-version: "3.13"
       - run: pip install pytest tiktoken
+      - run: pip install -e .
       - run: python -m pytest tests -q
 
   lint:
@@ -220,6 +222,7 @@ jobs:
           git clone . sutra-main
           cd sutra-main
           pip install pytest tiktoken
+          pip install -e .
           python -m pytest tests -q
 
   validate:
