@@ -16,7 +16,6 @@ Metrics emitted:
 from __future__ import annotations
 
 import logging
-import os
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -126,7 +125,6 @@ class CompressionTelemetry:
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-            from opentelemetry.trace import set_span_in_context
         except ImportError as exc:
             logger.warning(
                 "sutra: telemetry enabled but opentelemetry dependencies not installed; "

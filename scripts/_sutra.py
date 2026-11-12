@@ -7,7 +7,6 @@ Code hook, keeps the path/loader logic in one place.
 
 from __future__ import annotations
 
-import importlib.util
 import pathlib
 import sys
 
