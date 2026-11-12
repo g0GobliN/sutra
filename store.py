@@ -40,6 +40,7 @@ from typing import Any
 
 from . import config
 from . import metrics
+from .telemetry import get_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -129,15 +130,17 @@ class Lookup:
 
 def store_from_env() -> "Store":
     """The store configured by the environment; safe to construct per call."""
-    return Store(StoreConfig.from_env())
+    cfg = config.resolve()
+    return Store(StoreConfig.from_env(), cfg)
 
 
 class Store:
     """A directory of originals, with hard limits and no trust in callers."""
 
-    def __init__(self, config: StoreConfig):
+    def __init__(self, config: StoreConfig, telemetry_config: config.Config | None = None):
         self.config = config
         self.dir = config.directory
+        self._telemetry = get_telemetry(telemetry_config)
 
     # -- paths --------------------------------------------------------------
 
@@ -362,31 +365,39 @@ class Store:
     def get(self, entry_id: str, now: float | None = None) -> Lookup:
         """Look up a retained original, enforcing the TTL."""
         if not ID_RE.match(str(entry_id or "")):
+            self._telemetry.record_recovery("invalid")
             return Lookup(None, "invalid")
         if not self.config.enabled:
+            self._telemetry.record_recovery("unavailable")
             return Lookup(None, "unavailable")
         now = time.time() if now is None else now
         meta_path = self.meta_path(entry_id)
         meta = self._read_meta(entry_id)
         if meta is None:
+            self._telemetry.record_recovery("missing")
             return Lookup(None, "missing")
         try:
             created = float(meta.get("created_at") or 0)
             size = int(meta.get("original_bytes") or 0)
         except (TypeError, ValueError):
+            self._telemetry.record_recovery("missing")
             return Lookup(None, "missing")
         if self.config.ttl_hours > 0 and now - created > self.config.ttl_hours * 3_600:
             self.delete(entry_id)
             _record_cleanup({"expired": 1, "bytes": size})
+            self._telemetry.record_recovery("expired")
             return Lookup(None, "expired")
         try:
             if os.path.getsize(self.data_path(entry_id)) != size:
                 # Interrupted or truncated write: never serve a partial original.
                 self.delete(entry_id)
+                self._telemetry.record_recovery("missing")
                 return Lookup(None, "missing")
         except OSError:
             self.delete(entry_id)  # orphaned meta: no data file behind it
+            self._telemetry.record_recovery("missing")
             return Lookup(None, "missing")
+        self._telemetry.record_recovery("ok")
         return Lookup(Entry(
             id=entry_id,
             original_bytes=size,
@@ -490,6 +501,7 @@ class Store:
                     report["bytes"] += int(self._age(path, now, size=True))
                     self._unlink(path)
                     report["temp"] += 1
+                    self._telemetry.record_recovery("temp")
                 continue
             if not name.endswith(DATA_SUFFIX):
                 continue
@@ -513,6 +525,7 @@ class Store:
                             # too, or it outlives every prune.
                             self._unlink(self.meta_path(stem))
                             report["orphans"] += 1
+                            self._telemetry.record_recovery("orphan")
                             discards.append(stem)
                         continue
                     try:
@@ -536,6 +549,7 @@ class Store:
                         # or it outlives every prune and is never accounted for.
                         self._unlink(self.meta_path(stem))
                         report["orphans"] += 1
+                        self._telemetry.record_recovery("orphan")
                     continue
                 try:
                     created = float(meta.get("created_at"))
@@ -552,6 +566,7 @@ class Store:
                 report["bytes"] += int(size)
                 self.delete(stem)
                 report["expired"] += 1
+                self._telemetry.record_recovery("expired")
                 continue
             live.append((created, int(size), stem))
         # Meta files whose data file is gone.
@@ -561,6 +576,7 @@ class Store:
                 if stem not in data_names:
                     self._unlink(os.path.join(self.dir, name))
                     report["orphans"] += 1
+                    self._telemetry.record_recovery("orphan")
         total = sum(item[1] for item in live)
         over_count = len(live) > self.config.max_entries
         over_bytes = total > self.config.max_bytes
@@ -573,6 +589,7 @@ class Store:
                 total -= size
                 report["quota"] += 1
                 report["bytes"] += size
+                self._telemetry.record_recovery("quota")
         with _ACCOUNTING_LOCK:
             usage = _ACCOUNTING.get(key) or _Accounting()
             usage.entries = len(live)

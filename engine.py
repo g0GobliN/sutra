@@ -20,11 +20,13 @@ import io
 import json
 import logging
 import re
+import time
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Iterator
 
 from . import config, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
+from .telemetry import get_telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -751,6 +753,10 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
     bytes saved. Text that is not UTF-8 encodable (a lone surrogate) is also
     returned untouched: replacing it would silently change the visible copy.
     """
+    cfg = cfg or config.resolve()
+    telemetry = get_telemetry(cfg)
+    start_time = time.perf_counter()
+
     original_bytes = utf8_byte_length(text)
     if original_bytes is None:
         return text, CompressionStats(
@@ -775,4 +781,21 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             token_estimate=stats.token_estimate,
             budget_exceeded=stats.budget_exceeded,
         )
+
+    # Record telemetry
+    latency_ms = (time.perf_counter() - start_time) * 1000
+    tokens_saved = 0
+    if stats.changed and stats.token_estimate:
+        # Rough estimate: tokens proportional to bytes saved
+        bytes_saved = stats.original_bytes - stats.compressed_bytes
+        tokens_saved = max(0, int((bytes_saved / max(1, stats.original_bytes)) * stats.token_estimate))
+    telemetry.record_compression(
+        original_bytes=stats.original_bytes,
+        compressed_bytes=stats.compressed_bytes,
+        rule=stats.rule,
+        latency_ms=latency_ms,
+        tokens_saved=tokens_saved,
+    )
+    telemetry.record_strategy(stats.rule)
+
     return out, stats
