@@ -248,7 +248,8 @@ def _run(args: list[str], timeout: int = 60):
     executable = binary()
     if not executable:
         return None
-    return subprocess.run([executable, *args], capture_output=True, text=True,
+    return subprocess.run([executable, *args], capture_output=True,
+                          text=True, encoding="utf-8", errors="replace",
                           timeout=timeout)
 
 
@@ -263,7 +264,7 @@ def _mcp_get() -> tuple[bool, str]:
         return False, "the claude command is no longer on PATH"
     if result.returncode != 0:
         return False, "not configured"
-    return True, result.stdout
+    return True, result.stdout or ""
 
 
 def mcp_config_paths() -> list[pathlib.Path]:
@@ -340,7 +341,7 @@ def _mcp_restore_probe(entry: dict, entry_id: str, env: dict) -> tuple[bool, str
     try:
         result = subprocess.run(
             [command, *args], input=payload, capture_output=True, text=True,
-            timeout=30, env=env)
+            encoding="utf-8", errors="replace", timeout=30, env=env)
     except (OSError, subprocess.SubprocessError) as exc:
         return False, f"the configured MCP server did not start: {exc}"
     for line in (result.stdout or "").splitlines():
@@ -516,7 +517,8 @@ def doctor(*, python: str | None = None,
         try:
             result = subprocess.run(
                 [command, *args], input=json.dumps(payload), capture_output=True,
-                text=True, timeout=HOOK_TIMEOUT_SECONDS, env=env)
+                text=True, encoding="utf-8", errors="replace",
+                timeout=HOOK_TIMEOUT_SECONDS, env=env)
             response = json.loads(result.stdout or "{}")
             updated = response.get("hookSpecificOutput", {}).get("updatedToolOutput")
         except (OSError, ValueError, subprocess.SubprocessError) as exc:
