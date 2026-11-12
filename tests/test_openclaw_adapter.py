@@ -177,6 +177,7 @@ def test_generated_javascript_parses_as_a_module(paths):
 
 def test_plugin_hook_compresses_and_recovers_through_the_real_cli(paths, tmp_path):
     """Node loads the generated plugin; the plugin spawns the real CLI."""
+    import os
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")

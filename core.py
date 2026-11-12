@@ -123,7 +123,7 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
     if stats.get("changed"):
         store_cfg = _store.StoreConfig.from_config(cfg)
         if cfg.store_enabled and stats["original_bytes"] <= cfg.store_max_entry_bytes:
-            store = _store.Store(store_cfg)
+            store = _store.Store(store_cfg, telemetry_config=cfg)
             entry = store.put(text, tool_name=tool_name, session_id=session_id)
             if entry is not None:
                 # Second pass only when the original is actually on disk, so the
