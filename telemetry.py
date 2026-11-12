@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Optional
 
-import config
+from . import config
 
 logger = logging.getLogger(__name__)
 
