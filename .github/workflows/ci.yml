@@ -46,6 +46,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest build tiktoken
+      - run: pip install -e .
       - name: Product suite
         run: python -m pytest tests -q
       - name: Build and install the wheel
