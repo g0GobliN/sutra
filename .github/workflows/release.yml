@@ -94,8 +94,11 @@ jobs:
             echo "run $ARTIFACT_RUN_ID built $head_sha, but $TAG is $expected" >&2
             exit 1
           fi
-          if [ "$head_branch" != "$TAG" ]; then
-            echo "run $ARTIFACT_RUN_ID was dispatched for $head_branch, not $TAG" >&2
+          # Allow artifact reuse from main branch (workflow_dispatch runs on main)
+          # as long as the commit SHA matches the tag. The head_branch check is
+          # overly strict for workflow_dispatch usage where the ref is an input.
+          if [ "$head_branch" != "$TAG" ] && [ "$head_branch" != "main" ]; then
+            echo "run $ARTIFACT_RUN_ID was dispatched for $head_branch, not $TAG or main" >&2
             exit 1
           fi
           rm -rf dist SHA256SUMS
