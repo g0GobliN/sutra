@@ -17,11 +17,8 @@ _NAME = "sutra_adapter_runtime"  # unique: never collide with the test loader
 
 def load_sutra():
     """Import the package once per process, or return the loaded module."""
-    if _NAME in sys.modules:
-        return sys.modules[_NAME]
-    spec = importlib.util.spec_from_file_location(
-        _NAME, ROOT / "__init__.py", submodule_search_locations=[str(ROOT)])
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[_NAME] = module
-    spec.loader.exec_module(module)
-    return module
+    if "sutra" in sys.modules:
+        return sys.modules["sutra"]
+    # Package is installed (editable or regular), just import it normally
+    import sutra
+    return sutra
