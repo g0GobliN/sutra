@@ -34,14 +34,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parent.parent
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import sutra
 from sutra import config as _config
 from sutra.core import Outcome, process_text
 from sutra import metrics, recovery, reuse, store as _store
+
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 # Optional humanization, consistent with the rest of the sutra CLI. Falls back
 # to plain text when the UI module is unavailable or output is not a TTY.

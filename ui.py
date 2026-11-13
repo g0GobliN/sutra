@@ -386,8 +386,8 @@ def format_error(
     # Fill in template placeholders
     if category == "permission-error":
         filled_details = details or "The operation was denied permission."
-        s1 = step1 or f"Run `sutra doctor` to diagnose the issue"
-        s2 = step2 or f"Change file permissions if the path is known"
+        s1 = step1 or "Run `sutra doctor` to diagnose the issue"
+        s2 = step2 or "Change file permissions if the path is known"
         return template.format(
             details=filled_details,
             step1=s1,

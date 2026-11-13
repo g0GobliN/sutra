@@ -20,19 +20,12 @@ import argparse
 import datetime
 import importlib.util
 import json
-import os
 import pathlib
 import platform
 import re
-import shutil
 import statistics
-import subprocess
 import sys
-import tempfile
 import time
-import tracemalloc
-from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -56,8 +49,6 @@ except ImportError:
 
 # Import compression libraries for comparison
 try:
-    import gzip
-    import zstandard
     HAS_COMPRESSION_LIBS = True
     print("✓ Compression libraries available - comparisons enabled")
 except ImportError:
@@ -300,20 +291,11 @@ def main():
     except Exception as e:
         print(f"✗ Failed to load corpus: {e}")
         return
-    
-    # Build synthetic payloads from corpus
-    print("Building synthetic payloads...")
-    try:
-        synthetic_payloads = build_synthetic_payloads_from_corpus(corpus)
-        print(f"✓ Built {len(synthetic_payloads)} synthetic payloads")
-    except Exception as e:
-        print(f"✗ Failed to build synthetic payloads: {e}")
-        return
-    
+
     # Run compression benchmarks
     print("Running compression benchmarks...")
     try:
-        compression_rows = measure_compression(synthetic_payloads)
+        compression_rows = measure_compression(corpus["fixtures"])
         print(f"✓ Completed {len(compression_rows)} compression measurements")
     except Exception as e:
         print(f"✗ Failed to run compression benchmarks: {e}")
@@ -322,7 +304,7 @@ def main():
     # Measure latency for a subset of payloads
     print("Measuring latency...")
     try:
-        latency_samples = synthetic_payloads[:min(10, len(synthetic_payloads))]
+        latency_samples = corpus["fixtures"][:min(10, len(corpus["fixtures"]))]
         latency_results = [measure_latency(payload) for payload in latency_samples]
         
         # Add latency data to compression rows

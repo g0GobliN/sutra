@@ -19,10 +19,9 @@ import pathlib
 import re
 import shutil
 import subprocess
-import sys
 import time
 
-from .ui import print_error, print_info, print_success, print_warning
+from .ui import print_error, print_info, print_success
 
 PLUGIN_NAME = "sutra"
 MARKER = ".sutra-generated"

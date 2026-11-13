@@ -32,9 +32,7 @@ import tempfile
 
 from .ui import (
     print_error,
-    print_warning,
     print_success,
-    print_info,
     format_error,
 )
 
@@ -616,7 +614,8 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
         try:
             _write_json(path, document)
         except (OSError, ValueError) as exc:
-            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space"); print_error(friendly)
+            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space")
+            print_error(friendly)
             return 1
         print_success(f"PostToolUse hook installed in {path}")
     else:
@@ -696,7 +695,8 @@ def uninstall(*, python: str | None = None, dry_run: bool = False) -> int:
         try:
             _write_json(path, document)
         except (OSError, ValueError) as exc:
-            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space"); print_error(friendly)
+            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space")
+            print_error(friendly)
             return 1
         print(f"sutra: removed the PostToolUse hook from {path}")
     if existing:

@@ -39,13 +39,9 @@ import os
 import pathlib
 import platform
 import re
-import shutil
 import statistics
 import sys
-import tempfile
 import time
-import tracemalloc
-from collections import defaultdict
 import subprocess
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -183,7 +179,7 @@ def generate_docker_generic_output() -> str:
 
 def generate_git_status_output(evidence: list) -> str:
     """Generate git status output."""
-    return f"On branch main\nYour branch is up to date with 'origin/main'.\nnothing to commit, working tree clean"
+    return "On branch main\nYour branch is up to date with 'origin/main'.\nnothing to commit, working tree clean"
 
 def generate_git_diff_output(evidence: list) -> str:
     """Generate git diff output."""
@@ -191,7 +187,7 @@ def generate_git_diff_output(evidence: list) -> str:
 
 def generate_git_patch_output(evidence: list) -> str:
     """Generate git patch output."""
-    return f"diff --git a/file2.py b/file2.py\nnew file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/file2.py\n@@ -0,0 +1 @@\n+added content"
+    return "diff --git a/file2.py b/file2.py\nnew file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/file2.py\n@@ -0,0 +1 @@\n+added content"
 
 def generate_git_generic_output() -> str:
     """Generate generic git output."""
@@ -200,8 +196,8 @@ def generate_git_generic_output() -> str:
 def generate_package_manager_output(evidence: list) -> str:
     """Generate package manager output."""
     if 'NetworkError' in evidence or 'ECONNREFUSED' in evidence:
-        return f"NetworkError: getaddrinfo ECONNREFUSED registry.npmjs.org"
-    return f"warning: registry 'https://registry.npmjs.org/' no longer supports uncompressed responses"
+        return "NetworkError: getaddrinfo ECONNREFUSED registry.npmjs.org"
+    return "warning: registry 'https://registry.npmjs.org/' no longer supports uncompressed responses"
 
 def generate_pytest_output(evidence: list) -> str:
     """Generate pytest output."""
@@ -433,7 +429,7 @@ def main() -> int:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
     
-    print(f"Starting SUTRA v0.6.1 performance benchmarks...")
+    print("Starting SUTRA v0.6.1 performance benchmarks...")
     print(f"Output directory: {output_dir}")
     print(f"Tiktoken available: {HAS_TIKTOKEN}")
     print(f"Timing repeats: {args.repeats}")

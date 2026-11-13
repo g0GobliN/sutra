@@ -5,9 +5,7 @@ This script runs basic validation of the benchmark system components
 and ensures all requirements are met.
 """
 
-import os
 import sys
-import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -38,7 +36,7 @@ def test_run_benchmarks_script():
         
         # Basic syntax check
         compile(source, str(script_path), 'exec')
-        print(f"✓ run_benchmarks.py syntax is valid")
+        print("✓ run_benchmarks.py syntax is valid")
         return True
         
     except Exception as e:

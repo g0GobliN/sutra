@@ -20,14 +20,13 @@ from .ui import (
     print_error,
     print_success,
     print_warning,
-    print_info,
     emit_json,
     _should_emit_json,
 )
 
 try:
     from . import jsonc
-except ImportError:  # allow `python -c "import openclaw"` run from the package directory
+except ImportError:
     import jsonc
 
 __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured",
@@ -161,7 +160,7 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
     if dry_run:
         print_warning(f"dry run, {path} would change (no file was written)")
         return 0
-    backup = _write(path, updated)
+    _write(path, updated)
     # Step 5: Writing the change
     print_step(5, 6, "success", "Registered sutra MCP entry", tty=_should_emit_json() is False)
 

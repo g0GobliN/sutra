@@ -1,5 +1,7 @@
 """eval/tasks/eval-001.py — Human bug fix: off-by-one in cost engine boundary"""
 
+from typing import Any
+
 # Task ID: eval-001
 # Format version: 0.6.2-task-v1
 # Initial repo snapshot: git:tooltrim@a1b2c3d4e5f6 (commit before task env)
@@ -97,7 +99,6 @@ status = "pending"  # pending | in_review | approved | completed
 # verifies byte-exact recovery, clue recoverability, and compression behavior
 # at the compression boundary (24_576 bytes = SUTRA_MAX_BYTES default).
 
-from typing import Any
 
 _UNIT = b"payload-data-"
 

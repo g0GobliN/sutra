@@ -76,3 +76,10 @@ sutra = [
     "scripts/sutra-claude-code-hook.py",
     "scripts/sutra-codex-hook.py",
 ]
+
+[tool.ruff]
+exclude = ["bench", "eval", "tests/test_benchmark_validation.py", "dist", "build", ".venv", "venv", ".git"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E501"]

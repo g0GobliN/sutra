@@ -33,7 +33,7 @@ import sys
 import tempfile
 import tomllib
 
-from .ui import print_error, print_info, print_success, print_warning
+from .ui import print_error, print_info, print_success
 
 CLIENT = "codex"
 SERVER_NAME = "sutra"

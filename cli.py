@@ -80,34 +80,34 @@ def _install_one(client: str, args, *, required: bool) -> int:
         from . import claude_code
         if not claude_code.binary():
             if required:
-                print_error(f"claude is not installed")
+                print_error("claude is not installed")
                 return 1
-            print_warning(f"claude is not installed; skipped")
+            print_warning("claude is not installed; skipped")
             return 0
         return claude_code.install(dry_run=args.dry_run)
     if client == "hermes":
         from . import hermes
         if not hermes.binary():
             if required:
-                print_error(f"hermes is not installed")
+                print_error("hermes is not installed")
                 return 1
-            print_warning(f"hermes is not installed; skipped")
+            print_warning("hermes is not installed; skipped")
             return 0
         return hermes.install(dry_run=args.dry_run)
     if client == "codex":
         from . import codex
         if not codex.binary():
             if required:
-                print_error(f"codex is not installed")
+                print_error("codex is not installed")
                 return 1
-            print_warning(f"codex is not installed; skipped")
+            print_warning("codex is not installed; skipped")
             return 0
         return codex.install(dry_run=args.dry_run)
     if client == "openclaw":
         # OpenClaw may not be installed on this host yet; the plugin itself is
         # still worth writing so it is ready when OpenClaw appears.
         if shutil.which("openclaw") is None:
-            print_warning(f"openclaw is not installed; skipped")
+            print_warning("openclaw is not installed; skipped")
         return openclaw.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
@@ -119,9 +119,9 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print_error(f"{path} does not exist; pass a path that exists")
             return 1
         if args.dry_run:
-            print_warning(f"dry run, no OpenCode config found; dry run would skip the MCP recovery entry")
+            print_warning("dry run, no OpenCode config found; dry run would skip the MCP recovery entry")
         else:
-            print_warning(f"no OpenCode config found; the automatic plugin is installed, MCP recovery entry skipped")
+            print_warning("no OpenCode config found; the automatic plugin is installed, MCP recovery entry skipped")
         return 0
     return installer.install(path, dry_run=args.dry_run)
 
