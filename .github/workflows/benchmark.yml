@@ -1,0 +1,57 @@
+name: Benchmarks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install dependencies
+        run: |
+          pip install tiktoken zstandard
+      - name: Run benchmarks
+        run: |
+          cd /home/goblin01/github_projects/tooltrim
+          python3 bench/run_benchmarks.py
+      - name: Verify artifacts
+        run: |
+          cd /home/goblin01/github_projects/tooltrim
+          python3 bench/run_benchmarks.py --check
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results-${{ matrix.python }}
+          path: |
+            /home/goblin01/github_projects/tooltrim/bench/run_benchmarks.md
+            /home/goblin01/github_projects/tooltrim/bench/run_benchmarks.json
+          retention-days: 30
+      - name: Create GitHub Pages site
+        if: success()
+        run: |
+          cd /home/goblin01/github_projects/tooltrim
+          mkdir -p gh-pages
+          cp bench/run_benchmarks.md gh-pages/index.html
+          cp bench/run_benchmarks.json gh-pages/results.json
+          echo "Benchmarks" > gh-pages/CNAME
+      - name: Deploy to GitHub Pages
+        if: success() && github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /home/goblin01/github_projects/tooltrim/gh-pages

@@ -1,0 +1,1 @@
+✅ Verified that telemetry.py line 25 now uses relative import 'from . import config' (was absolute import). The fix works when imported from outside the source directory (e.g., from /tmp via installed package). All telemetry tests pass.
