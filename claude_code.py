@@ -30,6 +30,14 @@ import subprocess
 import sys
 import tempfile
 
+from .ui import (
+    print_error,
+    print_warning,
+    print_success,
+    print_info,
+    format_error,
+)
+
 SERVER_NAME = "sutra"
 HOOK_EVENT = "PostToolUse"
 HOOK_TIMEOUT_SECONDS = 60
@@ -573,8 +581,7 @@ def format_doctor(report: dict) -> str:
 def install(*, python: str | None = None, dry_run: bool = False) -> int:
     """Install the hook and MCP entry; verify both. Returns an exit code."""
     if not binary():
-        print("sutra: claude is not installed; nothing to configure",
-              file=sys.stderr)
+        print_error("claude is not installed; nothing to configure")
         return 1
     python = python or sys.executable
     command, args = hook_command(python)
@@ -595,7 +602,7 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
             print(f"sutra: dry run, {path} would gain the PostToolUse hook "
                   f"({command} {' '.join(args)})")
         else:
-            print(f"sutra: {path} already has the PostToolUse hook")
+            print_success(f"{path} already has the PostToolUse hook; nothing to do")
         print(f"sutra: dry run, would run if absent: claude {' '.join(_mcp_add_args(python))}")
         return 0
 
@@ -609,11 +616,11 @@ def install(*, python: str | None = None, dry_run: bool = False) -> int:
         try:
             _write_json(path, document)
         except (OSError, ValueError) as exc:
-            print(f"sutra: could not write {path}: {exc}", file=sys.stderr)
+            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space"); print_error(friendly)
             return 1
-        print(f"sutra: installed the PostToolUse hook in {path}")
+        print_success(f"PostToolUse hook installed in {path}")
     else:
-        print(f"sutra: the PostToolUse hook is already installed in {path}")
+        print_success(f"the PostToolUse hook is already installed in {path}; nothing to do")
 
     added_mcp = False
     if not existing:
@@ -689,7 +696,7 @@ def uninstall(*, python: str | None = None, dry_run: bool = False) -> int:
         try:
             _write_json(path, document)
         except (OSError, ValueError) as exc:
-            print(f"sutra: could not write {path}: {exc}", file=sys.stderr)
+            friendly = format_error("write-error", details=str(exc), step1="Run `sutra doctor` to diagnose", step2="Check file permissions and disk space"); print_error(friendly)
             return 1
         print(f"sutra: removed the PostToolUse hook from {path}")
     if existing:

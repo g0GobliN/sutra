@@ -21,6 +21,7 @@ from pathlib import Path
 
 from . import __version__, installer, openclaw, runner
 from .ui import (
+    format_error,
     print_error,
     print_warning,
     print_summary,
@@ -177,8 +178,21 @@ def _apply(action: str, args) -> int:
         try:
             code = operation(client, args, required=required)
         except Exception as exc:  # one broken adapter must not block the others
-            print(f"sutra: {client} {action} failed: {type(exc).__name__}: {exc}",
-                  file=sys.stderr)
+            if isinstance(exc, PermissionError):
+                friendly = format_error(
+                    "permission-error",
+                    details=str(exc),
+                    step1="Run `sutra doctor` to diagnose the issue",
+                    step2="Check file permissions and ensure the config is not read-only",
+                )
+            else:
+                friendly = format_error(
+                    "unsupported-operation",
+                    details=str(exc),
+                    step1="Run `sutra doctor` to diagnose the issue",
+                    step2="Check the error details above",
+                )
+            print_error(friendly)
             code = 1
         results[client] = code
         status = max(status, code)
