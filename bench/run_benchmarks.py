@@ -292,6 +292,22 @@ def main():
         print(f"✗ Failed to load corpus: {e}")
         return
 
+    # Construct required fields from corpus data
+    for f in corpus["fixtures"]:
+        # Build text from available fields
+        parts = []
+        if 'description' in f:
+            parts.append(f['description'])
+        if 'source_command' in f:
+            parts.append(f['source_command'])
+        if 'expected_evidence' in f:
+            parts.extend(f['expected_evidence'])
+        f['text'] = ' '.join(parts) if parts else ''
+        # Use fixture name as fixture_id
+        f['fixture_id'] = f.get('fixture', f.get('description', ''))
+        # Use description as note
+        f['note'] = f.get('description', '')
+
     # Run compression benchmarks
     print("Running compression benchmarks...")
     try:

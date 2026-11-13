@@ -26,11 +26,11 @@ jobs:
           pip install tiktoken zstandard
       - name: Run benchmarks
         run: |
-          cd /home/goblin01/github_projects/tooltrim
+          
           python3 bench/run_benchmarks.py
       - name: Verify artifacts
         run: |
-          cd /home/goblin01/github_projects/tooltrim
+          
           python3 bench/run_benchmarks.py --check
       - name: Upload benchmark results
         if: always()
@@ -38,13 +38,13 @@ jobs:
         with:
           name: benchmark-results-${{ matrix.python }}
           path: |
-            /home/goblin01/github_projects/tooltrim/bench/run_benchmarks.md
-            /home/goblin01/github_projects/tooltrim/bench/run_benchmarks.json
+            bench/run_benchmarks.md
+            bench/run_benchmarks.json
           retention-days: 30
       - name: Create GitHub Pages site
         if: success()
         run: |
-          cd /home/goblin01/github_projects/tooltrim
+          
           mkdir -p gh-pages
           cp bench/run_benchmarks.md gh-pages/index.html
           cp bench/run_benchmarks.json gh-pages/results.json
@@ -54,4 +54,4 @@ jobs:
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: /home/goblin01/github_projects/tooltrim/gh-pages
+          publish_dir: gh-pages

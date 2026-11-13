@@ -188,6 +188,7 @@ def _apply(action: str, args) -> int:
             else:
                 friendly = format_error(
                     "unsupported-operation",
+                    client=client,
                     details=str(exc),
                     step1="Run `sutra doctor` to diagnose the issue",
                     step2="Check the error details above",
