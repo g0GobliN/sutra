@@ -254,7 +254,7 @@ def test_one_adapter_exception_does_not_stop_the_next(monkeypatch, capsys):
     assert cli._apply("install", args) == 1
     assert calls == ["claude", "hermes"]
     output = capsys.readouterr()
-    assert "claude install failed" in output.err
+    assert "not supported for claude" in output.err
     assert "claude=failed" in output.out
     assert "hermes=skipped" in output.out
 

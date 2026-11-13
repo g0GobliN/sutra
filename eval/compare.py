@@ -226,9 +226,9 @@ def format_comparison(comparison: dict[str, Any], tty: bool = True) -> str:
         def icon(_status: str) -> str:
             return ""
 
-    ok = icon("ok") or "✓"
+    ok = icon("success") or "✓"
     bad = icon("fail") or "✗"
-    neutral = icon("warn") or "→"
+    neutral = icon("warning") or "→"
     intro = icon("info") or "•"
 
     lines: list[str] = [

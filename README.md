@@ -389,8 +389,7 @@ All benchmarks are run on CI (Linux) and published as artifacts for programmatic
 ### Running Local Benchmarks
 
 ```bash
-# Run the full benchmark suite
-cd /home/goblin01/github_projects/tooltrim
+# Run the full benchmark suite (from the repository root)
 python3 bench/run_benchmarks.py
 
 # Verify existing artifacts
