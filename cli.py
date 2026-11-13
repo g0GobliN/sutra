@@ -20,12 +20,19 @@ import sys
 from pathlib import Path
 
 from . import __version__, installer, openclaw, runner
+from .ui import (
+    print_error,
+    print_warning,
+    print_summary,
+    emit_json,
+    _json_env,
+)
 
 USAGE = """sutra {version}
 
 usage:
-  sutra install [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
-  sutra uninstall [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run]
+  sutra install [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run] [--json]
+  sutra uninstall [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run] [--json]
   sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
   sutra doctor [--client hermes|claude|opencode|openclaw|codex]... [--json]  (prove integrations)
@@ -51,6 +58,8 @@ def _parser(action: str) -> argparse.ArgumentParser:
                         help="override the OpenCode config path")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the change; write nothing")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output")
     return parser
 
 
@@ -70,34 +79,34 @@ def _install_one(client: str, args, *, required: bool) -> int:
         from . import claude_code
         if not claude_code.binary():
             if required:
-                print("sutra: claude is not installed", file=sys.stderr)
+                print_error(f"claude is not installed")
                 return 1
-            print("sutra: claude is not installed; skipped")
+            print_warning(f"claude is not installed; skipped")
             return 0
         return claude_code.install(dry_run=args.dry_run)
     if client == "hermes":
         from . import hermes
         if not hermes.binary():
             if required:
-                print("sutra: hermes is not installed", file=sys.stderr)
+                print_error(f"hermes is not installed")
                 return 1
-            print("sutra: hermes is not installed; skipped")
+            print_warning(f"hermes is not installed; skipped")
             return 0
         return hermes.install(dry_run=args.dry_run)
     if client == "codex":
         from . import codex
         if not codex.binary():
             if required:
-                print("sutra: codex is not installed", file=sys.stderr)
+                print_error(f"codex is not installed")
                 return 1
-            print("sutra: codex is not installed; skipped")
+            print_warning(f"codex is not installed; skipped")
             return 0
         return codex.install(dry_run=args.dry_run)
     if client == "openclaw":
         # OpenClaw may not be installed on this host yet; the plugin itself is
         # still worth writing so it is ready when OpenClaw appears.
         if shutil.which("openclaw") is None:
-            print("sutra: openclaw is not installed; skipped")
+            print_warning(f"openclaw is not installed; skipped")
         return openclaw.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
@@ -106,15 +115,12 @@ def _install_one(client: str, args, *, required: bool) -> int:
     path = installer.opencode_config(args.config)
     if not path.exists():
         if args.config:
-            print(f"sutra: {path} does not exist; pass a path that exists",
-                  file=sys.stderr)
+            print_error(f"{path} does not exist; pass a path that exists")
             return 1
         if args.dry_run:
-            print("sutra: no OpenCode config found; dry run would skip the MCP "
-                  "recovery entry")
+            print_warning(f"dry run, no OpenCode config found; dry run would skip the MCP recovery entry")
         else:
-            print("sutra: no OpenCode config found; the automatic plugin is "
-                  "installed, MCP recovery entry skipped")
+            print_warning(f"no OpenCode config found; the automatic plugin is installed, MCP recovery entry skipped")
         return 0
     return installer.install(path, dry_run=args.dry_run)
 
@@ -124,15 +130,15 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
         from . import claude_code
         if not claude_code.binary():
             if required:
-                print("sutra: claude is not installed", file=sys.stderr)
+                print_error("claude is not installed")
                 return 1
-            print("sutra: claude is not installed; skipped")
+            print_warning("claude is not installed; skipped")
             return 0
         return claude_code.uninstall(dry_run=args.dry_run)
     if client == "hermes":
         from . import hermes
         if not hermes.binary():
-            print("sutra: hermes is not installed; skipped")
+            print_warning("hermes is not installed; skipped")
             return 0
         return hermes.uninstall(dry_run=args.dry_run)
     if client == "codex":
@@ -140,7 +146,7 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
         return codex.uninstall(dry_run=args.dry_run)
     if client == "openclaw":
         if shutil.which("openclaw") is None:
-            print("sutra: openclaw is not installed; skipped")
+            print_warning("openclaw is not installed; skipped")
             return 0
         return openclaw.uninstall(dry_run=args.dry_run)
     from . import opencode
@@ -148,6 +154,60 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
     path = installer.opencode_config(args.config)
     if path.exists():
         status = max(status, installer.uninstall(path, dry_run=args.dry_run))
+    return status
+
+
+def _apply(action: str, args) -> int:
+    clients = _selected(args)
+    if not clients:
+        message = ("no supported client detected; name one with --client "
+                   "(hermes, claude, opencode, codex)")
+        json_mode = getattr(args, "json", False) or _json_env()
+        if json_mode:
+            emit_json(status="fail", message=message,
+                      error={"category": "no-clients", "message": message})
+        else:
+            print_error(message)
+        return 1
+    required = bool(args.client)
+    status = 0
+    results: dict[str, int] = {}
+    for client in clients:
+        operation = _install_one if action == "install" else _uninstall_one
+        try:
+            code = operation(client, args, required=required)
+        except Exception as exc:  # one broken adapter must not block the others
+            print(f"sutra: {client} {action} failed: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+            code = 1
+        results[client] = code
+        status = max(status, code)
+    verb = "install" if action == "install" else "uninstall"
+    json_mode = getattr(args, "json", False) or _json_env()
+    if json_mode:
+        succeeded = sum(1 for code in results.values() if code == 0)
+        failed = len(results) - succeeded
+        integrated_clients = [
+            f"{client}: {'configured' if code == 0 else 'failed'}"
+            for client, code in results.items()
+        ]
+        if action == "install":
+            next_steps = ["Run `sutra doctor` to verify the installation"]
+        else:
+            next_steps = ["Run `sutra doctor` to verify the removal"]
+        emit_json(
+            step=len(results),
+            total=len(results),
+            status="success" if status == 0 else "fail",
+            message=f"{verb.capitalize()} complete",
+            success=succeeded,
+            failed=failed,
+            skipped=0,
+            integrated_clients=integrated_clients,
+            next_steps=next_steps,
+        )
+    elif action == "install":
+        _install_summary(clients, results, args.dry_run)
     return status
 
 
@@ -205,30 +265,6 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
     print(prefix + " ".join(labels))
     if not dry_run:
         print("sutra: run `sutra doctor` to verify the installed paths")
-
-
-def _apply(action: str, args) -> int:
-    clients = _selected(args)
-    if not clients:
-        print("sutra: no supported client detected; name one with --client "
-              "(hermes, claude, opencode, codex)", file=sys.stderr)
-        return 1
-    required = bool(args.client)
-    status = 0
-    results: dict[str, int] = {}
-    for client in clients:
-        operation = _install_one if action == "install" else _uninstall_one
-        try:
-            code = operation(client, args, required=required)
-        except Exception as exc:  # one broken adapter must not block the others
-            print(f"sutra: {client} {action} failed: {type(exc).__name__}: {exc}",
-                  file=sys.stderr)
-            code = 1
-        results[client] = code
-        status = max(status, code)
-    if action == "install":
-        _install_summary(clients, results, args.dry_run)
-    return status
 
 
 def _rows() -> list[dict]:
@@ -292,18 +328,22 @@ def _optimization_line() -> str:
             f"max_bytes={cfg.max_bytes}")
 
 
-def _status(as_json: bool = False) -> int:
-    import json
-
-    rows = _rows()
-    configured = any(
+def _row_configured(row: dict) -> bool:
+    """True when a status row shows a client as configured/active."""
+    return (
         row.get("hook") in (True, "installed")
         or row.get("installed") is True
         or row.get("plugin") == "installed"
         or row.get("automatic") is True
         or row.get("mcp") in ("connected", "verified", "configured")
-        for row in rows)
+    )
+
+
+def _status(as_json: bool = False) -> int:
+    rows = _rows()
+    configured = any(_row_configured(row) for row in rows)
     if as_json:
+        import json
         print(json.dumps(rows, indent=2))
         return 0 if configured else 1
     for row in rows:
@@ -342,6 +382,18 @@ def _status(as_json: bool = False) -> int:
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"config={row.get('config')}")
     print(_optimization_line())
+    print_summary(
+        sum(1 for row in rows if _row_configured(row)),
+        sum(1 for row in rows if not _row_configured(row)),
+        0,
+        integrated_clients=[
+            f"{row.get('client', '?')}: {'configured' if _row_configured(row) else 'not configured'}"
+            for row in rows
+        ],
+        next_steps=(["Run `sutra install --all` to configure detected clients"]
+                    if not configured else None),
+        title="SUTRA STATUS REPORT",
+    )
     return 0 if configured else 1
 
 
@@ -350,10 +402,21 @@ def _detect(as_json: bool = False, clients: list[str] | None = None) -> int:
 
     rows = discovery.detect(clients)
     if as_json:
-        import json
-        print(json.dumps({"read_only": True, "clients": rows}, indent=2))
+        emit_json(read_only=True, clients=rows)
     else:
         print(discovery.format_detect(rows))
+        print_summary(
+            len(rows),
+            0,
+            0,
+            integrated_clients=[
+                f"{row.get('client', '?')}: detected" for row in rows
+            ],
+            next_steps=(["Run `sutra install --all` to configure detected clients"]
+                        if rows
+                        else ["No supported clients detected"]),
+            title="SUTRA DETECTION REPORT",
+        )
     return 0
 
 
@@ -400,35 +463,49 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
             reports.append({"client": client, "status": "fail", "ok": False,
                             "automatic": False,
                             "error": f"{type(exc).__name__}: {exc}"})
-    if as_json:
-        import json
-        print(json.dumps(reports, indent=2))
-    else:
-        for report in reports:
-            client = report.get("client")
-            if report.get("status") == "not-installed":
-                print(f"{client}: not installed")
-                continue
-            if report.get("error"):
-                print(f"{client}: error: {report['error']}")
-                continue
-            if client == "claude":
-                formatter = claude_code.format_doctor
-            elif client == "opencode":
-                formatter = opencode.format_doctor
-            elif client == "hermes":
-                formatter = hermes.format_doctor
-            elif client == "openclaw":
-                formatter = openclaw.format_doctor
-            else:
-                formatter = codex.format_doctor
-            print(formatter(report))
-    failed = any(
-        report.get("error")
+    failed_count = sum(
+        1 for report in reports
+        if report.get("error")
         or report.get("status") == "fail"
         or (report.get("ok") is False
             and report.get("status") not in ("not-installed", "limited"))
-        for report in reports)
+    )
+    failed = failed_count > 0
+    if as_json:
+        import json
+        print(json.dumps(reports, indent=2))
+        return 1 if failed else 0
+    for report in reports:
+        client = report.get("client")
+        if report.get("status") == "not-installed":
+            print(f"{client}: not installed")
+            continue
+        if report.get("error"):
+            print(f"{client}: error: {report['error']}")
+            continue
+        if client == "claude":
+            formatter = claude_code.format_doctor
+        elif client == "opencode":
+            formatter = opencode.format_doctor
+        elif client == "hermes":
+            formatter = hermes.format_doctor
+        elif client == "openclaw":
+            formatter = openclaw.format_doctor
+        else:
+            formatter = codex.format_doctor
+        print(formatter(report))
+    print_summary(
+        len(reports) - failed_count,
+        failed_count,
+        0,
+        integrated_clients=[
+            f"{report.get('client', '?')}: {report.get('status', '?')}"
+            for report in reports
+        ],
+        next_steps=(["Run `sutra install --all` to configure missing clients"]
+                    if failed else ["All probed clients are healthy"]),
+        title="SUTRA DOCTOR REPORT",
+    )
     return 1 if failed else 0
 
 
@@ -477,7 +554,7 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(USAGE.format(version=__version__))
         return 0
-    print(f"sutra: unknown command {argv[0]!r}; run `sutra --help`", file=sys.stderr)
+    print_error(f"unknown command {argv[0]!r}; run `sutra --help`")
     return 2
 
 

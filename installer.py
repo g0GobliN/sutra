@@ -13,6 +13,18 @@ import shutil
 import sys
 import time
 
+from .ui import (
+    print_step,
+    print_summary,
+    format_error,
+    print_error,
+    print_success,
+    print_warning,
+    print_info,
+    emit_json,
+    _should_emit_json,
+)
+
 try:
     from . import jsonc
 except ImportError:  # allow `python -c "import openclaw"` run from the package directory
@@ -123,10 +135,10 @@ def uninstall(path: pathlib.Path, *, dry_run: bool = False) -> int:
 def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
     if not path.is_file():
         if installing:
-            print(f"sutra: {path} does not exist; open OpenCode once so it writes its "
-                  f"config, or pass --config", file=sys.stderr)
+            print_step(1, 6, "info", "Detecting clients", tty=_should_emit_json() is False)
+            print_error(f"{path} does not exist; open OpenCode once so it writes its config, or pass --config", tty=_should_emit_json() is False)
             return 1
-        print(f"sutra: {path} does not exist; nothing to uninstall")
+        print_warning(f"{path} does not exist; nothing to uninstall")
         return 0
     with path.open("r", encoding="utf-8", newline="") as handle:
         text = handle.read()
@@ -134,18 +146,48 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
         updated, changed = (jsonc.with_entry(text, _python()) if installing
                            else jsonc.without_entry(text))
     except ValueError as exc:
-        print(f"sutra: {path} could not be edited safely: {exc}", file=sys.stderr)
+        friendly = format_error(
+            "permission-error",
+            details=str(exc),
+            step1="Run `sutra doctor` to diagnose the issue",
+            step2="Check file permissions and ensure the config is not read-only",
+        )
+        print_error(friendly)
         return 1
     if not changed:
         state = "has" if installing else "has no"
-        print(f"sutra: {path} already {state} sutra MCP entry; nothing to do")
+        print_success(f"{path} already {state} sutra MCP entry; nothing to do")
         return 0
     if dry_run:
-        print(f"sutra: dry run, {path} would change (no file was written)")
+        print_warning(f"dry run, {path} would change (no file was written)")
         return 0
     backup = _write(path, updated)
-    print(f"sutra: {'registered' if installing else 'removed'} the sutra MCP entry in {path}")
-    print(f"sutra: backup at {backup}")
+    # Step 5: Writing the change
+    print_step(5, 6, "success", "Registered sutra MCP entry", tty=_should_emit_json() is False)
+
+    # Emit JSON if in non-TTY mode
+    if _should_emit_json():
+        emit_json(
+            step=5,
+            total=6,
+            status="success",
+            message="Registered sutra MCP entry",
+            integrated_clients=[{"client": "opencode", "status": "registered"}],
+        )
+
+    # Final summary
+    print_summary(
+        5,
+        0,
+        0,
+        integrated_clients=[f"opencode MCP entry registered in {path}"],
+        next_steps=[
+            "Run `sutra doctor` to verify the installation",
+            "Restart OpenCode to pick up the new MCP entry",
+        ],
+        tty=_should_emit_json() is False,
+    )
+
     if installing:
-        print("sutra: restart OpenCode and confirm `sutra` appears in its MCP list")
+        print_warning("Restart OpenCode to confirm `sutra` appears in its MCP list")
     return 0
