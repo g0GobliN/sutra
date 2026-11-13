@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import sys
+from pathlib import Path
 
 from . import __version__, installer, openclaw, runner
 
@@ -464,6 +465,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _doctor(as_json=args.json, clients=args.client)
+    if argv[:1] == ["eval"]:
+        return _eval_main(argv[1:])
     if argv[:1] and argv[0] in ("compress", "restore", "config"):
         return runner.run_script(
             "sutra-cli.py", argv,
@@ -480,3 +483,17 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _eval_main(argv: list[str]) -> int:
+    """Delegate to the Phase 1 eval harness (eval/run_harness.py).
+
+    Imported lazily so the harness never becomes a hard dependency of the
+    sutra CLI, and so ``eval/`` stays importable from the project root.
+    """
+    repo_root = Path(__file__).resolve().parent
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from eval.run_harness import main as _harness_main
+
+    return _harness_main(argv)
