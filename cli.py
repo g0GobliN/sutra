@@ -42,7 +42,7 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
-  sutra update [--apply]   (check PyPI; --apply upgrades this environment)
+  sutra update [--apply]   (check the package index; --apply upgrades this environment)
   sutra eval run|compare   (development harness; needs a repository checkout)
   sutra --version
 
@@ -599,7 +599,8 @@ def _update(argv: list[str]) -> int:
 
     parser = argparse.ArgumentParser(
         prog="sutra update",
-        description="Check PyPI for a newer release; --apply upgrades this environment.")
+        description="Check the configured package index for a newer release; "
+                    "--apply upgrades this environment with pip.")
     parser.add_argument("--apply", action="store_true",
                         help="install the newer release into this environment")
     args = parser.parse_args(argv)
@@ -617,32 +618,52 @@ def _update(argv: list[str]) -> int:
     try:
         latest = update_module.latest_version()
     except Exception as exc:
-        print_error(f"could not check PyPI for updates: {type(exc).__name__}: {exc}")
-        return 2
+        if not args.apply:
+            print_error(f"could not check for updates: {type(exc).__name__}: {exc}")
+            return 2
+        print_info(f"could not check for updates ({type(exc).__name__}); asking pip directly")
+        latest = current
 
-    if update_module.is_newer(current, latest):
+    newer = update_module.is_newer(latest, current)
+    ahead = update_module.is_newer(current, latest)
+
+    if args.apply:
+        if newer:
+            print_info(f"sutra {latest} is available (installed: {current})")
+        elif ahead:
+            print_info(f"sutra {current} is newer than the latest published release ({latest})")
+            print_info("asking pip for the newest version this environment can install")
+        else:
+            print_info(f"sutra {current} is current; asking pip for any newer build")
+        try:
+            code = update_module.upgrade()
+        except update_module.UpdateError as exc:
+            print_error(f"{exc}; the installed version is unchanged")
+            return 1
+        if code != 0:
+            print_error(f"pip exited with status {code}; the installed version is unchanged")
+            return 1
+        try:
+            installed = update_module.installed_version()
+        except Exception:
+            installed = latest
+        if installed == current:
+            print_success(f"sutra {installed} is already the latest version pip can install")
+        else:
+            print_success(f"sutra is now {installed}; restart any agent that loads it")
+        return 0
+
+    if ahead:
         print_info(f"sutra {current} is newer than the latest published release ({latest})")
         print_info("this looks like an unreleased or development build")
         return 0
-    if not update_module.is_newer(latest, current):
+    if not newer:
         print_success(f"sutra {current} is the latest release")
         return 0
 
     print_info(f"sutra {latest} is available (installed: {current})")
-    if not args.apply:
-        print_info("run `sutra update --apply`, or "
-                   f"`{sys.executable} -m pip install --upgrade {update_module.PACKAGE}`")
-        return 0
-
-    code = update_module.upgrade()
-    if code != 0:
-        print_error(f"pip exited with status {code}; the installed version is unchanged")
-        return 1
-    try:
-        installed = update_module.installed_version()
-    except Exception:
-        installed = latest
-    print_success(f"sutra is now {installed}; restart any agent that loads it")
+    print_info("run `sutra update --apply`, or "
+               f"`{sys.executable} -m pip install --upgrade {update_module.PACKAGE}`")
     return 0
 
 
