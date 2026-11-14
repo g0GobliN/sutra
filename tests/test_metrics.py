@@ -213,7 +213,8 @@ def test_metric_failures_never_break_the_tool(sutra, store, monkeypatch):
     assert sutra.compress_result("line\n" * 5_000)
 
 
-def test_a_symlinked_stats_file_is_not_appended_through(sutra, tmp_path, requires_symlink):
+@pytest.mark.skipif(os.name != "posix", reason="symlinks")
+def test_a_symlinked_stats_file_is_not_appended_through(sutra, tmp_path):
     """Regression: the stats log was opened without O_NOFOLLOW.
 
     A symlink planted at the stats path made SUTRA append its JSON records to

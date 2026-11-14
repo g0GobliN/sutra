@@ -398,7 +398,14 @@ _ERROR_TEMPLATES = {
     ),
     "unsupported-operation": (
         "⚠️  The requested operation is not supported for {client}.\n"
-        "💡 See `sutra help {client}` for available alternatives."
+        "💡 Run `sutra doctor --client {client}` to see what is supported and configured."
+    ),
+    "write-error": (
+        "⚠️  Could not write the configuration file.\n"
+        "📋 Details: {details}\n"
+        "💡 Suggested next steps:\n"
+        "  • {step1}\n"
+        "  • {step2}"
     ),
 }
 
@@ -464,6 +471,13 @@ def format_error(
     if category == "unsupported-operation":
         c = client or "the client"
         return template.format(client=c)
+
+    if category == "write-error":
+        return template.format(
+            details=details or "the configuration file could not be written",
+            step1=step1 or "Run `sutra doctor` to diagnose",
+            step2=step2 or "Check file permissions and free disk space",
+        )
 
     # Fallback: return details if we have them, otherwise a generic message
     if details:
