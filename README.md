@@ -224,7 +224,7 @@ python3 -m venv ~/.sutra-venv
 # 4. Detect what's installed (read-only)
 ~/.sutra-venv/bin/sutra detect
 
-# 5. Preview changes (dry-run)
+# 5. Preview changes (requires a supported client)
 ~/.sutra-venv/bin/sutra install --dry-run
 
 # 6. Install for all detected clients
@@ -249,7 +249,7 @@ $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe --version
 # 4. Detect what's installed (read-only)
 $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe detect
 
-# 5. Preview changes (dry-run)
+# 5. Preview changes (requires a supported client)
 $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe install --dry-run
 
 # 6. Install for all detected clients
@@ -262,14 +262,22 @@ $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe doctor
 ### One-liner (Linux / macOS)
 
 ```bash
-python3 -m venv ~/.sutra-venv && ~/.sutra-venv/bin/pip install sutra-agent && ~/.sutra-venv/bin/sutra --version && ~/.sutra-venv/bin/sutra detect && ~/.sutra-venv/bin/sutra install --dry-run
+python3 -m venv ~/.sutra-venv && ~/.sutra-venv/bin/pip install sutra-agent && ~/.sutra-venv/bin/sutra --version && ~/.sutra-venv/bin/sutra detect
 ```
+
+The one-liner stops after detection so it succeeds on a machine with no AI
+client installed. Run `sutra install --dry-run` after installing a supported
+client; it exits 1 with an explanation when there is nothing to preview.
 
 ### One-liner (Windows PowerShell)
 
 ```powershell
-python -m venv $env:USERPROFILE\.sutra-venv; $env:USERPROFILE\.sutra-venv\Scripts\pip.exe install sutra-agent; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe --version; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe detect; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe install --dry-run
+python -m venv $env:USERPROFILE\.sutra-venv; $env:USERPROFILE\.sutra-venv\Scripts\pip.exe install sutra-agent; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe --version; $env:USERPROFILE\.sutra-venv\Scripts\sutra.exe detect
 ```
+
+The one-liner stops after detection so it succeeds on a machine with no AI
+client installed. Run `sutra install --dry-run` after installing a supported
+client; it exits 1 with an explanation when there is nothing to preview.
 
 ### From source (contributors / unreleased changes)
 
