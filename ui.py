@@ -68,6 +68,7 @@ _ASCII_FALLBACK = str.maketrans({
     "\u2551": "|", "\u2550": "=", "\u2500": "-", "\u00b7": ".",
     "\u2713": "OK", "\u2717": "X", "\u26a0": "!", "\u2139": "i",
     "\u2192": ">", "\u27a4": ">", "\u2022": "-",
+    "\u2014": "-", "\u2013": "-", "\u0394": "delta",
     "\u2705": "[ok]", "\u274c": "[x]", "\U0001f4cb": "!",
     "\U0001f4a1": ">", "\U0001f50d": "?", "\u23f1": "!",
     "\u2588": "#", "\u2591": ".",
@@ -95,7 +96,16 @@ def _render(text: str, stream) -> str:
     """Return ``text`` as ASCII when ``stream`` cannot encode it."""
     if _stream_encodes(stream):
         return text
-    return text.translate(_ASCII_FALLBACK)
+    rendered = text.translate(_ASCII_FALLBACK)
+    # The table covers the glyphs this CLI prints; a value from a config file
+    # or task description can still carry something else. Printing must never
+    # raise, so replace whatever the destination still cannot encode.
+    encoding = getattr(stream, "encoding", None) or "ascii"
+    try:
+        rendered.encode(encoding)
+    except (UnicodeEncodeError, LookupError):
+        rendered = rendered.encode(encoding, "replace").decode(encoding)
+    return rendered
 
 
 def _emit(text: str = "", /, *, file=None, end: str = "\n", flush: bool = False) -> None:
@@ -307,18 +317,20 @@ def print_summary(
     else:
         lines.append("[" + "-" * 70 + "]")
 
-    # Action required
-    action_msg = "📋  Action required: Review errors above, then run `sutra doctor`"
-    if has_tty:
-        lines.append(f"  ║  {action_msg:<70} ║")
-    else:
-        lines.append(f"  {action_msg}")
+    # Action required: only when a step actually failed. A successful report
+    # must not tell the user to review errors that do not exist.
+    if failed > 0:
+        action_msg = "📋  Action required: Review errors above, then run `sutra doctor`"
+        if has_tty:
+            lines.append(f"  ║  {action_msg:<70} ║")
+        else:
+            lines.append(f"  {action_msg}")
 
-    # Separator
-    if has_tty:
-        lines.append("╠" + "═" * 70 + "╣")
-    else:
-        lines.append("[" + "-" * 70 + "]")
+        # Separator
+        if has_tty:
+            lines.append("╠" + "═" * 70 + "╣")
+        else:
+            lines.append("[" + "-" * 70 + "]")
 
     # Next steps
     if next_steps:
@@ -344,8 +356,13 @@ def print_summary(
         lines.append("[" + "-" * 70 + "]")
 
     # Bottom status
-    if success == total and failed == 0 and skipped == 0:
+    if total == 0:
+        status_line = "→  No steps to run"
+    elif success == total and failed == 0 and skipped == 0:
         status_line = "✅  All steps completed successfully"
+    elif failed == 0 and skipped > 0:
+        status_line = (f"→  Completed: {success} succeeded, "
+                       f"{skipped} skipped")
     elif failed == 0:
         status_line = f"→  All steps completed ({success}/{total} steps)"
     elif skipped == 0:

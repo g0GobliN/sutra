@@ -256,7 +256,7 @@ def format_comparison(comparison: dict[str, Any], tty: bool = True) -> str:
                        if entry.get("diff_pct") is not None else "")
                 lines.append(
                     f"    {mark} {entry['metric']}: {_fmt(entry['baseline'])} → "
-                    f"{_fmt(entry['compared'])}  Δ{_fmt(entry['diff_abs'])}{pct}")
+                    f"{_fmt(entry['compared'])}  Δ {_fmt(entry['diff_abs'])}{pct}")
         lines.append("")
 
     lines.append(colorize("overall", "bold"))

@@ -20,7 +20,7 @@ def empty_clients(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_unfiltered_doctor_reports_all_four_when_none_are_installed(
+def test_unfiltered_doctor_reports_every_supported_client_when_none_are_installed(
         empty_clients, monkeypatch, capsys):
     import sutra_plugin.claude_code as claude_code
     import sutra_plugin.codex as codex
@@ -37,7 +37,7 @@ def test_unfiltered_doctor_reports_all_four_when_none_are_installed(
     assert cli.main(["doctor", "--json"]) == 0
     reports = json.loads(capsys.readouterr().out)
     assert [report["client"] for report in reports] == [
-        "claude", "opencode", "hermes", "codex"]
+        "claude", "opencode", "hermes", "codex", "openclaw"]
     assert all(report["status"] == "not-installed" for report in reports)
     assert all(report["automatic"] is False for report in reports)
 

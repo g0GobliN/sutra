@@ -37,6 +37,37 @@ def test_summary_degrades_to_ascii_on_a_legacy_code_page(monkeypatch):
     rendered.encode("cp932")  # and the result really is printable there
 
 
+def test_successful_summary_does_not_claim_there_are_errors(capsys):
+    ui.print_summary(
+        1, 0, 0,
+        integrated_clients=["cursor: detected"],
+        next_steps=None,
+        tty=False,
+    )
+
+    rendered = capsys.readouterr().out
+    assert "Action required" not in rendered
+    assert "Review errors" not in rendered
+    assert "No further actions required" in rendered
+
+
+def test_failed_summary_keeps_the_action_required_notice(capsys):
+    ui.print_summary(0, 1, 0, tty=False)
+
+    assert "Action required" in capsys.readouterr().out
+
+
+def test_emit_replaces_a_glyph_outside_the_fallback_table(monkeypatch):
+    console = _LegacyConsole()
+    monkeypatch.setattr(ui.sys, "stdout", console)
+
+    ui._emit("SUTRA eval \u2014 condition comparison")
+
+    rendered = console.getvalue()
+    assert "\u2014" not in rendered
+    rendered.encode("cp932")  # must be printable on the console that saw it
+
+
 def test_write_errors_use_the_write_error_template():
     message = ui.format_error(
         "write-error",

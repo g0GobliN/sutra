@@ -162,7 +162,10 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
         return 0
     _write(path, updated)
     # Step 5: Writing the change
-    print_step(5, 6, "success", "Registered sutra MCP entry", tty=_should_emit_json() is False)
+    changed_verb = "Registered" if installing else "Removed"
+    entry_state = "registered" if installing else "removed"
+    print_step(5, 6, "success", f"{changed_verb} sutra MCP entry",
+               tty=_should_emit_json() is False)
 
     # Emit JSON if in non-TTY mode
     if _should_emit_json():
@@ -170,8 +173,8 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
             step=5,
             total=6,
             status="success",
-            message="Registered sutra MCP entry",
-            integrated_clients=[{"client": "opencode", "status": "registered"}],
+            message=f"{changed_verb} sutra MCP entry",
+            integrated_clients=[{"client": "opencode", "status": entry_state}],
         )
 
     # Final summary
@@ -179,12 +182,16 @@ def _apply(path: pathlib.Path, *, installing: bool, dry_run: bool) -> int:
         5,
         0,
         0,
-        integrated_clients=[f"opencode MCP entry registered in {path}"],
-        next_steps=[
+        integrated_clients=[f"opencode MCP entry {entry_state} in {path}"],
+        next_steps=([
             "Run `sutra doctor` to verify the installation",
             "Restart OpenCode to pick up the new MCP entry",
-        ],
+        ] if installing else [
+            "Restart OpenCode so it drops the sutra MCP entry",
+        ]),
         tty=_should_emit_json() is False,
+        title=("SUTRA INSTALLATION REPORT" if installing
+               else "SUTRA UNINSTALLATION REPORT"),
     )
 
     if installing:

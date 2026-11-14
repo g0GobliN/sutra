@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import io
 import os
 import sys
 from pathlib import Path
@@ -17,6 +18,28 @@ if str(ROOT / "eval") not in sys.path:
 
 import compare  # noqa: E402
 import run_harness  # noqa: E402
+
+
+class _LegacyConsole(io.StringIO):
+    """A console like Windows' cp932: it cannot encode the report's em dash."""
+
+    encoding = "cp932"
+
+
+def test_run_report_never_raises_on_a_legacy_console(monkeypatch):
+    console = _LegacyConsole()
+    monkeypatch.setattr(sys, "stdout", console)
+
+    run_harness.print_run_report({
+        "run_id": "run-test", "sutra_version": "0.0.0", "reps": 1,
+        "conditions": {"A": {"label": "control"}},
+        "tasks": [], "passed": True, "passed_reps": 0, "total_reps": 0,
+    })
+
+    rendered = console.getvalue()
+    assert "SUTRA eval" in rendered
+    assert "\u2014" not in rendered
+    rendered.encode("cp932")
 
 SUTRA_ENV = (
     "SUTRA_ENABLED", "SUTRA_MAX_BYTES", "SUTRA_HEAD_BYTES", "SUTRA_TAIL_BYTES",

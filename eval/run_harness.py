@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import Any
 
 import sutra
+from sutra.ui import _emit
 
 
 def _package_module(name: str):
@@ -737,17 +738,17 @@ def run_all(
 # --- humanized output -------------------------------------------------------
 
 def print_run_report(summary: dict[str, Any]) -> None:
-    print(_colorize("SUTRA eval — Phase 1 harness (three conditions A/B/C)", "heading"))
-    print(_colorize("-" * 70, "muted"))
-    print(f"run: {summary['run_id']}   sutra: {summary['sutra_version']}   "
+    _emit(_colorize("SUTRA eval — Phase 1 harness (three conditions A/B/C)", "heading"))
+    _emit(_colorize("-" * 70, "muted"))
+    _emit(f"run: {summary['run_id']}   sutra: {summary['sutra_version']}   "
           f"reps per task/condition: {summary['reps']}")
     conds = summary["conditions"]
-    print("conditions: " + "   |   ".join(
+    _emit("conditions: " + "   |   ".join(
         f"{c} {info['label']}" for c, info in conds.items()))
-    print("")
+    _emit("")
     header = f"{'task':<10}" + "".join(f"  {c:^12}" for c in conds) + "      evidence"
-    print(header)
-    print("-" * len(header))
+    _emit(header)
+    _emit("-" * len(header))
     for task in summary["tasks"]:
         cells = []
         for c in conds:
@@ -755,19 +756,19 @@ def print_run_report(summary: dict[str, Any]) -> None:
             passed = bool(cr.get("passed"))
             cells.append(f"{OK if passed else FAIL} {'pass' if passed else 'FAIL':<6}")
         evidence = f"{task['evidence_level']} → {task['evidence_achieved']}"
-        print(f"{task['task_id']:<10}" + "".join(cells) + f"      {evidence}")
-    print("")
-    print(f"result: {'all tasks passed' if summary['passed'] else 'failures detected'}  "
+        _emit(f"{task['task_id']:<10}" + "".join(cells) + f"      {evidence}")
+    _emit("")
+    _emit(f"result: {'all tasks passed' if summary['passed'] else 'failures detected'}  "
           f"{summary['passed_reps']}/{summary['total_reps']} reps passed  "
           f"({len(summary['tasks'])} tasks, {len(conds)} conditions)")
     for task in summary["tasks"]:
         var = task.get("variability", {})
         for metric, info in var.items():
             if isinstance(info, dict) and info.get("high_variability"):
-                print(f"{WARN} {task['task_id']}: {metric} shows high variability "
+                _emit(f"{WARN} {task['task_id']}: {metric} shows high variability "
                       f"(per-rep cv above 0.25 in at least one condition); "
                       f"consider --reps 5")
-    print("")
+    _emit("")
 
 
 # --- CLI --------------------------------------------------------------------
@@ -804,21 +805,21 @@ def _cmd_run(args: argparse.Namespace) -> int:
     tasks = [t for t in load_tasks() if t.get("runnable")
              and (not args.task or t["task_id"] == args.task)]
     if args.task and not tasks:
-        print(_colorize(f"error: unknown or unrunnable task id: {args.task}", "error")
+        _emit(_colorize(f"error: unknown or unrunnable task id: {args.task}", "error")
               or f"error: unknown or unrunnable task id: {args.task}")
         return 2
     summary, comparison, run_dir = run_all(
         task_ids=[t["task_id"] for t in tasks], conditions=conds, reps=reps,
         out_dir=args.out)
     if args.json:
-        print(json.dumps({"summary": summary, "comparison": comparison}, indent=2))
+        _emit(json.dumps({"summary": summary, "comparison": comparison}, indent=2))
     else:
         print_run_report(summary)
         try:
             from .compare import format_comparison  # type: ignore
         except ImportError:  # run as a script: eval/run_harness.py
             from compare import format_comparison  # type: ignore
-        print(format_comparison(comparison, tty=sys.stdout.isatty()))
+        _emit(format_comparison(comparison, tty=sys.stdout.isatty()))
     return 0 if summary["passed"] else 1
 
 
@@ -835,7 +836,7 @@ def _latest_run_dir(out_dir: str | os.PathLike[str]) -> Path | None:
 def _cmd_compare(args: argparse.Namespace) -> int:
     run_dir = Path(args.run) if args.run else _latest_run_dir(args.out)
     if not run_dir or not (run_dir / "summary.json").exists():
-        print(f"error: no run summary found in {args.out}")
+        _emit(f"error: no run summary found in {args.out}")
         return 2
     summary = json.loads((run_dir / "summary.json").read_text())
     try:
@@ -846,7 +847,7 @@ def _cmd_compare(args: argparse.Namespace) -> int:
     cmp_path = run_dir / "comparison.json"
     if not cmp_path.exists():
         cmp_path.write_text(json.dumps(comparison, indent=2) + "\n")
-    print(format_comparison(comparison, tty=sys.stdout.isatty()))
+    _emit(format_comparison(comparison, tty=sys.stdout.isatty()))
     return 0
 
 

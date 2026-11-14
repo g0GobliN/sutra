@@ -170,3 +170,90 @@ def test_status_json_returns_one_when_nothing_is_configured(
     data = json.loads(capsys.readouterr().out)
     assert isinstance(data, list)
     assert data[0]["mcp"] == "not configured"
+
+
+def test_install_explains_a_detected_client_without_an_adapter(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    assert cli.main(["install", "--client", "cursor"]) == 1
+    output = capsys.readouterr()
+    assert "no SUTRA installer" in output.err
+    assert "MCP-only" in output.err
+    assert "docs/automatic-install.md" in output.err
+
+
+def test_uninstall_of_a_manual_client_is_an_honest_noop(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    assert cli.main(["uninstall", "--client", "windsurf"]) == 0
+    assert "nothing to uninstall" in capsys.readouterr().out
+
+
+def test_doctor_explains_a_manual_client_without_failing(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    assert cli.main(["doctor", "--client", "cursor", "--json"]) == 0
+    data = json.loads(capsys.readouterr().out)
+    assert data[0]["status"] == "manual"
+    assert data[0]["tier"] == "mcp-only"
+
+
+def test_install_json_counts_skipped_clients_separately(monkeypatch, capsys):
+    def operation(client, args, *, required):
+        return 0
+
+    monkeypatch.setattr(cli, "_install_one", operation)
+    monkeypatch.setattr(cli, "_rows", lambda: [])
+    args = types.SimpleNamespace(client=["hermes", "claude"], config=None,
+                                 dry_run=False, all=False, json=True)
+    assert cli._apply("install", args) == 0
+    data = json.loads(capsys.readouterr().out.strip().splitlines()[-1])
+    assert data["status"] == "partial"
+    assert data["success"] == 0
+    assert data["skipped"] == 2
+    assert data["integrated_clients"] == ["hermes: skipped", "claude: skipped"]
+
+
+def test_detect_does_not_offer_install_for_a_manual_only_client(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    package = sys.modules[PACKAGE]
+    monkeypatch.setattr(package, "discovery", types.SimpleNamespace(
+        detect=lambda clients=None: [{"client": "cursor", "installed": True}],
+        format_detect=lambda rows: "cursor detected"), raising=False)
+    assert cli.main(["detect"]) == 0
+    output = capsys.readouterr().out
+    assert "MCP-only" in output
+    assert "install --all" not in output
+
+
+def test_detect_counts_only_installed_clients_as_detected(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    package = sys.modules[PACKAGE]
+    monkeypatch.setattr(package, "discovery", types.SimpleNamespace(
+        detect=lambda clients=None: [
+            {"client": "cursor", "installed": True},
+            {"client": "codex", "installed": False},
+        ],
+        format_detect=lambda rows: "detection table"), raising=False)
+    assert cli.main(["detect"]) == 0
+    output = capsys.readouterr().out
+    assert "Steps skipped: 1/2" in output
+    assert "cursor: detected" in output
+    assert "codex: not detected" in output
+
+
+def test_status_does_not_call_an_unconfigured_client_a_failure(monkeypatch, capsys):
+    _install_fakes(monkeypatch)
+    assert cli.main(["status"]) == 1
+    output = capsys.readouterr().out
+    assert "opencode: not configured" in output
+    assert "Steps failed" not in output
+    assert "Action required" not in output
+
+
+def test_doctor_with_no_integrations_does_not_claim_everything_is_healthy(
+    monkeypatch, capsys,
+):
+    _install_fakes(monkeypatch)
+    assert cli.main(["doctor"]) == 0
+    output = capsys.readouterr().out
+    assert "No automatic integration is installed" in output
+    assert "All probed clients are healthy" not in output
+    assert "Action required" not in output
