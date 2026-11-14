@@ -146,7 +146,7 @@ jobs:
           ./venv/bin/sutra --version
           ./venv/bin/python -c "import sutra; print(sutra.__version__, sutra.__file__)"
           ./venv/bin/sutra config > /dev/null
-      - name: Exercise the installed CLI across all four adapters
+      - name: Exercise the installed CLI across the supported adapters
         env:
           CLI_HOME: ${{ runner.temp }}/cli-home
           CLI_OUT: ${{ runner.temp }}/cli-output
@@ -170,7 +170,7 @@ jobs:
           ./venv/bin/python - "$CLI_OUT/doctor.json" <<'PY'
           import json, sys
           rows = json.load(open(sys.argv[1], encoding="utf-8"))
-          expected = {"hermes", "claude", "opencode", "codex"}
+          expected = {"hermes", "claude", "opencode", "codex", "openclaw"}
           assert {row["client"] for row in rows} == expected, rows
           assert all(row["status"] == "not-installed" for row in rows), rows
           assert all(row["automatic"] is False for row in rows), rows

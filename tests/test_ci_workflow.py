@@ -20,7 +20,7 @@ def test_ci_uses_a_read_only_token_by_default():
 
 def test_the_package_job_exercises_the_installed_cli():
     text = WORKFLOW.read_text(encoding="utf-8")
-    assert "Exercise the installed CLI across all four adapters" in text
+    assert "Exercise the installed CLI across the supported adapters" in text
     for command in (
         "sutra detect",
         "sutra doctor --json",
