@@ -1,0 +1,88 @@
+<!doctype html><meta charset="utf-8"><title>SUTRA benchmarks</title><h1>SUTRA benchmarks</h1><p><a href="results.json">results.json</a></p><pre># SUTRA v0.6.1 Performance Benchmarks
+
+Generated: 2026-11-14T06:17:21+00:00
+Total fixtures: 46
+Real tool outputs: 46
+Synthetic benchmarks: 0
+
+## Overall Compression Results
+
+| Metric | Before | After | Saved | Saved % |
+|--------|--------|-------|-------|---------|
+| **Total** | **503.5K** | **503.5K** | **0** | **0.0%** |
+
+## Per-Tool Category Results (with Token Counts)
+
+| Tool | Category | Cases | Original | Compressed | Saved | Saved % | Tokens Before | Tokens After | Tokens Saved | Tokens Saved % |
+|------|----------|-------|----------|------------|-------|---------|---------------|--------------|---------------|-----------------|
+| gcc | general/compiler_errors | 1 | 265 | 265 | 0 | 0.0% | 67 | 67 | 0 | 0.0% |
+| git | general/git_diff | 6 | 748 | 748 | 0 | 0.0% | 260 | 260 | 0 | 0.0% |
+| python3 (generated) | general/large_json | 1 | 480.2K | 480.2K | 0 | 0.0% | 127,771 | 127,771 | 0 | 0.0% |
+| node | general/long_stack_trace | 4 | 1.9K | 1.9K | 0 | 0.0% | 587 | 587 | 0 | 0.0% |
+| python3 | general/long_stack_trace | 5 | 1.5K | 1.5K | 0 | 0.0% | 424 | 424 | 0 | 0.0% |
+| pytest | general/repeated_test_output | 6 | 10.2K | 10.2K | 0 | 0.0% | 2,349 | 2,349 | 0 | 0.0% |
+| go (not installed) | go/compiler | 4 | 1.0K | 1.0K | 0 | 0.0% | 320 | 320 | 0 | 0.0% |
+| eslint | javascript/eslint | 3 | 627 | 627 | 0 | 0.0% | 192 | 192 | 0 | 0.0% |
+| jest | javascript/jest | 2 | 887 | 887 | 0 | 0.0% | 306 | 306 | 0 | 0.0% |
+| tsc | javascript/tsc | 3 | 591 | 591 | 0 | 0.0% | 184 | 184 | 0 | 0.0% |
+| vitest | javascript/vitest | 2 | 1.0K | 1.0K | 0 | 0.0% | 444 | 444 | 0 | 0.0% |
+| mypy | python/mypy | 2 | 385 | 385 | 0 | 0.0% | 108 | 108 | 0 | 0.0% |
+| pip | python/pip | 1 | 1.0K | 1.0K | 0 | 0.0% | 237 | 237 | 0 | 0.0% |
+| cargo | rust/cargo_check | 6 | 3.1K | 3.1K | 0 | 0.0% | 955 | 955 | 0 | 0.0% |
+
+## Individual Tool Results
+
+| Case | Tool | Original | Compressed | Saved | Saved % | Rule |
+|------|------|----------|------------|-------|---------|------|
+| general/compiler_errors/gcc_type_error.txt | gcc | 265 | 265 | 0 | 0.0% | none |
+| general/git_diff/git_diff_staged.txt | git | 116 | 116 | 0 | 0.0% | none |
+| general/git_diff/git_diff_unstaged.txt | git | 118 | 118 | 0 | 0.0% | none |
+| general/git_status/git_log.txt | git | 30 | 30 | 0 | 0.0% | none |
+| general/git_status/git_status_clean.txt | git | 53 | 53 | 0 | 0.0% | none |
+| general/git_status/git_status_mixed.txt | git | 36 | 36 | 0 | 0.0% | none |
+| general/git_status/git_status_verbose.txt | git | 395 | 395 | 0 | 0.0% | none |
+| general/large_json/large_json_api_response.txt | python3 (generated) | 480.2K | 480.2K | 0 | 0.0% | json-kept |
+| general/long_stack_trace/node_async_stack.txt | node | 390 | 390 | 0 | 0.0% | none |
+| general/long_stack_trace/python_recursion_error.txt | python3 | 405 | 405 | 0 | 0.0% | none |
+| general/repeated_test_output/repeated_pytest_output.txt | pytest | 892 | 892 | 0 | 0.0% | none |
+| go/compiler/go_compiler_syntax_error.txt | go (not installed) | 294 | 294 | 0 | 0.0% | none |
+| go/compiler/go_compiler_type_error.txt | go (not installed) | 227 | 227 | 0 | 0.0% | none |
+| go/test/go_test_failing.txt | go (not installed) | 380 | 380 | 0 | 0.0% | none |
+| go/test/go_test_passing.txt | go (not installed) | 136 | 136 | 0 | 0.0% | none |
+| javascript/eslint/eslint_clean.txt | eslint | 0 | 0 | 0 | 0.0% | none |
+| javascript/eslint/eslint_errors.txt | eslint | 487 | 487 | 0 | 0.0% | none |
+| javascript/eslint/eslint_unused_variable.txt | eslint | 140 | 140 | 0 | 0.0% | none |
+| javascript/jest/jest_clean.txt | jest | 216 | 216 | 0 | 0.0% | none |
+| javascript/jest/jest_failing.txt | jest | 671 | 671 | 0 | 0.0% | none |
+| javascript/node/node_reference_error.txt | node | 582 | 582 | 0 | 0.0% | none |
+| javascript/node/node_uncaught_exception.txt | node | 632 | 632 | 0 | 0.0% | none |
+| javascript/node/node_unhandled_rejection.txt | node | 315 | 315 | 0 | 0.0% | none |
+| javascript/tsc/tsc_clean.txt | tsc | 0 | 0 | 0 | 0.0% | none |
+| javascript/tsc/tsc_strict_null.txt | tsc | 60 | 60 | 0 | 0.0% | none |
+| javascript/tsc/tsc_type_errors.txt | tsc | 531 | 531 | 0 | 0.0% | none |
+| javascript/vitest/vitest_clean.txt | vitest | 194 | 194 | 0 | 0.0% | none |
+| javascript/vitest/vitest_failing.txt | vitest | 854 | 854 | 0 | 0.0% | none |
+| python/mypy/mypy_clean.txt | mypy | 42 | 42 | 0 | 0.0% | none |
+| python/mypy/mypy_type_errors.txt | mypy | 343 | 343 | 0 | 0.0% | none |
+| python/pip/pip_install_fails.txt | pip | 1.0K | 1.0K | 0 | 0.0% | none |
+| python/pytest/pytest_collection_error.txt | pytest | 2.7K | 2.7K | 0 | 0.0% | none |
+| python/pytest/pytest_failing.txt | pytest | 2.4K | 2.4K | 0 | 0.0% | none |
+| python/pytest/pytest_passing.txt | pytest | 1.4K | 1.4K | 0 | 0.0% | none |
+| python/pytest/pytest_passing_warnings.txt | pytest | 1.5K | 1.5K | 0 | 0.0% | none |
+| python/pytest/pytest_skipped.txt | pytest | 1.3K | 1.3K | 0 | 0.0% | none |
+| python/traceback/python_importerror.txt | python3 | 185 | 185 | 0 | 0.0% | none |
+| python/traceback/python_nameerror.txt | python3 | 254 | 254 | 0 | 0.0% | none |
+| python/traceback/traceback_chained.txt | python3 | 508 | 508 | 0 | 0.0% | none |
+| python/traceback/traceback_valueerror.txt | python3 | 164 | 164 | 0 | 0.0% | none |
+| rust/cargo_check/cargo_check_clean.txt | cargo | 118 | 118 | 0 | 0.0% | none |
+| rust/cargo_check/cargo_check_deadcode.txt | cargo | 718 | 718 | 0 | 0.0% | none |
+| rust/cargo_check/cargo_check_type_error.txt | cargo | 408 | 408 | 0 | 0.0% | none |
+| rust/cargo_check/cargo_check_unused_import.txt | cargo | 481 | 481 | 0 | 0.0% | none |
+| rust/cargo_test/cargo_test_failing.txt | cargo | 705 | 705 | 0 | 0.0% | none |
+| rust/cargo_test/cargo_test_panic.txt | cargo | 639 | 639 | 0 | 0.0% | none |
+
+## Latency Comparison
+
+| Metric | SUTRA (adaptive) | SUTRA (no parser) | GZIP | ZSTD |
+|--------|------------------|-------------------|------|------|
+| **Median** | **0.0** | **0.008** | N/A | N/A |</pre>
