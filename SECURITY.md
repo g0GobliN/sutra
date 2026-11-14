@@ -12,7 +12,7 @@ stored output, escape the store directory, or make a protected payload
 (diff, patch, traceback) lose content.
 
 Supported versions: the latest published release. At the time of writing that is
-`0.5.0`, available on PyPI as `sutra-agent`. Older lines are not patched.
+`0.6.2`, available on PyPI as `sutra-agent`. Older lines are not patched.
 
 ## What is stored, and where
 
@@ -22,9 +22,12 @@ Supported versions: the latest published release. At the time of writing that is
 | Entry metadata | same directory, `.json` | id, timestamp, size, SHA-256, tool name, session id | with the entry |
 | Savings log | `$HERMES_HOME/cache/sutra-stats.jsonl` | rule, byte counts, duration, id, stored flag; rewritten results only | rotated at 5 MiB, one old file kept |
 
-Nothing is sent anywhere. There is no network code in the plugin, no telemetry,
-no model call, and no external service. The stats log never contains tool
-output; the metadata file never contains tool output.
+By default, nothing is sent anywhere: there is no network code in the
+compression path, no telemetry, no model call, and no external service. Optional
+OpenTelemetry export is off unless you set `SUTRA_TELEMETRY=1`; when enabled it
+sends metrics (rule/status labels, byte counts, ratios and latency) to the
+configured OTLP endpoint, never tool output or stored originals. The stats log
+never contains tool output; the metadata file never contains tool output.
 
 **The agent policy is static SUTRA text.** It is authored in `policy.py`, is
 never built from tool output or user input, and is never written to disk. It is
