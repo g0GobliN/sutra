@@ -349,6 +349,24 @@ def _line_base(raw: bytes, offset: int) -> int:
     return count if prefix[-1] in _LINE_BREAKS else count - 1
 
 
+def _parser_summary_marker(omitted: int, ref: Ref, *, total: int) -> str:
+    """Marker for a structure-aware parser summary.
+
+    A parser keeps the operationally important lines and drops the rest, so it
+    has no byte range to quote. The whole original is still retained under
+    ``ref.id``; ``mode="full"`` is the useful first request, and recovery asks
+    for ranges when the original is above the response cap.
+    """
+    kept = f"original {total:,} B retained"
+    if ref.ttl_hours:
+        kept += f" {ref.ttl_hours}h"
+    scope = f' · field="{ref.field}"' if ref.field else ""
+    call_scope = f', field="{ref.field}"' if ref.field else ""
+    return (f"[sutra: partial · {omitted:,} bytes summarised (parser){scope}"
+            f" · id={ref.id} · {kept}"
+            f' · retrieve: sutra_restore(id="{ref.id}"{call_scope}, mode="full")]')
+
+
 def _dedupe_marker(count: int, ref: Ref | None, line_no: int | None = None) -> str:
     """One marker for a run of removed identical lines.
 
@@ -705,6 +723,13 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
                              "keeping original", parser.name)
             else:
                 ob = len(out.encode("utf-8", "replace"))
+                if ref is not None and not _parses_as_json(text):
+                    marker = _parser_summary_marker(
+                        max(0, original_bytes - ob), ref, total=original_bytes)
+                    candidate = out.rstrip("\r\n") + "\n" + marker + "\n"
+                    candidate_bytes = len(candidate.encode("utf-8"))
+                    if candidate_bytes < original_bytes:
+                        out, ob = candidate, candidate_bytes
                 stats.update(compressed_bytes=ob, changed=True,
                              rule=f"parser:{parser.name}",
                              omitted_bytes=max(0, original_bytes - ob),

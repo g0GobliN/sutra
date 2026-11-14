@@ -75,6 +75,14 @@ def test_update_is_quiet_when_current(monkeypatch, capsys):
     assert "latest release" in capsys.readouterr().out
 
 
+def test_update_reports_an_unreleased_build(monkeypatch, capsys):
+    _stub(monkeypatch, current="0.6.1", latest="0.6.0")
+    assert cli._update([]) == 0
+    out = capsys.readouterr().out
+    assert "newer than the latest published release" in out
+    assert "0.6.0" in out
+
+
 def test_update_handles_an_unreachable_pypi(monkeypatch, capsys):
     _stub(monkeypatch)
 

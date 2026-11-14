@@ -620,6 +620,10 @@ def _update(argv: list[str]) -> int:
         print_error(f"could not check PyPI for updates: {type(exc).__name__}: {exc}")
         return 2
 
+    if update_module.is_newer(current, latest):
+        print_info(f"sutra {current} is newer than the latest published release ({latest})")
+        print_info("this looks like an unreleased or development build")
+        return 0
     if not update_module.is_newer(latest, current):
         print_success(f"sutra {current} is the latest release")
         return 0
