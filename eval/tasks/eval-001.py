@@ -4,12 +4,12 @@ from typing import Any
 
 # Task ID: eval-001
 # Format version: 0.6.2-task-v1
-# Initial repo snapshot: git:tooltrim@a1b2c3d4e5f6 (commit before task env)
+# Initial repo snapshot: git:sutra@a1b2c3d4e5f6 (commit before task env)
 task_id = "eval-001"
 task_type = "bug_fix"
 
 # --- Initial repo snapshot reference ---
-initial_snapshot = "git:tooltrim@a1b2c3d4e5f6"
+initial_snapshot = "git:sutra@a1b2c3d4e5f6"
 
 # --- Task description ---
 description = (

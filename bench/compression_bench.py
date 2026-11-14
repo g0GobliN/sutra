@@ -58,178 +58,72 @@ try:
     import tiktoken
     HAS_TIKTOKEN = True
     ENCODING = tiktoken.get_encoding("o200k_base")
-    print("✓ tiktoken available - token counting enabled")
+    print("[ok] tiktoken available - token counting enabled")
 except ImportError:
     HAS_TIKTOKEN = False
     ENCODING = None
-    print("⚠ tiktoken not available - token counting will be skipped")
+    print("[warn] tiktoken not available - token counting will be skipped")
 
 ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 
+FIXTURES_DIR = ROOT / "benchmarks" / "fixtures"
+
+
 def load_corpus() -> dict:
-    """Load the production corpus of real tool outputs."""
-    corpus_path = ROOT / "bench" / "corpus_results.json"
-    if not corpus_path.exists():
-        raise FileNotFoundError(f"Corpus not found at {corpus_path}")
+    """Load the committed corpus of captured tool outputs.
 
-    with open(corpus_path, 'r', encoding='utf-8') as f:
-        return json.load(f)
-
-def build_synthetic_payloads_from_corpus(corpus: dict) -> list[dict]:
-    """Create synthetic payloads that match the real tool output descriptions from corpus.
-    
-    The corpus_results.json contains measurement data (original_bytes, compressed_bytes, etc.)
-    but not the actual text content. This function generates representative synthetic
-    content that matches the tool types and categories found in the real corpus.
+    Each ``benchmarks/fixtures/**/*.txt`` file is a real tool result; an
+    optional ``<name>.txt.sidecar.json`` beside it records its provenance.
     """
-    payloads = []
-    
-    for fixture in corpus['fixtures']:
-        tool = fixture['source_tool']
-        category = fixture['category']
-        description = fixture['description']
-        evidence = fixture['critical_evidence']
-        
-        # Generate synthetic content based on tool type and description
-        synthetic_text = generate_synthetic_tool_output(tool, description, evidence)
-        
-        payload = {
-            'fixture_id': fixture['fixture'],
-            'tool': tool,
-            'category': category,
-            'command': fixture['source_command'],
-           'original_bytes': fixture['measurements']['original_bytes'],
-            'text': synthetic_text,
-            'note': f"Synthetic representation of {tool} output: {description}",
-            'clue': extract_clue_from_evidence(evidence),
-            'evidence': evidence,
+    if not FIXTURES_DIR.is_dir():
+        raise FileNotFoundError(f"No fixture directory at {FIXTURES_DIR}")
+
+    fixtures = []
+    for path in sorted(FIXTURES_DIR.rglob("*.txt")):
+        sidecar = path.with_name(path.name + ".sidecar.json")
+        meta = {}
+        if sidecar.exists():
+            meta = json.loads(sidecar.read_text(encoding="utf-8"))
+        fixtures.append({
+            "fixture": path.relative_to(FIXTURES_DIR).as_posix(),
+            "text": path.read_text(encoding="utf-8", errors="replace"),
+            "source_tool": meta.get("source_tool", "unknown"),
+            "category": meta.get("category", path.parent.name),
+            "source_command": meta.get("source_command", ""),
+            "description": meta.get("description", ""),
+            "critical_evidence": meta.get("critical_evidence", []),
+        })
+
+    if not fixtures:
+        raise FileNotFoundError(f"No *.txt fixtures under {FIXTURES_DIR}")
+
+    return {
+        "fixtures": fixtures,
+        "summary": {
+            "fixtures": len(fixtures),
+            "real": len(fixtures),
+            "synthetic": 0,
+            "categories": sorted({fixture["category"] for fixture in fixtures}),
+        },
+    }
+
+
+def build_payloads_from_corpus(corpus: dict) -> list[dict]:
+    """Turn the corpus into benchmark payloads carrying the real bytes."""
+    return [
+        {
+            "fixture_id": fixture["fixture"],
+            "tool": fixture["source_tool"],
+            "category": fixture["category"],
+            "command": fixture["source_command"],
+            "text": fixture["text"],
+            "note": fixture["description"],
+            "clue": next(iter(fixture["critical_evidence"]), ""),
+            "evidence": fixture["critical_evidence"],
         }
-        payloads.append(payload)
-    
-    return payloads
+        for fixture in corpus["fixtures"]
+    ]
 
-def generate_synthetic_tool_output(tool: str, description: str, evidence: list) -> str:
-    """Generate synthetic tool output text that matches the tool type and description."""
-    
-    # Basic content generation based on tool type
-    if 'docker' in tool.lower():
-        if 'COPY' in description:
-            return generate_docker_copy_output(evidence)
-        elif 'RUN' in description:
-            return generate_docker_run_output(evidence)
-        else:
-            return generate_docker_generic_output()
-            
-    elif 'git' in tool.lower():
-        if 'status' in description:
-            return generate_git_status_output(evidence)
-        elif 'diff' in description:
-            return generate_git_diff_output(evidence)
-        elif 'patch' in description:
-            return generate_git_patch_output(evidence)
-        else:
-            return generate_git_generic_output()
-            
-    elif 'npm' in tool.lower() or 'pnpm' in tool.lower() or 'yarn' in tool.lower():
-        return generate_package_manager_output(evidence)
-        
-    elif 'pytest' in tool.lower():
-        return generate_pytest_output(evidence)
-        
-    elif 'cargo' in tool.lower() or 'rust' in tool.lower():
-        return generate_rust_output(evidence)
-        
-    elif 'python' in tool.lower():
-        return generate_python_output(evidence)
-        
-    elif 'node' in tool.lower() or 'javascript' in tool.lower():
-        return generate_javascript_output(evidence)
-        
-    elif 'tsc' in tool.lower() or 'eslint' in tool.lower():
-        return generate_js_tool_output(evidence)
-        
-    elif 'gcc' in tool.lower() or 'mypy' in tool.lower() or 'pip' in tool.lower():
-        return generate_compiler_error_output(evidence)
-        
-    elif 'go' in tool.lower():
-        return generate_go_output(evidence)
-        
-    else:
-        # Fallback for unknown tools
-        return f"{tool.upper()} output: {description}\nEvidence: {', '.join(evidence)}"
-
-def extract_clue_from_evidence(evidence: list) -> str:
-    """Extract a search clue from the critical evidence."""
-    if evidence:
-        # Use the first critical evidence as the search clue
-        return evidence[0]
-    return ""
-
-def generate_docker_copy_output(evidence: list) -> str:
-    """Generate Docker COPY error output."""
-    return f"COPY {evidence[0] if evidence else 'missing_file.txt'}"
-
-def generate_docker_run_output(evidence: list) -> str:
-    """Generate Docker RUN error output."""
-    return "ERROR: failed to solve for container"
-
-def generate_docker_generic_output() -> str:
-    """Generate generic Docker output."""
-    return "Docker build step completed with warnings"
-
-def generate_git_status_output(evidence: list) -> str:
-    """Generate git status output."""
-    return "On branch main\nYour branch is up to date with 'origin/main'.\nnothing to commit, working tree clean"
-
-def generate_git_diff_output(evidence: list) -> str:
-    """Generate git diff output."""
-    return "diff --git a/file1.py b/file1.py\nindex abc1234..def5678 100644\n--- a/file1.py\n+++ b/file1.py\n@@ -1 +1 @@\n-old content\n+new content"
-
-def generate_git_patch_output(evidence: list) -> str:
-    """Generate git patch output."""
-    return "diff --git a/file2.py b/file2.py\nnew file mode 100644\nindex 0000000..1234567\n--- /dev/null\n+++ b/file2.py\n@@ -0,0 +1 @@\n+added content"
-
-def generate_git_generic_output() -> str:
-    """Generate generic git output."""
-    return "git: 'the following changes are empty:'"
-
-def generate_package_manager_output(evidence: list) -> str:
-    """Generate package manager output."""
-    if 'NetworkError' in evidence or 'ECONNREFUSED' in evidence:
-        return "NetworkError: getaddrinfo ECONNREFUSED registry.npmjs.org"
-    return "warning: registry 'https://registry.npmjs.org/' no longer supports uncompressed responses"
-
-def generate_pytest_output(evidence: list) -> str:
-    """Generate pytest output."""
-    if 'FAIL' in str(evidence):
-        return "tests/test_example.py::test_fail\n       FAILED (expected)\n\ntest_file.py::test_pass\n       PASSED"
-    return "================ 10 passed, 2 skipped, 1 xfailed in 0.123s =========="
-
-def generate_rust_output(evidence: list) -> str:
-    """Generate Rust compiler output."""
-    return "error[E0277]: cannot divide by zero\n  --> src/main.rs:1:5\n   |\n1  | let x = 5 / 0;\n   |       ^^^^ cannot divide by zero\n   |\n   = note: expected `Div<i32, Output>`; found `Div<i32, Zero>`"
-
-def generate_python_output(evidence: list) -> str:
-    """Generate Python output."""
-    return "Traceback (most recent call last):\n  File \"test.py\", line 1, in <module>\n    x = 1 / 0\nZeroDivisionError: division by zero"
-
-def generate_javascript_output(evidence: list) -> str:
-    """Generate JavaScript output."""
-    return "ReferenceError: x is not defined\n    at line 1, column 5\n  scripts/test.js:1:5"
-
-def generate_js_tool_output(evidence: list) -> str:
-    """Generate JavaScript tool output (TypeScript/ESLint)."""
-    return "error: Unable to parse file due to syntax error\n   src/component.tsx:1:1\n    x { is not defined\n      ~~~~~~~~~\n\n  1 | { is not defined\n    ^"
-
-def generate_compiler_error_output(evidence: list) -> str:
-    """Generate compiler error output."""
-    if 'gcc' in str(evidence) or 'C/C++' in str(evidence):
-        return "src/main.c:1:1: error: 'undefined_variable' undeclared (first use in this function)"
-    return "error: name 'undefined_name' is not defined"
-
-def generate_go_output(evidence: list) -> str:
-    """Generate Go output."""
-    return "main.go:1:3: cannot use undefined " + ('x" (reported at main.go:1:5)' if 'type error' in str(evidence).lower() else '')
 
 def measure_compression(payloads: list[dict]) -> list[dict]:
     """Measure compression performance on given payloads."""
@@ -436,21 +330,20 @@ def main() -> int:
     print()
     
     # Load corpus and build payloads
-    print("Loading production corpus...")
+    print("Loading the fixture corpus...")
     corpus = load_corpus()
     
     print(f"Corpus summary: {corpus['summary']['fixtures']} fixtures")
     print(f"Real tool outputs: {corpus['summary']['real']}")
-    print(f"Synthetic examples: {corpus['summary']['synthetic']}")
     print(f"Categories: {len(corpus['summary']['categories'])}")
     print()
     
-    print("Building synthetic payload list from corpus...")
-    corpus_payloads = build_synthetic_payloads_from_corpus(corpus)
+    print("Building the payload list from the corpus...")
+    corpus_payloads = build_payloads_from_corpus(corpus)
     
     all_payloads = corpus_payloads
     print(f"Total payloads to process: {len(all_payloads)}")
-    print(f"  - Corpus-based synthetic payloads: {len(corpus_payloads)}")
+    print(f"  - Corpus payloads: {len(corpus_payloads)}")
     print()
     
     # Measure compression
@@ -513,13 +406,13 @@ def main() -> int:
     total_before = sum(r['original_bytes'] for r in compression_rows)
     total_after = sum(r['compressed_bytes'] for r in compression_rows)
     total_saved_pct = round(100 * (total_before - total_after) / total_before, 1) if total_before else 0.0
-    print(f"Overall compression: {human(total_before)} → {human(total_after)} ({total_saved_pct}% saved)")
+    print(f"Overall compression: {human(total_before)} -> {human(total_after)} ({total_saved_pct}% saved)")
     
     if HAS_TIKTOKEN:
         total_tokens_before = sum(r.get('tokens_before', 0) for r in compression_rows)
         total_tokens_after = sum(r.get('tokens_after', 0) for r in compression_rows)
         total_tokens_saved_pct = round(100 * (total_tokens_before - total_tokens_after) / total_tokens_before, 1) if total_tokens_before else 0.0
-        print(f"Token savings: {total_tokens_before:,} → {total_tokens_after:,} ({total_tokens_saved_pct}% saved)")
+        print(f"Token savings: {total_tokens_before:,} -> {total_tokens_after:,} ({total_tokens_saved_pct}% saved)")
     
     print(f"Report written to: {markdown_path}")
     print(f"Results written to: {json_path}")

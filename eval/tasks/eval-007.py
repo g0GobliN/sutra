@@ -11,7 +11,7 @@ from typing import Any
 # --- Task identification ---
 task_id = "eval-007"
 task_type = "standard"
-initial_snapshot = "git:tooltrim@HEAD"
+initial_snapshot = "git:sutra@HEAD"
 
 # --- Task description ---
 description = (

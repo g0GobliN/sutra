@@ -12,46 +12,45 @@ The benchmark suite addresses three key questions:
 
 ## Data Sources
 
-### Production Corpus (`bench/corpus_results.json`)
+### Fixture Corpus (`benchmarks/fixtures/`)
 
-The benchmark suite uses real-world tool outputs from actual tool runs, containing:
+The benchmark suite measures captured tool outputs under `benchmarks/fixtures/`,
+the same corpus the fixture validation tests use. Every `*.txt` payload has a
+`*.txt.sidecar.json` beside it recording where it came from.
 
-- **53 total fixtures** (48 real tool outputs + 5 synthetic examples)
-- **18 unique tools** across development and build environments
-- **24 categories** of tool outputs
+- **46 fixtures** of real tool output
+- **14 unique tools** across development and build environments
+- **19 categories** of tool outputs
 
 #### Tools Currently Supported:
 
-| Tool | Category | Count | Example Outputs |
-|------|----------|-------|-----------------|
-| git | general/git | 8 | `git status`, `git diff`, `git patch` |
-| pytest | general/pytest | 6 | Test run outputs with PASS/FAIL lines |
-| cargo | build/cargo | 6 | Rust build logs and error outputs |
-| python3 | general/python3 | 5 | Python script outputs, error traces |
-| node | general/node | 4 | JavaScript runtime outputs |
-| go (not installed) | general/go | 4 | Go compilation errors (simulated) |
-| eslint | general/eslint | 3 | JavaScript linting errors |
-| tsc | general/tsc | 3 | TypeScript compilation errors |
-| docker | build/docker | 2 | Docker build and run failures |
-| jest | general/jest | 2 | JavaScript test outputs |
-| npm | build/npm | 2 | Node package manager outputs |
-| pnpm | build/pnpm | 1 | pnpm runtime (broken binary) |
-| yarn | build/yarn | 1 | Yarn package manager outputs |
-| pip | general/pip | 1 | Python package manager outputs |
-| gcc | general/gcc | 1 | C/C++ compiler errors |
-| mypy | general/mypy | 1 | Python type checker errors |
-| vitest | general/vitest | 1 | JavaScript test framework outputs |
+| Tool | Category | Count |
+|------|----------|-------|
+| cargo | rust/cargo_check, rust/cargo_test | 6 |
+| git | general/git_diff, general/git_status | 6 |
+| pytest | general/repeated_test_output, python/pytest | 6 |
+| python3 | general/long_stack_trace, python/traceback | 5 |
+| go (not installed) | go/compiler, go/test | 4 |
+| node | general/long_stack_trace, javascript/node | 4 |
+| eslint | javascript/eslint | 3 |
+| tsc | javascript/tsc | 3 |
+| jest | javascript/jest | 2 |
+| mypy | python/mypy | 2 |
+| vitest | javascript/vitest | 2 |
+| gcc | general/compiler_errors | 1 |
+| pip | python/pip | 1 |
+| python3 (generated) | general/large_json | 1 |
 
 #### Missing Tools from Requirements:
 
-The following tools mentioned in the requirements are **not yet in the corpus**:
+The following tools mentioned in the requirements are **not yet in the fixture corpus**:
 
 - **kubectl**: Kubernetes command outputs
 - **terraform**: Infrastructure as Code command outputs  
 - **gh**: GitHub CLI command outputs
 - **aws**: AWS CLI command outputs
 
-These can be added as new fixtures when available.
+Each can be added as a payload plus sidecar under `benchmarks/fixtures/`.
 
 ### Synthetic Benchmarks (`bench/benchmark.py`)
 
@@ -294,7 +293,7 @@ These command-line tools are **not yet represented in the corpus** but are criti
 #### Recommendations for Future Expansion:
 
 1. **Run real tools**: Execute actual commands to capture authentic outputs
-2. **Add to corpus**: Include real-world examples in `bench/corpus_results.json`
+2. **Add fixtures**: Include real-world examples under `benchmarks/fixtures/` (payload plus sidecar)
 3. **Update benchmarks**: Re-run compression_bench.py with new data
 4. **Update documentation**: Note new tool coverage in benchmarks.md
 
@@ -373,24 +372,23 @@ if "GITHUB_REF" in os.environ and "PULL_REQUEST" in os.environ:
 
 ### Adding New Tool Outputs
 
-1. **Run real tool commands** to capture authentic outputs
-2. **Add to corpus_results.json** in the proper format:
+1. **Capture a real tool result** and save it as `benchmarks/fixtures/<category>/<name>.txt`
+2. **Describe it** in `<name>.txt.sidecar.json` next to the payload:
    ```json
    {
-     "fixture": "kubectl_get_pods_output.txt",
-     "source_tool": "kubectl", 
+     "fixture": "k8s/api/kubectl_get_pods.txt",
+     "provenance": "real",
+     "source_tool": "kubectl",
      "source_command": "kubectl get pods -A",
-     "output": "NAMESPACE\tNAME\tREADY\tSTATUS\tRESTARTS\tAGE\ndefault\tapp-1\t1/1\tRunning\t0\t5d\n...",
+     "description": "Pod listing with one CrashLoopBackOff",
      "category": "k8s/api",
-     "measurements": {
-       "original_bytes": 12345,
-       "processed_bytes": 67890
-     }
+     "expected_evidence": ["CrashLoopBackOff"],
+     "critical_evidence": ["CrashLoopBackOff"]
    }
    ```
 
-3. **Re-run compression_bench.py** to include new tool in metrics
-4. **Update documentation** to reflect new tool coverage
+3. **Re-run** `python bench/compression_bench.py` to include the new tool in the metrics
+4. **Update documentation** to reflect the new tool coverage
 
 ### Dependencies
 
@@ -403,7 +401,7 @@ if "GITHUB_REF" in os.environ and "PULL_REQUEST" in os.environ:
 - [docs/benchmark.md](benchmark.md) - Original benchmark methodology documentation
 - [bench/benchmark.py](benchmark.py) - Synthetic benchmark suite (legacy)
 - [bench/tokens.py](tokens.py) - Token counting benchmark (legacy)
-- [bench/corpus_results.json](corpus_results.json) - Production tool output corpus
+- [benchmarks/fixtures/](../benchmarks/fixtures) - Captured tool output corpus
 
 ## Conclusion
 

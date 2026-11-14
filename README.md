@@ -371,7 +371,7 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 Performance benchmarks for SUTRA v0.6.1 compression are continuously run and published:
 
 - [📊 Benchmarks Report](https://github.com/g0GobliN/sutra/tree/main/bench) - Detailed markdown reports
-- [📈 Live Results](https://g0goblin01.github.io/tooltrim/) - GitHub Pages with latest benchmark data
+- [📈 Live Results](https://g0goblin.github.io/sutra/) - GitHub Pages with latest benchmark data
 - [🔧 CI Benchmarks](https://github.com/g0GobliN/sutra/actions/workflows/benchmark.yml) - GitHub Actions workflow
 
 ### Quick Results Summary

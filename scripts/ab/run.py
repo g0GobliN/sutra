@@ -22,8 +22,11 @@ import json
 import pathlib
 import random
 import re
+import shutil
 import sqlite3
 import subprocess
+import sys
+import tempfile
 import time
 
 HERMES_STATE = pathlib.Path.home() / ".hermes/state.db"
@@ -110,7 +113,7 @@ def setup_coding(workspace: pathlib.Path, rng: random.Random) -> dict:
        "assert final_price(200, 10) == 180, final_price(200, 10)\n"
        "assert final_price(99, 50) == 49.5, final_price(99, 50)\n"
        "print('ok')\n")
-    return {"test_cmd": ["python3", "test_discount.py"]}
+    return {"test_cmd": [sys.executable, "test_discount.py"]}
 
 
 # --- Phase Four additions: representative repo tasks ----------------------
@@ -358,7 +361,7 @@ def setup_py_fix_factorial(workspace: pathlib.Path, rng: random.Random) -> dict:
        "assert factorial(5) == 120\n"
        "assert factorial(0) == 1\n"
        "print('ok')\n")
-    return {"test_cmd": ["python3", "test_factorial.py"],
+    return {"test_cmd": [sys.executable, "test_factorial.py"],
             "fix_source": "factorial.py",
             "fix_content": "def factorial(n):\n"
                            "    return 1 if n <= 1 else n * factorial(n - 1)\n",
@@ -375,7 +378,7 @@ def setup_py_fix_grades(workspace: pathlib.Path, rng: random.Random) -> dict:
        "assert letter_grade(55) == 'F'\n"
        "assert letter_grade(85) == 'B'\n"
        "print('ok')\n")
-    return {"test_cmd": ["python3", "test_grades.py"],
+    return {"test_cmd": [sys.executable, "test_grades.py"],
             "fix_source": "grades.py",
             "fix_content": "def letter_grade(score):\n"
                            "    return 'A' if score >= 90 else 'B' if score >= 80 else 'C' if score >= 70 else 'D' if score >= 60 else 'F'\n",
@@ -391,7 +394,7 @@ def setup_py_fix_pricing(workspace: pathlib.Path, rng: random.Random) -> dict:
        "from pricing import total\n"
        "assert total([100, 200], 0.1) == 330\n"
        "print('ok')\n")
-    return {"test_cmd": ["python3", "test_pricing.py"],
+    return {"test_cmd": [sys.executable, "test_pricing.py"],
             "fix_source": "pricing.py",
             "fix_content": "def total(items, tax):\n"
                            "    return sum(items) * (1 + tax)\n",
@@ -459,16 +462,16 @@ EXTRA_TASKS = [
      "slow and how long did it take? Reply with the query and duration.",
      setup_slow_query, _all_in_scorer("planted_file", "planted_token")),
     ("py-fix-factorial", "factorial.py crashes on any input and test_factorial.py "
-     "fails. Fix factorial.py (smallest correct change) and verify with: "
-     "python3 test_factorial.py",
+     "fails. Fix factorial.py (smallest correct change) and verify by "
+     "running test_factorial.py.",
      setup_py_fix_factorial, _coding_scorer),
     ("py-fix-grades", "grades.py is missing a grade band and test_grades.py "
-     "fails. Fix grades.py (smallest correct change) and verify with: "
-     "python3 test_grades.py",
+     "fails. Fix grades.py (smallest correct change) and verify by "
+     "running test_grades.py.",
      setup_py_fix_grades, _coding_scorer),
     ("py-fix-pricing", "pricing.py computes tax wrong and test_pricing.py "
-     "fails. Fix pricing.py (smallest correct change) and verify with: "
-     "python3 test_pricing.py",
+     "fails. Fix pricing.py (smallest correct change) and verify by "
+     "running test_pricing.py.",
      setup_py_fix_pricing, _coding_scorer),
 ]
 
@@ -505,8 +508,8 @@ TASKS = [
      "to find it. Reply with the exact budget token.",
      setup_boundary, lambda ws, final, ev: (ev["planted"] in final, "token")),
     ("coding", "In this directory, discount.py has a bug and test_discount.py "
-     "fails. Fix discount.py (smallest correct change) and verify with: "
-     "python3 test_discount.py",
+     "fails. Fix discount.py (smallest correct change) and verify by "
+     "running test_discount.py.",
      setup_coding, lambda ws, final, ev: (
          subprocess.run(ev["test_cmd"], cwd=ws, capture_output=True).returncode == 0,
          "test exits 0")),
@@ -795,28 +798,32 @@ def selfcheck() -> int:
     failures = 0
     for index, (name, _, setup, scorer) in enumerate(TASKS):
         rng = random.Random(9_000 + index)
-        workspace = pathlib.Path("/tmp") / f"sutra-ab-selfcheck-{name}"
-        workspace.mkdir(parents=True, exist_ok=True)
-        evidence = setup(workspace, rng)
-        if "test_cmd" in evidence:  # the coding task: score the workspace itself
-            bad, _ = scorer(workspace, "", evidence)
-            fix_source = evidence.get("fix_source")
-            fix_content = evidence.get("fix_content")
-            if fix_source is not None and fix_content is not None:
-                (workspace / fix_source).write_text(fix_content)
+        # A per-run temp directory works on every OS; a literal "/tmp" is not a
+        # valid path on Windows, where it resolves to the current drive root.
+        workspace = pathlib.Path(tempfile.mkdtemp(prefix=f"sutra-ab-selfcheck-{name}-"))
+        try:
+            evidence = setup(workspace, rng)
+            if "test_cmd" in evidence:  # the coding task: score the workspace itself
+                bad, _ = scorer(workspace, "", evidence)
+                fix_source = evidence.get("fix_source")
+                fix_content = evidence.get("fix_content")
+                if fix_source is not None and fix_content is not None:
+                    (workspace / fix_source).write_text(fix_content)
+                else:
+                    (workspace / "discount.py").write_text(
+                    "def final_price(price, percent_off):\n"
+                    "    return price * (100 - percent_off) / 100\n")
+                good, _ = scorer(workspace, "", evidence)
             else:
-                (workspace / "discount.py").write_text(
-                "def final_price(price, percent_off):\n"
-                "    return price * (100 - percent_off) / 100\n")
-            good, _ = scorer(workspace, "", evidence)
-        else:
-            planted = evidence.get("planted") or (
-                f'{evidence["planted_type"]} {evidence["planted_token"]}'
-                if "planted_type" in evidence
-                else f'{evidence["planted_file"]} {evidence["planted_token"]}')
-            good, _ = scorer(workspace, f"the answer is {planted}", evidence)
-            bad, _ = scorer(workspace, "I do not know", evidence)
-        ok = good and not bad
+                planted = evidence.get("planted") or (
+                    f'{evidence["planted_type"]} {evidence["planted_token"]}'
+                    if "planted_type" in evidence
+                    else f'{evidence["planted_file"]} {evidence["planted_token"]}')
+                good, _ = scorer(workspace, f"the answer is {planted}", evidence)
+                bad, _ = scorer(workspace, "I do not know", evidence)
+            ok = good and not bad
+        finally:
+            shutil.rmtree(workspace, ignore_errors=True)
         print(f"{name}: scorer {'OK' if ok else 'BROKEN'}")
         if not ok:
             failures += 1

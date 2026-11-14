@@ -1,93 +1,82 @@
 # SUTRA v0.6.1 Performance Benchmarks
 
-Generated: 2026-11-11T23:56:57+00:00
-Total fixtures: 53
-Real tool outputs: 53
+Generated: 2026-11-14T02:16:51+00:00
+Total fixtures: 46
+Real tool outputs: 46
 Synthetic benchmarks: 0
 
 ## Overall Compression Results
 
 | Metric | Before | After | Saved | Saved % |
 |--------|--------|-------|-------|---------|
-| **Total** | **5.3 kB** | **5.3 kB** | **0 B** | **0.0%** |
+| **Total** | **503.5 kB** | **503.5 kB** | **0 B** | **0.0%** |
 
 ## Per-Tool Category Results (with Token Counts)
 
 | Tool | Category | Cases | Original | Compressed | Saved | Saved % | Tokens Before | Tokens After | Tokens Saved | Tokens Saved % |
 |------|----------|-------|----------|------------|-------|---------|---------------|--------------|---------------|-----------------|
-| docker | build/docker_build | 2 | 64 B | 64 B | 0 B | 0.0% | 13 | 13 | -51 | -392.3% |
-| npm | build/npm | 1 | 89 B | 89 B | 0 B | 0.0% | 18 | 18 | -71 | -394.4% |
-| pnpm (binary broken at runtime) | build/pnpm | 1 | 57 B | 57 B | 0 B | 0.0% | 15 | 15 | -42 | -280.0% |
-| yarn | build/yarn | 1 | 89 B | 89 B | 0 B | 0.0% | 18 | 18 | -71 | -394.4% |
-| gcc | general/compiler_errors | 1 | 43 B | 43 B | 0 B | 0.0% | 10 | 10 | -33 | -330.0% |
-| git | general/git_diff | 8 | 853 B | 853 B | 0 B | 0.0% | 271 | 271 | -582 | -214.8% |
-| python3 (generated) | general/large_json | 1 | 122 B | 122 B | 0 B | 0.0% | 38 | 38 | -84 | -221.1% |
-| node | general/long_stack_trace | 4 | 312 B | 312 B | 0 B | 0.0% | 104 | 104 | -208 | -200.0% |
-| python3 | general/long_stack_trace | 5 | 610 B | 610 B | 0 B | 0.0% | 190 | 190 | -420 | -221.1% |
-| pytest | general/repeated_test_output | 6 | 441 B | 441 B | 0 B | 0.0% | 128 | 128 | -313 | -244.5% |
-| go (not installed) | go/compiler | 4 | 136 B | 136 B | 0 B | 0.0% | 44 | 44 | -92 | -209.1% |
-| eslint | javascript/eslint | 3 | 423 B | 423 B | 0 B | 0.0% | 129 | 129 | -294 | -227.9% |
-| jest | javascript/jest | 2 | 209 B | 209 B | 0 B | 0.0% | 53 | 53 | -156 | -294.3% |
-| tsc | javascript/tsc | 3 | 423 B | 423 B | 0 B | 0.0% | 129 | 129 | -294 | -227.9% |
-| vitest | javascript/vitest | 2 | 189 B | 189 B | 0 B | 0.0% | 46 | 46 | -143 | -310.9% |
-| mypy | python/mypy | 2 | 86 B | 86 B | 0 B | 0.0% | 20 | 20 | -66 | -330.0% |
-| pip | python/pip | 1 | 43 B | 43 B | 0 B | 0.0% | 10 | 10 | -33 | -330.0% |
-| cargo | rust/cargo_check | 6 | 1.1 kB | 1.1 kB | 0 B | 0.0% | 408 | 408 | -720 | -176.5% |
+| gcc | general/compiler_errors | 1 | 265 B | 265 B | 0 B | 0.0% | 67 | 67 | -198 | -295.5% |
+| git | general/git_diff | 6 | 748 B | 748 B | 0 B | 0.0% | 260 | 260 | -488 | -187.7% |
+| python3 (generated) | general/large_json | 1 | 480.2 kB | 480.2 kB | 0 B | 0.0% | 127,771 | 127,771 | -352,461 | -275.9% |
+| node | general/long_stack_trace | 4 | 1.9 kB | 1.9 kB | 0 B | 0.0% | 587 | 587 | -1,332 | -226.9% |
+| python3 | general/long_stack_trace | 5 | 1.5 kB | 1.5 kB | 0 B | 0.0% | 424 | 424 | -1,092 | -257.5% |
+| pytest | general/repeated_test_output | 6 | 10.2 kB | 10.2 kB | 0 B | 0.0% | 2,349 | 2,349 | -7,810 | -332.5% |
+| go (not installed) | go/compiler | 4 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 320 | 320 | -717 | -224.1% |
+| eslint | javascript/eslint | 3 | 627 B | 627 B | 0 B | 0.0% | 192 | 192 | -435 | -226.6% |
+| jest | javascript/jest | 2 | 887 B | 887 B | 0 B | 0.0% | 306 | 306 | -581 | -189.9% |
+| tsc | javascript/tsc | 3 | 591 B | 591 B | 0 B | 0.0% | 184 | 184 | -407 | -221.2% |
+| vitest | javascript/vitest | 2 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 444 | 444 | -604 | -136.0% |
+| mypy | python/mypy | 2 | 385 B | 385 B | 0 B | 0.0% | 108 | 108 | -277 | -256.5% |
+| pip | python/pip | 1 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 237 | 237 | -787 | -332.1% |
+| cargo | rust/cargo_check | 6 | 3.1 kB | 3.1 kB | 0 B | 0.0% | 955 | 955 | -2,114 | -221.4% |
 
 ## Individual Tool Results
 
 | Case | Tool | Original | Compressed | Saved | Saved % | Rule |
 |------|------|----------|------------|-------|---------|------|
-| build/docker_build/docker_build_copy_missing.txt | docker | 28 B | 28 B | 0 B | 0.0% | `none` |
-| build/docker_build/docker_build_run_fails.txt | docker | 36 B | 36 B | 0 B | 0.0% | `none` |
-| build/npm/npm_install_fails.txt | npm | 89 B | 89 B | 0 B | 0.0% | `none` |
-| build/pnpm/pnpm_install_failure.txt | pnpm (binary broken at runtime) | 57 B | 57 B | 0 B | 0.0% | `none` |
-| build/yarn/yarn_add_fails.txt | yarn | 89 B | 89 B | 0 B | 0.0% | `none` |
-| general/compiler_errors/gcc_type_error.txt | gcc | 43 B | 43 B | 0 B | 0.0% | `none` |
-| general/git_diff/git_diff_staged.txt | git | 130 B | 130 B | 0 B | 0.0% | `none` |
-| general/git_diff/git_diff_unstaged.txt | git | 130 B | 130 B | 0 B | 0.0% | `none` |
-| general/git_patch/git_patch_staged.patch | git | 130 B | 130 B | 0 B | 0.0% | `none` |
-| general/git_patch/git_patch_unstaged.patch | git | 130 B | 130 B | 0 B | 0.0% | `none` |
-| general/git_status/git_log.txt | git | 39 B | 39 B | 0 B | 0.0% | `none` |
-| general/git_status/git_status_clean.txt | git | 98 B | 98 B | 0 B | 0.0% | `none` |
-| general/git_status/git_status_mixed.txt | git | 98 B | 98 B | 0 B | 0.0% | `none` |
-| general/git_status/git_status_verbose.txt | git | 98 B | 98 B | 0 B | 0.0% | `none` |
-| general/large_json/large_json_api_response.txt | python3 (generated) | 122 B | 122 B | 0 B | 0.0% | `none` |
-| general/long_stack_trace/node_async_stack.txt | node | 78 B | 78 B | 0 B | 0.0% | `none` |
-| general/long_stack_trace/python_recursion_error.txt | python3 | 122 B | 122 B | 0 B | 0.0% | `none` |
-| general/repeated_test_output/repeated_pytest_output.txt | pytest | 69 B | 69 B | 0 B | 0.0% | `none` |
-| go/compiler/go_compiler_syntax_error.txt | go (not installed) | 34 B | 34 B | 0 B | 0.0% | `none` |
-| go/compiler/go_compiler_type_error.txt | go (not installed) | 34 B | 34 B | 0 B | 0.0% | `none` |
-| go/test/go_test_failing.txt | go (not installed) | 34 B | 34 B | 0 B | 0.0% | `none` |
-| go/test/go_test_passing.txt | go (not installed) | 34 B | 34 B | 0 B | 0.0% | `none` |
-| javascript/eslint/eslint_clean.txt | eslint | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/eslint/eslint_errors.txt | eslint | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/eslint/eslint_unused_variable.txt | eslint | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/jest/jest_clean.txt | jest | 86 B | 86 B | 0 B | 0.0% | `none` |
-| javascript/jest/jest_failing.txt | jest | 123 B | 123 B | 0 B | 0.0% | `none` |
-| javascript/node/node_reference_error.txt | node | 78 B | 78 B | 0 B | 0.0% | `none` |
-| javascript/node/node_uncaught_exception.txt | node | 78 B | 78 B | 0 B | 0.0% | `none` |
-| javascript/node/node_unhandled_rejection.txt | node | 78 B | 78 B | 0 B | 0.0% | `none` |
-| javascript/tsc/tsc_clean.txt | tsc | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/tsc/tsc_strict_null.txt | tsc | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/tsc/tsc_type_errors.txt | tsc | 141 B | 141 B | 0 B | 0.0% | `none` |
-| javascript/vitest/vitest_clean.txt | vitest | 81 B | 81 B | 0 B | 0.0% | `none` |
-| javascript/vitest/vitest_failing.txt | vitest | 108 B | 108 B | 0 B | 0.0% | `none` |
-| python/mypy/mypy_clean.txt | mypy | 43 B | 43 B | 0 B | 0.0% | `none` |
-| python/mypy/mypy_type_errors.txt | mypy | 43 B | 43 B | 0 B | 0.0% | `none` |
-| python/pip/pip_install_fails.txt | pip | 43 B | 43 B | 0 B | 0.0% | `none` |
-| python/pytest/pytest_collection_error.txt | pytest | 69 B | 69 B | 0 B | 0.0% | `none` |
-| python/pytest/pytest_failing.txt | pytest | 96 B | 96 B | 0 B | 0.0% | `none` |
-| python/pytest/pytest_passing.txt | pytest | 69 B | 69 B | 0 B | 0.0% | `none` |
-| python/pytest/pytest_passing_warnings.txt | pytest | 69 B | 69 B | 0 B | 0.0% | `none` |
-| python/pytest/pytest_skipped.txt | pytest | 69 B | 69 B | 0 B | 0.0% | `none` |
-| python/traceback/python_importerror.txt | python3 | 122 B | 122 B | 0 B | 0.0% | `none` |
-| python/traceback/python_nameerror.txt | python3 | 122 B | 122 B | 0 B | 0.0% | `none` |
-| python/traceback/traceback_chained.txt | python3 | 122 B | 122 B | 0 B | 0.0% | `none` |
-| python/traceback/traceback_valueerror.txt | python3 | 122 B | 122 B | 0 B | 0.0% | `none` |
-| rust/cargo_check/cargo_check_clean.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
-| rust/cargo_check/cargo_check_deadcode.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
-| rust/cargo_check/cargo_check_type_error.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
-| rust/cargo_check/cargo_check_unused_import.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
-| rust/cargo_test/cargo_test_failing.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
-| rust/cargo_test/cargo_test_panic.txt | cargo | 188 B | 188 B | 0 B | 0.0% | `none` |
+| general/compiler_errors/gcc_type_error.txt | gcc | 265 B | 265 B | 0 B | 0.0% | `none` |
+| general/git_diff/git_diff_staged.txt | git | 116 B | 116 B | 0 B | 0.0% | `none` |
+| general/git_diff/git_diff_unstaged.txt | git | 118 B | 118 B | 0 B | 0.0% | `none` |
+| general/git_status/git_log.txt | git | 30 B | 30 B | 0 B | 0.0% | `none` |
+| general/git_status/git_status_clean.txt | git | 53 B | 53 B | 0 B | 0.0% | `none` |
+| general/git_status/git_status_mixed.txt | git | 36 B | 36 B | 0 B | 0.0% | `none` |
+| general/git_status/git_status_verbose.txt | git | 395 B | 395 B | 0 B | 0.0% | `none` |
+| general/large_json/large_json_api_response.txt | python3 (generated) | 480.2 kB | 480.2 kB | 0 B | 0.0% | `json-kept` |
+| general/long_stack_trace/node_async_stack.txt | node | 390 B | 390 B | 0 B | 0.0% | `none` |
+| general/long_stack_trace/python_recursion_error.txt | python3 | 405 B | 405 B | 0 B | 0.0% | `none` |
+| general/repeated_test_output/repeated_pytest_output.txt | pytest | 892 B | 892 B | 0 B | 0.0% | `none` |
+| go/compiler/go_compiler_syntax_error.txt | go (not installed) | 294 B | 294 B | 0 B | 0.0% | `none` |
+| go/compiler/go_compiler_type_error.txt | go (not installed) | 227 B | 227 B | 0 B | 0.0% | `none` |
+| go/test/go_test_failing.txt | go (not installed) | 380 B | 380 B | 0 B | 0.0% | `none` |
+| go/test/go_test_passing.txt | go (not installed) | 136 B | 136 B | 0 B | 0.0% | `none` |
+| javascript/eslint/eslint_clean.txt | eslint | 0 B | 0 B | 0 B | 0.0% | `none` |
+| javascript/eslint/eslint_errors.txt | eslint | 487 B | 487 B | 0 B | 0.0% | `none` |
+| javascript/eslint/eslint_unused_variable.txt | eslint | 140 B | 140 B | 0 B | 0.0% | `none` |
+| javascript/jest/jest_clean.txt | jest | 216 B | 216 B | 0 B | 0.0% | `none` |
+| javascript/jest/jest_failing.txt | jest | 671 B | 671 B | 0 B | 0.0% | `none` |
+| javascript/node/node_reference_error.txt | node | 582 B | 582 B | 0 B | 0.0% | `none` |
+| javascript/node/node_uncaught_exception.txt | node | 632 B | 632 B | 0 B | 0.0% | `none` |
+| javascript/node/node_unhandled_rejection.txt | node | 315 B | 315 B | 0 B | 0.0% | `none` |
+| javascript/tsc/tsc_clean.txt | tsc | 0 B | 0 B | 0 B | 0.0% | `none` |
+| javascript/tsc/tsc_strict_null.txt | tsc | 60 B | 60 B | 0 B | 0.0% | `none` |
+| javascript/tsc/tsc_type_errors.txt | tsc | 531 B | 531 B | 0 B | 0.0% | `none` |
+| javascript/vitest/vitest_clean.txt | vitest | 194 B | 194 B | 0 B | 0.0% | `none` |
+| javascript/vitest/vitest_failing.txt | vitest | 854 B | 854 B | 0 B | 0.0% | `none` |
+| python/mypy/mypy_clean.txt | mypy | 42 B | 42 B | 0 B | 0.0% | `none` |
+| python/mypy/mypy_type_errors.txt | mypy | 343 B | 343 B | 0 B | 0.0% | `none` |
+| python/pip/pip_install_fails.txt | pip | 1.0 kB | 1.0 kB | 0 B | 0.0% | `none` |
+| python/pytest/pytest_collection_error.txt | pytest | 2.7 kB | 2.7 kB | 0 B | 0.0% | `none` |
+| python/pytest/pytest_failing.txt | pytest | 2.4 kB | 2.4 kB | 0 B | 0.0% | `none` |
+| python/pytest/pytest_passing.txt | pytest | 1.4 kB | 1.4 kB | 0 B | 0.0% | `none` |
+| python/pytest/pytest_passing_warnings.txt | pytest | 1.5 kB | 1.5 kB | 0 B | 0.0% | `none` |
+| python/pytest/pytest_skipped.txt | pytest | 1.3 kB | 1.3 kB | 0 B | 0.0% | `none` |
+| python/traceback/python_importerror.txt | python3 | 185 B | 185 B | 0 B | 0.0% | `none` |
+| python/traceback/python_nameerror.txt | python3 | 254 B | 254 B | 0 B | 0.0% | `none` |
+| python/traceback/traceback_chained.txt | python3 | 508 B | 508 B | 0 B | 0.0% | `none` |
+| python/traceback/traceback_valueerror.txt | python3 | 164 B | 164 B | 0 B | 0.0% | `none` |
+| rust/cargo_check/cargo_check_clean.txt | cargo | 118 B | 118 B | 0 B | 0.0% | `none` |
+| rust/cargo_check/cargo_check_deadcode.txt | cargo | 718 B | 718 B | 0 B | 0.0% | `none` |
+| rust/cargo_check/cargo_check_type_error.txt | cargo | 408 B | 408 B | 0 B | 0.0% | `none` |
+| rust/cargo_check/cargo_check_unused_import.txt | cargo | 481 B | 481 B | 0 B | 0.0% | `none` |
+| rust/cargo_test/cargo_test_failing.txt | cargo | 705 B | 705 B | 0 B | 0.0% | `none` |
+| rust/cargo_test/cargo_test_panic.txt | cargo | 639 B | 639 B | 0 B | 0.0% | `none` |

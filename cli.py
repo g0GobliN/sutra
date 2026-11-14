@@ -24,6 +24,7 @@ from .ui import (
     format_error,
     print_error,
     print_info,
+    print_success,
     print_warning,
     print_summary,
     emit_json,
@@ -41,6 +42,8 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
+  sutra update [--apply]   (check PyPI; --apply upgrades this environment)
+  sutra eval run|compare   (development harness; needs a repository checkout)
   sutra --version
 
 `install` auto-detects installed clients unless a `--client` is named. It
@@ -225,6 +228,20 @@ def _apply(action: str, args) -> int:
     return status
 
 
+def _dry_run_label(label: str) -> str:
+    """Say what the dry run *would* do, not what the current state is."""
+    replacements = (
+        ("=not configured", "=would configure"),
+        ("=hook-only", "=would add MCP"),
+        ("=installed, not enabled", "=would enable"),
+        ("=configured, MCP skipped", "=would configure, MCP skipped"),
+    )
+    for old, new in replacements:
+        if label.endswith(old):
+            return label[: -len(old)] + new
+    return label
+
+
 def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool) -> None:
     """One concise, truthful line after an install attempt."""
     try:
@@ -275,6 +292,8 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
                 labels.append("codex=requires /hooks trust")
             else:
                 labels.append("codex=active")
+    if dry_run:
+        labels = [_dry_run_label(label) for label in labels]
     prefix = "sutra: dry-run summary: " if dry_run else "sutra: install summary: "
     print(prefix + " ".join(labels))
     if not dry_run:
@@ -558,6 +577,8 @@ def main(argv: list[str] | None = None) -> int:
         return _doctor(as_json=args.json, clients=args.client)
     if argv[:1] == ["eval"]:
         return _eval_main(argv[1:])
+    if argv[:1] == ["update"]:
+        return _update(argv[1:])
     if argv[:1] and argv[0] in ("compress", "restore", "config"):
         return runner.run_script(
             "sutra-cli.py", argv,
@@ -572,8 +593,53 @@ def main(argv: list[str] | None = None) -> int:
     return 2
 
 
-if __name__ == "__main__":
-    raise SystemExit(main())
+def _update(argv: list[str]) -> int:
+    """Check PyPI for a newer release, and upgrade only when asked."""
+    from . import update as update_module
+
+    parser = argparse.ArgumentParser(
+        prog="sutra update",
+        description="Check PyPI for a newer release; --apply upgrades this environment.")
+    parser.add_argument("--apply", action="store_true",
+                        help="install the newer release into this environment")
+    args = parser.parse_args(argv)
+
+    try:
+        current = update_module.installed_version()
+    except Exception:
+        print_error(f"{update_module.PACKAGE} is not installed in this Python environment")
+        return 2
+
+    if update_module.is_source_checkout():
+        print_info("this is a source checkout (editable install); update it with `git pull`")
+        return 1 if args.apply else 0
+
+    try:
+        latest = update_module.latest_version()
+    except Exception as exc:
+        print_error(f"could not check PyPI for updates: {type(exc).__name__}: {exc}")
+        return 2
+
+    if not update_module.is_newer(latest, current):
+        print_success(f"sutra {current} is the latest release")
+        return 0
+
+    print_info(f"sutra {latest} is available (installed: {current})")
+    if not args.apply:
+        print_info("run `sutra update --apply`, or "
+                   f"`{sys.executable} -m pip install --upgrade {update_module.PACKAGE}`")
+        return 0
+
+    code = update_module.upgrade()
+    if code != 0:
+        print_error(f"pip exited with status {code}; the installed version is unchanged")
+        return 1
+    try:
+        installed = update_module.installed_version()
+    except Exception:
+        installed = latest
+    print_success(f"sutra is now {installed}; restart any agent that loads it")
+    return 0
 
 
 def _eval_main(argv: list[str]) -> int:
@@ -594,3 +660,7 @@ def _eval_main(argv: list[str]) -> int:
         return 2
 
     return _harness_main(argv)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

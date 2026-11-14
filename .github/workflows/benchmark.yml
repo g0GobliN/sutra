@@ -12,6 +12,8 @@ permissions:
 jobs:
   benchmark:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # peaceiris/actions-gh-pages pushes the results branch
     strategy:
       fail-fast: false
       matrix:
@@ -22,16 +24,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: Install dependencies
-        run: |
-          pip install tiktoken zstandard
+        run: pip install tiktoken zstandard
       - name: Run benchmarks
-        run: |
-          
-          python3 bench/run_benchmarks.py
+        run: python3 bench/run_benchmarks.py
       - name: Verify artifacts
-        run: |
-          
-          python3 bench/run_benchmarks.py --check
+        run: python3 bench/run_benchmarks.py --check
       - name: Upload benchmark results
         if: always()
         uses: actions/upload-artifact@v4
@@ -40,17 +37,16 @@ jobs:
           path: |
             bench/run_benchmarks.md
             bench/run_benchmarks.json
+          if-no-files-found: ignore
           retention-days: 30
-      - name: Create GitHub Pages site
-        if: success()
+      - name: Assemble the results page
+        if: matrix.python == '3.13'
         run: |
-          
           mkdir -p gh-pages
-          cp bench/run_benchmarks.md gh-pages/index.html
           cp bench/run_benchmarks.json gh-pages/results.json
-          echo "Benchmarks" > gh-pages/CNAME
+          python3 -c "import html, pathlib; report = pathlib.Path('bench/run_benchmarks.md').read_text(encoding='utf-8'); page = '<!doctype html><meta charset=\"utf-8\"><title>SUTRA benchmarks</title><h1>SUTRA benchmarks</h1><p><a href=\"results.json\">results.json</a></p><pre>' + html.escape(report) + '</pre>'; pathlib.Path('gh-pages/index.html').write_text(page, encoding='utf-8')"
       - name: Deploy to GitHub Pages
-        if: success() && github.ref == 'refs/heads/main'
+        if: matrix.python == '3.13' && github.ref == 'refs/heads/main'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}

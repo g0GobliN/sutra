@@ -280,7 +280,7 @@ def test_a_persisted_result_that_disagrees_with_its_size_is_left_alone(tmp_path)
     assert result.stdout.strip() == "{}"
 
 
-def test_a_symlinked_persisted_result_is_never_followed(tmp_path):
+def test_a_symlinked_persisted_result_is_never_followed(tmp_path, requires_symlink):
     payload = persisted_payload(tmp_path, link=True)
     result = run_hook(payload)
     assert result.returncode == 0

@@ -266,7 +266,7 @@ def main(argv: list[str] | None = None) -> int:
     lines.append(f"| provider access | {live} |")
     lines.append("")
     lines.append("Deterministic compression savings (fixture byte reduction) are measured by "
-                 "tooltrim itself and are independent of any provider. Real provider billing "
+                 "sutra itself and are independent of any provider. Real provider billing "
                  "savings are the reduction in provider-reported billed tokens between the "
                  "control (off) and treatment (on) arms; this report prices both at documented "
                  "default rates, so cost figures are estimates. Model, version, provider, task "

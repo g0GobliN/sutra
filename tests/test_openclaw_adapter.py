@@ -8,7 +8,6 @@ scripted-provider run documented in docs/automatic-install.md.
 
 import json
 import os
-import pathlib
 import shlex
 import shutil
 import stat
@@ -17,7 +16,7 @@ import sys
 
 import pytest
 
-from conftest import plugin_module
+from conftest import expose_package, plugin_module
 
 openclaw = plugin_module("openclaw")
 cli = plugin_module("cli")
@@ -217,9 +216,7 @@ console.log("openclaw plugin ok")
     # directory has another name needs the package exposed under its import
     # name. A real install provides that; the test builds the same shape.
     library = tmp_path / "lib"
-    library.mkdir()
-    (library / "sutra").symlink_to(pathlib.Path(__file__).resolve().parents[1],
-                                    target_is_directory=True)
+    expose_package(library / "sutra")
     env = dict(os.environ, PYTHONPATH=str(library), HERMES_HOME=str(home))
     result = subprocess.run([node, str(script)], capture_output=True, text=True,
                             timeout=90, cwd=str(tmp_path), env=env)
@@ -261,9 +258,7 @@ assert.ok(!output.output.includes("openclaw-slow-token-7Q"))
 console.log("openclaw slow hook ok")
 """, encoding="utf-8")
     library = tmp_path / "lib"
-    library.mkdir()
-    (library / "sutra").symlink_to(pathlib.Path(__file__).resolve().parents[1],
-                                    target_is_directory=True)
+    expose_package(library / "sutra")
     env = dict(os.environ, PYTHONPATH=str(library), HERMES_HOME=str(home))
     result = subprocess.run([node, str(script)], capture_output=True, text=True,
                             timeout=30, cwd=str(tmp_path), env=env)

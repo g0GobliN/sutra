@@ -89,6 +89,12 @@ def test_install_with_no_detected_client_exits_one_and_explains(
     assert "no supported client detected" in err
 
 
+def test_dry_run_summary_says_what_would_happen():
+    assert cli._dry_run_label("claude=not configured") == "claude=would configure"
+    assert cli._dry_run_label("opencode=hook-only") == "opencode=would add MCP"
+    assert cli._dry_run_label("codex=configured") == "codex=configured"
+
+
 def test_install_required_client_not_installed_fails(monkeypatch, capsys):
     _install_fakes(monkeypatch, present=("claude_code",))
     assert cli.main(["install", "--client", "codex"]) == 1
