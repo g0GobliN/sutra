@@ -221,6 +221,8 @@ jobs:
 
           # OpenClaw also installs before its host exists: prove plugin
           # detection, idempotent reinstall and removal through the wheel.
+          # Drop the fake hosts so detection must see the plugin itself.
+          export PATH="/usr/bin:/bin"
           openclaw_plugin="$CLI_HOME/.openclaw/plugins/sutra.js"
           ./venv/bin/sutra install --client openclaw > "$CLI_OUT/openclaw-install.txt"
           test -f "$openclaw_plugin"
