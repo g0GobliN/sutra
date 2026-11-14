@@ -39,6 +39,7 @@ need the detail behind a claim.
 | Document | Answers |
 |---|---|
 | [troubleshooting.md](troubleshooting.md) | Restore statuses, plugin state, removal and common failures |
+| [telemetry.md](telemetry.md) | Optional OTLP metrics, trace sampling, failure behavior and privacy boundary |
 | [../SECURITY.md](../SECURITY.md) | Threat model, storage protections, prompt-injection handling |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development, tests and pull-request expectations |
 | [release.md](release.md) | Trusted Publishing, versioning, TestPyPI rehearsal and production approval |

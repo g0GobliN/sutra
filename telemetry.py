@@ -37,6 +37,11 @@ ATTR_RULE = "sutra.compression.rule"
 ATTR_STATUS = "sutra.recovery.status"
 ATTR_STRATEGY = "sutra.strategy.name"
 
+# Telemetry is best-effort. A dead collector must not keep a short-lived CLI
+# process alive waiting for the SDK's default 30-second shutdown budget.
+EXPORT_TIMEOUT_SECONDS = 2.0
+EXPORT_TIMEOUT_MILLIS = int(EXPORT_TIMEOUT_SECONDS * 1000)
+
 
 @dataclass(frozen=True)
 class TelemetryConfig:
@@ -99,6 +104,8 @@ class CompressionTelemetry:
         self._enabled = self._config.enabled
         self._meter = meter
         self._tracer = None
+        self._meter_provider = None
+        self._tracer_provider = None
         self._histogram_ratio = None
         self._counter_tokens_saved = None
         self._histogram_latency = None
@@ -106,10 +113,29 @@ class CompressionTelemetry:
         self._counter_strategy = None
 
         if self._enabled:
-            self._init_otel()
+            try:
+                self._init_otel()
+            except Exception:
+                # Telemetry is optional and best-effort. Never let an exporter
+                # or SDK initialization failure reach compression.
+                logger.debug("sutra: telemetry initialization failed; disabling",
+                             exc_info=True)
+                self._enabled = False
+                # Clean up any provider already created before the failure, so
+                # a partially initialized attempt cannot leave a worker thread.
+                self.shutdown()
 
     def _init_otel(self) -> None:
         """Initialize OpenTelemetry SDK and metrics instruments."""
+        # OTel exporters log connection/export failures through their own
+        # logger. In a CLI with no logging configuration, Python's last-resort
+        # handler prints those errors to stderr; a best-effort telemetry path
+        # must not add that noise to the command's real output. Applications
+        # that configure logging still receive the records.
+        otel_logger = logging.getLogger("opentelemetry")
+        if not any(isinstance(handler, logging.NullHandler) for handler in otel_logger.handlers):
+            otel_logger.addHandler(logging.NullHandler())
+
         if self._meter is not None:
             # Meter was injected (e.g., for testing) - just create instruments
             self._create_instruments()
@@ -124,6 +150,7 @@ class CompressionTelemetry:
             from opentelemetry.sdk.resources import Resource
             from opentelemetry.sdk.trace import TracerProvider
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
             from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
         except ImportError as exc:
             logger.warning(
@@ -141,20 +168,40 @@ class CompressionTelemetry:
         })
 
         # Metrics: OTLP HTTP exporter with periodic reader
-        metric_exporter = OTLPMetricExporter(endpoint=self._config.endpoint)
-        metric_reader = PeriodicExportingMetricReader(metric_exporter, export_interval_millis=10_000)
+        metric_exporter = OTLPMetricExporter(
+            endpoint=self._config.endpoint,
+            timeout=EXPORT_TIMEOUT_SECONDS,
+        )
+        metric_reader = PeriodicExportingMetricReader(
+            metric_exporter,
+            export_interval_millis=10_000,
+            export_timeout_millis=EXPORT_TIMEOUT_MILLIS,
+        )
         meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
         metrics.set_meter_provider(meter_provider)
+        self._meter_provider = meter_provider
 
         # Traces: OTLP HTTP exporter with batch processor
-        trace_exporter = OTLPSpanExporter(endpoint=self._config.endpoint.replace("/v1/metrics", "/v1/traces"))
-        trace_provider = TracerProvider(resource=resource)
-        trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+        trace_exporter = OTLPSpanExporter(
+            endpoint=self._config.endpoint.replace("/v1/metrics", "/v1/traces"),
+            timeout=EXPORT_TIMEOUT_SECONDS,
+        )
+        trace_provider = TracerProvider(
+            resource=resource,
+            sampler=TraceIdRatioBased(self._config.sample_rate),
+        )
+        trace_provider.add_span_processor(BatchSpanProcessor(
+            trace_exporter,
+            export_timeout_millis=EXPORT_TIMEOUT_MILLIS,
+        ))
         trace.set_tracer_provider(trace_provider)
+        self._tracer_provider = trace_provider
 
-        # Create meter and tracer
-        self._meter = metrics.get_meter("sutra", self._get_version())
-        self._tracer = trace.get_tracer("sutra", self._get_version())
+        # Use the providers directly so a settings change can build a new
+        # provider even though OpenTelemetry's module-level provider can only
+        # be installed once.
+        self._meter = meter_provider.get_meter("sutra", self._get_version())
+        self._tracer = trace_provider.get_tracer("sutra", self._get_version())
 
         self._create_instruments()
 
@@ -191,23 +238,37 @@ class CompressionTelemetry:
         )
 
     def _get_version(self) -> str:
-        """Get SUTRA version from package metadata."""
+        """Get the running SUTRA version, including from a source checkout."""
         try:
-            from importlib.metadata import version
-            return version("sutra-agent")
+            from . import __version__
+            return __version__
         except Exception:
-            return "0.6.2"
+            try:
+                from importlib.metadata import version
+                return version("sutra-agent")
+            except Exception:
+                return "unknown"
 
     @classmethod
     def get_instance(cls, cfg: config.Config | None = None) -> "CompressionTelemetry":
         """Get or create the singleton telemetry instance.
 
         Args:
-            cfg: Optional config to use for initialization. Only used on first call.
+            cfg: Optional config to use for initialization. Reinitializes when
+                the telemetry settings differ from the current instance.
 
         Returns:
             The singleton CompressionTelemetry instance.
         """
+        cfg = cfg or config.resolve()
+        desired = TelemetryConfig(
+            enabled=cfg.telemetry_enabled,
+            endpoint=cfg.telemetry_endpoint,
+            sample_rate=cfg.telemetry_sample_rate,
+        )
+        if cls._instance is not None and cls._instance._config != desired:
+            cls._instance.shutdown()
+            cls._instance = None
         if cls._instance is None:
             cls._instance = cls(cfg)
         return cls._instance
@@ -296,7 +357,11 @@ class CompressionTelemetry:
         Yields:
             A dict to accumulate results (compressed_bytes, tokens_saved).
         """
-        if not self._enabled or self._tracer is None:
+        if (
+            not self._enabled
+            or self._tracer is None
+            or self._config.sample_rate <= 0.0
+        ):
             yield {}
             return
 
@@ -327,19 +392,22 @@ class CompressionTelemetry:
                 tokens_saved=tokens_saved,
             )
 
-    def shutdown(self) -> None:
-        """Shutdown telemetry and flush pending exports."""
-        if not self._enabled:
-            return
-
+    def shutdown(self, timeout_millis: int = EXPORT_TIMEOUT_MILLIS) -> None:
+        """Shutdown telemetry, flushing within a bounded best-effort timeout."""
+        meter_provider = self._meter_provider
+        tracer_provider = self._tracer_provider
+        self._meter_provider = None
+        self._tracer_provider = None
         try:
-            from opentelemetry import metrics, trace
-            metrics.get_meter_provider().shutdown()
-            trace.get_tracer_provider().shutdown()
+            if meter_provider is not None:
+                meter_provider.shutdown(timeout_millis=timeout_millis)
+            if tracer_provider is not None:
+                tracer_provider.shutdown()
         except Exception:
             logger.debug("sutra: telemetry shutdown failed", exc_info=True)
         finally:
             self._enabled = False
+            self._tracer = None
 
 
 def get_telemetry(cfg: config.Config | None = None) -> CompressionTelemetry | _NoopTelemetry:
@@ -354,10 +422,16 @@ def get_telemetry(cfg: config.Config | None = None) -> CompressionTelemetry | _N
     Returns:
         CompressionTelemetry instance or _NoopTelemetry.
     """
-    if cfg is None:
-        cfg = config.resolve()
+    try:
+        if cfg is None:
+            cfg = config.resolve()
 
-    if not cfg.telemetry_enabled:
+        if not cfg.telemetry_enabled:
+            return _NoopTelemetry()
+
+        return CompressionTelemetry.get_instance(cfg)
+    except Exception:
+        # The telemetry seam must fail open: a broken optional dependency or
+        # exporter can never change the compression result.
+        logger.debug("sutra: telemetry unavailable; using no-op", exc_info=True)
         return _NoopTelemetry()
-
-    return CompressionTelemetry.get_instance(cfg)

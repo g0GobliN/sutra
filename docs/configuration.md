@@ -26,7 +26,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
 | `SUTRA_TELEMETRY` | `0` | enable OpenTelemetry export; see [telemetry.md](telemetry.md) |
 | `SUTRA_TELEMETRY_ENDPOINT` | `http://localhost:4318/v1/metrics` | OTLP HTTP metrics endpoint |
-| `SUTRA_TELEMETRY_SAMPLE_RATE` | `1.0` | trace sampling rate from `0.0` to `1.0` |
+| `SUTRA_TELEMETRY_SAMPLE_RATE` | `1.0` | trace sampling ratio from `0.0` to `1.0`; metrics are not downsampled, and `0.0` disables both metric recording and spans |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
 
 ## Store behaviour

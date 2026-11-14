@@ -20,14 +20,15 @@ contract](contract.md), [the security model](../SECURITY.md).
 | Query input | At most 200 characters; regex metacharacters have no special meaning |
 | Result shape | Exact lines with headers, or an explicit clipped byte window |
 | Work bounds | One entry at most `SUTRA_STORE_MAX_ENTRY_BYTES` (32 MiB default); returned content ≤64 KiB; at most 20 matching lines |
-| Locality | No network code; no model call; no third-party dependency |
+| Locality | No network code in retrieval; no model call; no third-party dependency. Optional telemetry is separate, off by default, and never receives tool output. |
 | Determinism | Same entry and request produce the same response |
 | Integrity | `mode=full` reports the store's SHA-256 check; byte offsets are exact |
 
 The search implementation is in [`recovery.py`](../recovery.py). The package
 declares `dependencies = []` in [`pyproject.toml`](../pyproject.toml), and the
-product modules import no network client. The recovery envelope is documented
-in [recovery.md](recovery.md).
+retrieval modules import no network client. Optional telemetry is isolated in
+`telemetry.py`, off by default, and lazy-loads the OpenTelemetry extras only when
+enabled. The recovery envelope is documented in [recovery.md](recovery.md).
 
 ## Why semantic retrieval is not a small change
 

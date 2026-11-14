@@ -1,6 +1,8 @@
 # SUTRA Telemetry (OpenTelemetry)
 
-SUTRA emits OpenTelemetry metrics for compression operations, recovery, and strategy selection. Telemetry is **disabled by default** — there is zero overhead (no imports, no exports, no background threads) unless you explicitly enable it.
+SUTRA emits OpenTelemetry metrics for compression operations, recovery, and strategy selection. Telemetry is **disabled by default**: no OpenTelemetry imports, exports, or background threads run unless you explicitly enable it.
+
+When enabled, export is **best-effort**. Exporters run on OpenTelemetry's background threads, use bounded timeouts, and an unreachable, failing, or malformed collector does not change the compression result or the CLI exit status. A short-lived CLI may still wait for the bounded shutdown timeout (several seconds) while the SDK gives up on in-flight metrics or span exports.
 
 ## Quick Start
 
@@ -8,7 +10,7 @@ SUTRA emits OpenTelemetry metrics for compression operations, recovery, and stra
 # Enable telemetry and point to your OTLP collector
 export SUTRA_TELEMETRY=1
 export SUTRA_TELEMETRY_ENDPOINT=http://localhost:4318/v1/metrics
-# Optional: trace sampling rate (0.0–1.0)
+# Optional: trace sampling ratio (0.0–1.0); metrics are not sampled
 export SUTRA_TELEMETRY_SAMPLE_RATE=1.0
 ```
 
@@ -70,8 +72,8 @@ pip install "sutra-agent[telemetry]"
 | Environment Variable | Config Field | Default | Description |
 |---------------------|--------------|---------|-------------|
 | `SUTRA_TELEMETRY` | `telemetry_enabled` | `false` | Enable OpenTelemetry export |
-| `SUTRA_TELEMETRY_ENDPOINT` | `telemetry_endpoint` | `http://localhost:4318/v1/metrics` | OTLP HTTP endpoint for metrics (traces go to `/v1/traces` on same host) |
-| `SUTRA_TELEMETRY_SAMPLE_RATE` | `telemetry_sample_rate` | `1.0` | Sampling rate applied to every emitted metric and trace (0.0–1.0; 0.0 emits nothing, 1.0 emits everything). |
+| `SUTRA_TELEMETRY_ENDPOINT` | `telemetry_endpoint` | `http://localhost:4318/v1/metrics` | OTLP HTTP endpoint for metrics; the optional `trace_compression()` helper sends spans to `/v1/traces` on the same host |
+| `SUTRA_TELEMETRY_SAMPLE_RATE` | `telemetry_sample_rate` | `1.0` | Trace sampling ratio from `0.0` to `1.0`. Metrics are exact counters/histograms and are emitted whenever telemetry is enabled; `0.0` disables both metric recording and trace spans. |
 
 All three settings are also available on `config.Config` and can be set programmatically.
 
@@ -81,13 +83,24 @@ When `telemetry_enabled=False` (the default):
 - No OpenTelemetry modules are imported
 - No background threads are started
 - No network connections are made
-- All telemetry calls are resolved to a no-op implementation at import time
-- The hot path (`compress()`, `store.get()`, `store.prune()`) has no conditional branches for telemetry
+- `get_telemetry()` returns a `_NoopTelemetry` instance
+- `compress()`, `store.get()`, and `store.prune()` call that seam, whose methods return immediately
+- There are no OpenTelemetry imports or exporter branches in the compression or store hot paths
 
-This is achieved by:
-1. Lazy imports inside `CompressionTelemetry._init_otel()` — only executed when enabled
-2. `get_telemetry()` returning a `_NoopTelemetry` instance when disabled
-3. `_NoopTelemetry` methods being empty functions that the JIT can inline away
+This is achieved by lazy imports inside `CompressionTelemetry._init_otel()` (only executed when enabled) and by `get_telemetry()` returning `_NoopTelemetry` for disabled or unavailable telemetry.
+
+## Failure Behavior
+
+Telemetry never changes the result of a compression or restore, and it does not raise into the caller:
+- Exporter connection, HTTP, timeout, and response-format failures are caught inside the SDK and by the SUTRA seam.
+- A failed SDK initialization falls back to `_NoopTelemetry`; compression continues. A malformed endpoint is treated as an export failure by the SDK and cannot affect the result.
+- Export requests use a 2-second timeout. `CompressionTelemetry.shutdown()` also uses a bounded timeout.
+- Exporter diagnostics are suppressed from an unconfigured CLI's stderr so a broken collector cannot corrupt command output. Configure Python logging at `DEBUG` level to see them.
+- A dead collector can delay a short-lived CLI for several seconds at process shutdown (each exporter has a bounded 2-second budget); it cannot change the exit code or stdout.
+
+## Sampling
+
+`SUTRA_TELEMETRY_SAMPLE_RATE` is a trace sampling ratio: `0.0` disables spans, `1.0` samples every span, and values in between use OpenTelemetry's `TraceIdRatioBased` sampler. Compression metrics are counters and histograms, not independent events; they are emitted whenever telemetry is enabled and are not probabilistically downsampled. Use the collector or `SUTRA_TELEMETRY=0` if metric volume is a problem.
 
 ## Integration Points
 
@@ -97,7 +110,7 @@ from sutra import engine, config
 
 cfg = config.resolve()
 out, stats = engine.compress(large_output, cfg=cfg)
-# Telemetry recorded automatically:
+# The engine records metrics automatically (no spans):
 # - sutra.compression.ratio
 # - sutra.compression.tokens_saved
 # - sutra.compression.latency_ms
@@ -121,6 +134,10 @@ Store pruning also records recovery metrics:
 report = s.prune()
 # Records: sutra.recovery.count for expired, orphan, temp, quota evictions
 ```
+
+### Traces
+
+The engine does not create trace spans. Library callers that want a span around a compression can use `CompressionTelemetry.trace_compression()`; it also records the compression metrics on exit. Spans are sent to the endpoint with `/v1/metrics` replaced by `/v1/traces`, and the configured sample ratio applies to them.
 
 ## Exporter Setup
 
@@ -159,7 +176,7 @@ export SUTRA_TELEMETRY_ENDPOINT=http://localhost:4318/v1/metrics
 ```
 
 ### Direct to Prometheus (metrics only)
-Use the [OpenTelemetry Prometheus Exporter](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/exporter/opentelemetry-exporter-prometheus) if you don't need traces.
+Use the [OpenTelemetry Prometheus Exporter](https://github.com/open-telemetry/opentelemetry-python-contrib/tree/main/exporter/opentelemetry-exporter-prometheus) if you don't need traces. The built-in engine path records metrics only.
 
 ### Datadog / New Relic / Honeycomb / etc.
 Configure the OTLP endpoint for your vendor:
@@ -192,7 +209,9 @@ telemetry.record_strategy("head-tail")
 |---------|-------|-----|
 | `ImportError: opentelemetry...` | Dependencies not installed | `pip install "sutra-agent[telemetry]"` |
 | Metrics not appearing | Collector not running / wrong endpoint | Check `SUTRA_TELEMETRY_ENDPOINT` and collector logs |
-| High CPU/memory | Sampling rate too high or export interval too low | Reduce `SUTRA_TELEMETRY_SAMPLE_RATE` or increase collector `export_interval_millis` |
+| High CPU/memory | High metric volume from many compressions | Disable telemetry, or aggregate/drop metrics at the collector; `SUTRA_TELEMETRY_SAMPLE_RATE` only affects traces |
+| CLI exits a few seconds later with no collector | Bounded in-flight export timeout at shutdown | Expected for enabled telemetry; fix the endpoint or set `SUTRA_TELEMETRY=0` |
+| No exporter errors on stderr | Best-effort diagnostics are suppressed by default | Configure Python logging at `DEBUG`; check the collector |
 | "telemetry enabled but opentelemetry dependencies not installed" warning | Enabled without optional deps | Install extras or disable telemetry |
 
 ## Version Compatibility

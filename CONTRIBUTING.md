@@ -71,8 +71,10 @@ In scope: compression rules, safety rules, the original-output store, the
 retrieval protocol, configuration, measurement, Hermes plugin wiring, and the
 stdio MCP server that exposes the same two tools to any MCP client.
 
-Out of scope: summarising with a model, rewriting content, network calls,
-telemetry, and adapters that reimplement SUTRA for another agent framework. A
+Out of scope: summarising with a model, rewriting content, network calls made
+by compression, new telemetry backends, and adapters that reimplement SUTRA for
+another agent framework. The existing optional OpenTelemetry exporter in
+`telemetry.py` is supported and must remain best-effort and off by default. A
 new MCP client is a config entry against the existing server, not a second
 implementation; anything that copies the rules into a framework-specific path
 needs its own discussion first. SUTRA is deterministic and offline on purpose.

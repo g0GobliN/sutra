@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import sys
 from unittest.mock import Mock, patch
@@ -420,3 +421,112 @@ class TestMetricEmission:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+def test_get_telemetry_falls_back_to_noop_when_sdk_initialization_fails(monkeypatch):
+    """A broken exporter or SDK must never disable compression."""
+    from sutra import telemetry as telemetry_module
+
+    cfg = dataclasses.replace(config.resolve(), telemetry_enabled=True)
+
+    def boom(cls, cfg=None):
+        raise RuntimeError("exporter initialization failed")
+
+    monkeypatch.setattr(
+        telemetry_module.CompressionTelemetry,
+        "get_instance",
+        classmethod(boom),
+    )
+    result = get_telemetry(cfg)
+    assert isinstance(result, _NoopTelemetry)
+
+
+def test_engine_compression_survives_telemetry_initialization_failure(monkeypatch):
+    """Telemetry is best-effort; the compression result must still be returned."""
+    from sutra import engine, telemetry as telemetry_module
+
+    cfg = dataclasses.replace(config.resolve(), telemetry_enabled=True)
+
+    def boom(cls, cfg=None):
+        raise RuntimeError("exporter initialization failed")
+
+    monkeypatch.setattr(
+        telemetry_module.CompressionTelemetry,
+        "get_instance",
+        classmethod(boom),
+    )
+    text = ("line %04d\n" % 0) * 6000
+    out, stats = engine.compress(text, cfg=cfg)
+    assert out
+    assert stats.rule
+
+
+def test_get_instance_reinitializes_when_telemetry_settings_change():
+    """A changed endpoint must not keep using the old exporter."""
+    CompressionTelemetry.reset_instance()
+    cfg = dataclasses.replace(
+        config.resolve(),
+        telemetry_enabled=False,
+        telemetry_endpoint="http://localhost:4318/v1/metrics",
+    )
+    first = CompressionTelemetry.get_instance(cfg)
+    changed = dataclasses.replace(cfg, telemetry_endpoint="http://127.0.0.1:9999/v1/metrics")
+    second = CompressionTelemetry.get_instance(changed)
+    assert first is not second
+    CompressionTelemetry.reset_instance()
+
+
+def test_partial_sdk_initialization_is_shut_down(monkeypatch):
+    """If exporter setup fails midway, its provider must not leak a thread."""
+    cfg = dataclasses.replace(config.resolve(), telemetry_enabled=True)
+    shutdowns = []
+
+    class Provider:
+        def shutdown(self, timeout_millis=None):
+            shutdowns.append(timeout_millis)
+
+    def fail_after_creating_provider(self):
+        self._meter_provider = Provider()
+        raise RuntimeError("trace exporter failed")
+
+    monkeypatch.setattr(CompressionTelemetry, "_init_otel", fail_after_creating_provider)
+    telemetry = CompressionTelemetry(cfg)
+    assert telemetry._enabled is False
+    assert shutdowns and shutdowns[0] is not None
+
+
+def test_trace_compression_is_disabled_at_zero_sample_rate():
+    """A zero trace ratio must not create spans or record metrics."""
+    cfg = dataclasses.replace(
+        config.resolve(),
+        telemetry_enabled=True,
+        telemetry_sample_rate=0.0,
+    )
+
+    class ExplodingTracer:
+        def start_as_current_span(self, *args, **kwargs):
+            raise AssertionError("zero sample rate started a span")
+
+    meter = _FakeMeter()
+    telemetry = CompressionTelemetry(cfg, meter=meter)
+    telemetry._tracer = ExplodingTracer()
+    with telemetry.trace_compression("head-tail", 1000) as result:
+        assert result == {}
+    assert not any(inst.calls for inst in meter.instruments.values())
+
+
+def test_metric_sample_rate_does_not_downsample_metrics():
+    """The configured ratio is for traces; metrics remain exact counts."""
+    meter = _FakeMeter()
+    cfg = dataclasses.replace(
+        config.resolve(),
+        telemetry_enabled=True,
+        telemetry_sample_rate=0.5,
+    )
+    telemetry = CompressionTelemetry(cfg, meter=meter)
+    for index in range(10):
+        telemetry.record_compression(1000, 500, "head-tail", 1.0, 10)
+        telemetry.record_recovery("ok")
+        telemetry.record_strategy("head-tail")
+    assert len(meter.instruments[M_COMPRESSION_RATIO].calls) == 10
+    assert len(meter.instruments[M_RECOVERY_COUNT].calls) == 10
+    assert len(meter.instruments[M_STRATEGY_SELECTED].calls) == 10
