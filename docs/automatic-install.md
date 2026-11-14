@@ -21,6 +21,7 @@ added, and every edit is backed up first.
 | **Claude Code** | **Yes** — native `PostToolUse` hook replacing `updatedToolOutput` | **Yes** — user settings + user-scope MCP entry, then a doctor probe | Live Claude Code 2.1.268 with a scripted provider; real Bash tool execution; marker seen by the model; retained original restored through MCP |
 | **Hermes Agent** | **Yes** — native `tool_execution` middleware | **Yes** — copies the plugin, runs `hermes plugins validate`, then `hermes plugins enable sutra` | Real gateway E2E on 0.22.5 (2026-10-31): 38,925 B → 22,597 B, marker present, clue hidden, deferred `tool_search` found `sutra_restore`, and the bridge restored `ok: true`; optional live test covers plugin validate/enable |
 | **OpenCode** | **Yes** — generated plugin replaces `tool.execute.after` output | **Yes** — plugin + MCP recovery entry when a config exists | Live OpenCode 1.19.5 with a scripted provider; real Bash tool; 48,436 B → 18,649 B model-facing; clue restored through the plugin's `sutra_restore` |
+| **OpenClaw** | **Yes** — generated plugin replaces `tool.execute.after` output | **Yes** — writes `<config>/plugins/sutra.js`; no host needed to install | Live OpenClaw 0.1.0 with a scripted provider; real Bash tool; 48,436 B → 18,649 B model-facing; clue restored through the MCP server |
 | **Codex CLI** | **Yes** — `PostToolUse` feedback replacement (`continue: false`) | **Yes** — writes `$CODEX_HOME/hooks.json` and registers MCP with `codex mcp add` | Codex 0.166.0 with a scripted Responses provider and a real Bash call: 10,110 B → 4,837 B model-visible, marker present, omitted middle line restored; Codex logged `hook: PostToolUse Stopped`; trust is a one-time `/hooks` review |
 | **Cursor** | **No** — `postToolUse` replaces MCP tool output only | Not auto-configured | Official hooks and MCP documentation read; no host run |
 | **Windsurf / Cascade** | **No** — no documented output-replacement hook | Not auto-configured | Official MCP documentation read; no host run |
@@ -40,11 +41,17 @@ Detection checks for an executable on `PATH` (with a bounded `--version` probe)
 or a known configuration file. An empty directory with a familiar name is not
 evidence, and a binary alone never upgrades a client's capability tier.
 
+OpenClaw is also detected from its generated plugin. `sutra install --client
+openclaw` is allowed before the host exists, so `<config>/plugins/sutra.js` is
+concrete evidence of the config tree; `<config>` defaults to `~/.openclaw` and
+honors `SUTRA_OPENCLAW_CONFIG`, while its config file is `<config>/openclaw.json`.
+
 | Client | Tier when installed | Mechanism |
 |---|---|---|
 | Hermes Agent | `automatic` | native `tool_execution` middleware |
 | Claude Code | `automatic` | `PostToolUse` replacement + MCP recovery |
 | OpenCode | `automatic` | generated `tool.execute.after` plugin + `sutra_restore` |
+| OpenClaw | `automatic` | generated `tool.execute.after` plugin + `sutra_restore` |
 | Cursor | `mcp-only` | MCP server; built-in output cannot be replaced |
 | Codex CLI | `automatic` when the SUTRA hook is installed, otherwise `mcp-only` | `PostToolUse` feedback replacement + MCP recovery |
 | Windsurf / Cascade | `mcp-only` | MCP server; no documented replacement hook |
@@ -202,6 +209,22 @@ fail-open (the original result reaches the model), so no compression is
 guaranteed if the interpreter disappears; the 2.5 s subprocess timeout bounds
 each oversized result. Windows CI exercises install and the CLI contract, not
 a live OpenCode model session.
+
+### OpenClaw
+
+`sutra install --client openclaw` generates
+`<config>/plugins/sutra.js`; the config directory defaults to `~/.openclaw`
+and can be redirected with `SUTRA_OPENCLAW_CONFIG`. No host process is needed
+to write the plugin, so it can be installed before OpenClaw and is picked up
+when OpenClaw starts. The generated file embeds the configuring interpreter
+and the dedicated store home; a reinstall updates only a SUTRA-generated file
+and leaves a backup, while a foreign `sutra.js` is refused. `sutra uninstall
+--client openclaw` removes only that generated file.
+
+`test_openclaw_adapter.py` covers replacement, recovery through the real MCP
+server, pass-through, idempotence, fail-open and uninstall;
+`test_openclaw_doctor.py` covers the live Node probe and verdicts. Tested on
+OpenClaw 0.1.0; Windows is not covered by the live-host run.
 
 ### Codex CLI
 

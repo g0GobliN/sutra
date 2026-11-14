@@ -57,8 +57,8 @@ def detect_clients() -> list[str]:
     """Clients present on this machine, in a stable order.
 
     Detection is intentionally narrow: a binary on PATH, or an existing
-    OpenCode config. A client that is not installed is never configured on
-    speculation.
+    OpenCode/OpenClaw config or SUTRA plugin. A client that is not installed
+    is never configured on speculation.
     """
     found: list[str] = []
     try:
@@ -79,6 +79,13 @@ def detect_clients() -> list[str]:
         from . import codex
         if codex.binary() or codex.config_path().exists():
             found.append("codex")
+    except Exception:  # a detection failure must not make install unusable
+        pass
+    try:
+        from . import openclaw
+        if (shutil.which("openclaw") or openclaw.configured()
+                or (openclaw.openclaw_config_dir() / "openclaw.json").is_file()):
+            found.append("openclaw")
     except Exception:  # a detection failure must not make install unusable
         pass
     return found

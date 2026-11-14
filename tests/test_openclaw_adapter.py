@@ -19,6 +19,7 @@ import pytest
 from conftest import expose_package, plugin_module
 
 openclaw = plugin_module("openclaw")
+installer = plugin_module("installer")
 cli = plugin_module("cli")
 
 
@@ -65,6 +66,23 @@ def test_install_writes_a_private_plugin_and_is_idempotent(paths, capsys):
                             config_path=config_dir) == 0
     assert path.read_text(encoding="utf-8") == first
     assert "nothing to do" in capsys.readouterr().out
+
+
+def test_install_auto_detection_includes_an_installed_openclaw(paths):
+    root, config_dir, _ = paths
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    assert "openclaw" in installer.detect_clients()
+
+
+def test_openclaw_dry_run_is_reported_as_would_configure(paths, capsys):
+    root, config_dir, _ = paths
+    assert cli.main(["install", "--client", "openclaw", "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "writing the plugin so it is ready" in output
+    assert "openclaw=would configure" in output
+    assert "openclaw=skipped" not in output
+    assert not openclaw.plugin_path(config_dir).exists()
 
 
 def test_reinstall_after_an_interpreter_change_backs_up_the_old_plugin(paths):

@@ -163,7 +163,7 @@ jobs:
           # these CLIs preinstalled; the contract below only tests SUTRA.
           export PATH="/usr/bin:/bin"
           ./venv/bin/sutra detect > "$CLI_OUT/detect.txt"
-          for client in hermes claude opencode codex; do
+          for client in hermes claude opencode openclaw codex; do
             grep -q "^$client " "$CLI_OUT/detect.txt"
           done
           ./venv/bin/sutra doctor --json > "$CLI_OUT/doctor.json"

@@ -239,6 +239,21 @@ def test_detect_counts_only_installed_clients_as_detected(monkeypatch, capsys):
     assert "codex: not detected" in output
 
 
+def test_detect_with_nothing_installed_does_not_suggest_installing(
+    monkeypatch, capsys,
+):
+    _install_fakes(monkeypatch)
+    package = sys.modules[PACKAGE]
+    monkeypatch.setattr(package, "discovery", types.SimpleNamespace(
+        detect=lambda clients=None: [{"client": "openclaw", "installed": False,
+                                      "evidence": []}],
+        format_detect=lambda rows: "detection table"), raising=False)
+    assert cli.main(["detect"]) == 0
+    output = capsys.readouterr().out
+    assert "No supported clients detected" in output
+    assert "install --all" not in output
+
+
 def test_status_does_not_call_an_unconfigured_client_a_failure(monkeypatch, capsys):
     _install_fakes(monkeypatch)
     assert cli.main(["status"]) == 1

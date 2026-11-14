@@ -125,7 +125,8 @@ def _install_one(client: str, args, *, required: bool) -> int:
         # OpenClaw may not be installed on this host yet; the plugin itself is
         # still worth writing so it is ready when OpenClaw appears.
         if shutil.which("openclaw") is None:
-            print_warning("openclaw is not installed; skipped")
+            print_warning("openclaw is not installed; writing the plugin so it "
+                          "is ready when OpenClaw starts")
         return openclaw.install(dry_run=args.dry_run)
     from . import opencode
     status = opencode.install(dry_run=args.dry_run, config_path=args.config)
@@ -291,6 +292,11 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
             labels.append(f"{client}=failed")
             continue
         row = rows.get(client)
+        if row is None and dry_run and client == "openclaw":
+            # OpenClaw needs no host process: a dry run will write the plugin
+            # even though no status row exists yet. "skipped" would be false.
+            labels.append("openclaw=would configure")
+            continue
         if row is None:
             labels.append(f"{client}=skipped")
         elif client == "claude":
@@ -478,8 +484,10 @@ def _detect(as_json: bool = False, clients: list[str] | None = None) -> int:
     else:
         print(discovery.format_detect(rows))
         installable = [row for row in rows
-                       if row.get("client") in installer.CLIENTS]
-        manual = [row for row in rows if row.get("client") in MANUAL_CLIENTS]
+                       if row.get("client") in installer.CLIENTS
+                       and row.get("installed")]
+        manual = [row for row in rows
+                  if row.get("client") in MANUAL_CLIENTS and row.get("installed")]
         if installable:
             next_steps = ["Run `sutra install --all` to configure detected clients"]
         elif manual:
@@ -647,7 +655,7 @@ def main(argv: list[str] | None = None) -> int:
             description="Read-only discovery of supported agents; writes nothing.")
         parser.add_argument("--client", action="append",
                             choices=["hermes", "claude", "opencode", "cursor",
-                                     "codex", "windsurf"],
+                                     "openclaw", "codex", "windsurf"],
                             help="limit the report to this client (repeatable)")
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
