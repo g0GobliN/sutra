@@ -392,7 +392,7 @@ if "GITHUB_REF" in os.environ and "PULL_REQUEST" in os.environ:
 
 ### Dependencies
 
-- **Required**: Python 3.13+, SUTRA 0.6.2 plugin
+- **Required**: Python 3.11+, SUTRA 0.6.2 plugin
 - **Optional**: tiktoken 0.14.0 for token counting
 - **Benchmark-specific**: Python packages in `bench/requirements.txt`
 
