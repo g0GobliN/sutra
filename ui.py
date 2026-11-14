@@ -54,6 +54,56 @@ def _has_force_color() -> bool:
     return os.environ.get("FORCE_COLOR", "") != ""
 
 
+# --- Console encoding fallback -------------------------------------------------
+#
+# Windows consoles frequently report a legacy code page (cp932, cp1252, ...)
+# that cannot encode the box-drawing and status glyphs used below. Printing a
+# summary must never crash the command, so every line goes through _emit(),
+# which substitutes ASCII equivalents when the destination cannot encode the
+# text. Values with no faithful ASCII form are replaced, never guessed at.
+
+_ASCII_FALLBACK = str.maketrans({
+    "\u2554": "+", "\u2557": "+", "\u255a": "+", "\u255d": "+",
+    "\u2560": "+", "\u2563": "+", "\u2566": "+", "\u2569": "+",
+    "\u2551": "|", "\u2550": "=", "\u2500": "-", "\u00b7": ".",
+    "\u2713": "OK", "\u2717": "X", "\u26a0": "!", "\u2139": "i",
+    "\u2192": ">", "\u27a4": ">", "\u2022": "-",
+    "\u2705": "[ok]", "\u274c": "[x]", "\U0001f4cb": "!",
+    "\U0001f4a1": ">", "\U0001f50d": "?", "\u23f1": "!",
+    "\u2588": "#", "\u2591": ".",
+})
+
+_ENCODING_PROBE = "\u2713\u2551\u2550\u26a0\u2192\u2705\u27a4"
+_ENCODING_CACHE: dict[str, bool] = {}
+
+
+def _stream_encodes(stream) -> bool:
+    """True when ``stream`` can encode the glyphs this module prints."""
+    encoding = getattr(stream, "encoding", None) or ""
+    cached = _ENCODING_CACHE.get(encoding)
+    if cached is None:
+        try:
+            _ENCODING_PROBE.encode(encoding or "ascii")
+            cached = True
+        except (UnicodeEncodeError, LookupError):
+            cached = False
+        _ENCODING_CACHE[encoding] = cached
+    return cached
+
+
+def _render(text: str, stream) -> str:
+    """Return ``text`` as ASCII when ``stream`` cannot encode it."""
+    if _stream_encodes(stream):
+        return text
+    return text.translate(_ASCII_FALLBACK)
+
+
+def _emit(text: str = "", /, *, file=None, end: str = "\n", flush: bool = False) -> None:
+    """Print through the encoding fallback."""
+    stream = file if file is not None else sys.stdout
+    print(_render(text, stream), end=end, file=stream, flush=flush)
+
+
 def colorize(text: str, color_key: str) -> str:
     """Wrap text with ANSI color codes, respecting TTY/NO_COLOR settings.
 
@@ -138,7 +188,7 @@ def print_step(
             .replace("\033[36m", "")
             .replace("\033[0m", "")
         )
-    print(step_fmt)
+    _emit(step_fmt)
 
 
 def print_progress_bar(
@@ -165,7 +215,7 @@ def print_progress_bar(
     if not has_tty:
         # On non-TTY, just print a simple status line
         pct = current / total * 100
-        print(f"\r{label} {current}/{total} ({pct:.0f}%)", end="", flush=True)
+        _emit(f"\r{label} {current}/{total} ({pct:.0f}%)", end="", flush=True)
         return
 
     percent = current / total
@@ -173,7 +223,7 @@ def print_progress_bar(
     bar = "█" * filled + "░" * (width - filled)
     pct = current / total * 100
     bar_str = f"\r{label} [{bar}] {current}/{total} ({pct:.0f}%)"
-    print(bar_str, end="", flush=True)
+    _emit(bar_str, end="", flush=True)
 
 
 # --- Summary panel ------------------------------------------------------------
@@ -316,7 +366,7 @@ def print_summary(
 
     # Print all lines
     for line in lines:
-        print(line)
+        _emit(line)
 
 
 # --- Friendly error messaging -------------------------------------------------
@@ -438,7 +488,7 @@ def print_success(message: str, /, *, tty: bool | None = None) -> None:
     msg = f"{icon_str}  {message}"
     if has_tty:
         msg = colorize(msg, "fg_green")
-    print(msg)
+    _emit(msg)
 
 
 def print_warning(message: str, /, *, tty: bool | None = None) -> None:
@@ -455,7 +505,7 @@ def print_warning(message: str, /, *, tty: bool | None = None) -> None:
     msg = f"{icon_str}  {message}"
     if has_tty:
         msg = colorize(msg, "fg_yellow")
-    print(msg)
+    _emit(msg)
 
 
 def print_info(message: str, /, *, tty: bool | None = None) -> None:
@@ -472,7 +522,7 @@ def print_info(message: str, /, *, tty: bool | None = None) -> None:
         msg = colorize(message, "fg_cyan")
     else:
         msg = message
-    print(msg)
+    _emit(msg)
 
 
 def print_error(message: str, /, *, tty: bool | None = None) -> None:
@@ -489,7 +539,7 @@ def print_error(message: str, /, *, tty: bool | None = None) -> None:
     msg = f"{icon_str}  {message}"
     if has_tty:
         msg = colorize(msg, "fg_red")
-    print(msg, file=sys.stderr)
+    _emit(msg, file=sys.stderr)
 
 
 # --- Environment-aware output: JSON mode --------------------------------------
@@ -553,6 +603,9 @@ def emit_json(
         data[key] = value
 
     output = json.dumps(data, ensure_ascii=False)
+    # JSON must stay valid: escape non-ASCII rather than substituting glyphs.
+    if not _stream_encodes(sys.stdout):
+        output = json.dumps(data, ensure_ascii=True)
     print(output)
 
 

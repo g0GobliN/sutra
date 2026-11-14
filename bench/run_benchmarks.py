@@ -28,6 +28,15 @@ import sys
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+FIXTURES_DIR = ROOT / "benchmarks" / "fixtures"
+
+# Windows consoles can report a legacy code page that cannot encode the ✓/✗
+# used in this report. Replace them instead of aborting the run.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
 
 # Import SUTRA components
 spec = importlib.util.spec_from_file_location(
@@ -60,13 +69,33 @@ ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 # Helper functions
 
 def load_corpus() -> dict:
-    """Load the production corpus of real tool outputs."""
-    corpus_path = ROOT / "bench" / "corpus_results.json"
-    if not corpus_path.exists():
-        raise FileNotFoundError(f"Corpus not found at {corpus_path}")
+    """Load the repository's real tool-output fixtures.
 
-    with open(corpus_path, 'r', encoding='utf-8') as f:
-        return json.load(f)
+    Each ``benchmarks/fixtures/**/*.txt`` payload is a captured tool result; an
+    optional ``<name>.txt.sidecar.json`` beside it records provenance, tool and
+    category. The fixtures are committed, so the benchmark runs on any checkout
+    instead of depending on a generated corpus file.
+    """
+    if not FIXTURES_DIR.is_dir():
+        raise FileNotFoundError(f"No fixture directory at {FIXTURES_DIR}")
+
+    fixtures = []
+    for path in sorted(FIXTURES_DIR.rglob("*.txt")):
+        sidecar = path.with_name(path.name + ".sidecar.json")
+        meta = {}
+        if sidecar.exists():
+            meta = json.loads(sidecar.read_text(encoding='utf-8'))
+        fixtures.append({
+            "fixture_id": path.relative_to(FIXTURES_DIR).as_posix(),
+            "text": path.read_text(encoding='utf-8', errors='replace'),
+            "tool": meta.get("source_tool", "unknown"),
+            "category": meta.get("category", path.parent.name),
+            "note": meta.get("description", ""),
+        })
+
+    if not fixtures:
+        raise FileNotFoundError(f"No *.txt fixtures under {FIXTURES_DIR}")
+    return {"fixtures": fixtures}
 
 def measure_compression(payloads: list[dict]) -> list[dict]:
     """Measure compression performance on given payloads."""
@@ -274,10 +303,9 @@ def main():
     if args.check:
         if verify_artifacts():
             print("✓ All artifacts verified")
-            return
-        else:
-            print("✗ Some artifacts missing")
-            return
+            return 0
+        print("✗ Some artifacts missing")
+        return 1
     
     # Determine output directory
     output_dir = pathlib.Path(args.out) if args.out else ROOT / "bench"
@@ -290,23 +318,7 @@ def main():
         print(f"✓ Loaded corpus with {len(corpus['fixtures'])} fixtures")
     except Exception as e:
         print(f"✗ Failed to load corpus: {e}")
-        return
-
-    # Construct required fields from corpus data
-    for f in corpus["fixtures"]:
-        # Build text from available fields
-        parts = []
-        if 'description' in f:
-            parts.append(f['description'])
-        if 'source_command' in f:
-            parts.append(f['source_command'])
-        if 'expected_evidence' in f:
-            parts.extend(f['expected_evidence'])
-        f['text'] = ' '.join(parts) if parts else ''
-        # Use fixture name as fixture_id
-        f['fixture_id'] = f.get('fixture', f.get('description', ''))
-        # Use description as note
-        f['note'] = f.get('description', '')
+        return 1
 
     # Run compression benchmarks
     print("Running compression benchmarks...")
@@ -315,7 +327,7 @@ def main():
         print(f"✓ Completed {len(compression_rows)} compression measurements")
     except Exception as e:
         print(f"✗ Failed to run compression benchmarks: {e}")
-        return
+        return 1
     
     # Measure latency for a subset of payloads
     print("Measuring latency...")
@@ -363,7 +375,7 @@ def main():
         print(f"✓ Organized {len(tool_categories)} tool categories")
     except Exception as e:
         print(f"✗ Failed to organize results: {e}")
-        return
+        return 1
     
     # Collect environment info
     env_info = environment()
@@ -406,11 +418,10 @@ def main():
     print("\nVerifying outputs...")
     if markdown_path.exists() and json_path.exists():
         print("✓ All outputs generated successfully")
-        return
-    else:
-        print("✗ Some outputs failed to generate")
-        return
+        return 0
+    print("✗ Some outputs failed to generate")
+    return 1
 
 # Execute main function
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

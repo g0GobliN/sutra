@@ -35,9 +35,28 @@ from pathlib import Path
 from typing import Any
 
 import sutra
-from sutra import config as _config
-from sutra.core import Outcome, process_text
-from sutra import metrics, recovery, reuse, store as _store
+
+
+def _package_module(name: str):
+    """Import a SUTRA submodule through the package's own name.
+
+    The repository root *is* the package, so a checkout can be reachable both
+    as ``sutra`` and as a test alias. Importing ``sutra.<module>`` by dotted
+    name in that state creates a second copy of the module: one copy is
+    patched, the other runs, and the seam looks like it ignored the patch.
+    Resolving through ``sutra.__name__`` keeps exactly one object per module.
+    """
+    return importlib.import_module(f"{sutra.__name__}.{name}")
+
+
+_config = _package_module("config")
+_core = _package_module("core")
+metrics = _package_module("metrics")
+recovery = _package_module("recovery")
+reuse = _package_module("reuse")
+_store = _package_module("store")
+Outcome = _core.Outcome
+process_text = _core.process_text
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
@@ -46,7 +65,9 @@ if str(ROOT) not in sys.path:
 # Optional humanization, consistent with the rest of the sutra CLI. Falls back
 # to plain text when the UI module is unavailable or output is not a TTY.
 try:
-    from sutra.ui import colorize as _ui_colorize, icon as _ui_icon  # type: ignore
+    _ui_module = _package_module("ui")
+    _ui_colorize = _ui_module.colorize
+    _ui_icon = _ui_module.icon
 except Exception:  # pragma: no cover - sutra.ui optional in this harness
     _ui_colorize = None
     _ui_icon = None

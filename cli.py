@@ -23,6 +23,7 @@ from . import __version__, installer, openclaw, runner
 from .ui import (
     format_error,
     print_error,
+    print_info,
     print_warning,
     print_summary,
     emit_json,
@@ -186,13 +187,11 @@ def _apply(action: str, args) -> int:
                     step2="Check file permissions and ensure the config is not read-only",
                 )
             else:
-                friendly = format_error(
-                    "unsupported-operation",
-                    client=client,
-                    details=str(exc),
-                    step1="Run `sutra doctor` to diagnose the issue",
-                    step2="Check the error details above",
-                )
+                # Never replace the adapter's own error with a generic category:
+                # the exception text is the only clue to what actually broke.
+                friendly = (f"{client} {action} failed: "
+                            f"{type(exc).__name__}: {exc}\n"
+                            f"💡 Run `sutra doctor --client {client}` to diagnose.")
             print_error(friendly)
             code = 1
         results[client] = code
@@ -586,6 +585,12 @@ def _eval_main(argv: list[str]) -> int:
     repo_root = Path(__file__).resolve().parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
-    from eval.run_harness import main as _harness_main
+    try:
+        from eval.run_harness import main as _harness_main
+    except ImportError:
+        print_error("the eval harness is a development tool and is not part "
+                    "of an installed package")
+        print_info("run it from a repository checkout: python eval/run_harness.py")
+        return 2
 
     return _harness_main(argv)
