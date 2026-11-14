@@ -196,7 +196,7 @@ class CompressionTelemetry:
             from importlib.metadata import version
             return version("sutra-agent")
         except Exception:
-            return "0.6.1"
+            return "0.6.2"
 
     @classmethod
     def get_instance(cls, cfg: config.Config | None = None) -> "CompressionTelemetry":

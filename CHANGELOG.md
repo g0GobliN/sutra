@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.2 - 2026-11-14
+
+### Fixed
+
+- Windows installs no longer crash when console or command output is not UTF-8
+  (for example cp932) or a command returns no output to split into lines.
+- CLI failures now print an actionable message instead of an internal traceback,
+  and the summary accounting matches what was actually installed or skipped.
+- The release workflow can promote the exact TestPyPI artifact when production
+  is dispatched from `main`; the previous branch check rejected that valid path.
+
 ## 0.5.0 - 2026-11-06
 
 ### Added
