@@ -290,14 +290,14 @@ auto-configured.
 MCP is a tool protocol, not an interception layer. Registering `sutra` gives the
 model two tools; it does not make another server's results pass through SUTRA.
 Only a host hook that replaces the result before the model reads it is automatic.
-Hermes, Claude Code, OpenCode and Codex each have such a path; the installer
-configures all four, and Codex's hook additionally needs the one-time `/hooks`
-trust review before Codex will run it.
+Hermes, Claude Code, OpenCode, OpenClaw and Codex each have such a path; the
+installer configures all five, and Codex's hook additionally needs the one-time
+`/hooks` trust review before Codex will run it.
 
 ## Diagnostic
 
 ```bash
-sutra doctor                         # all four clients, including not-installed rows
+sutra doctor                         # all five clients, including not-installed rows
 sutra doctor --client opencode       # focus on one integration
 sutra doctor --client codex          # hook probe, trust state and MCP
 sutra doctor --json                  # machine-readable list of reports

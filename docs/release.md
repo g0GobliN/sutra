@@ -137,8 +137,8 @@ Describe user-visible behaviour, not the internal sequence of commits.
    - the `package` job, which builds the sdist and wheel, runs
      `twine check --strict`, validates the archive contents, installs the
      wheel in a clean environment and exercises the installed CLI: `detect`,
-     `doctor`, `status`, all four adapter dry runs, and an OpenCode
-     install/reinstall/uninstall round trip;
+     `doctor`, `status`, all five adapter dry runs, and OpenCode and OpenClaw
+     install/reinstall/uninstall round trips;
    - the hyphen-checkout job, which proves the suite runs from a directory whose
      name is not a valid Python module name (as GitHub tarballs extract).
 5. Merge the pull request. The release is built from a tag on the merged commit,

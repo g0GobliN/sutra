@@ -327,7 +327,7 @@ If you only want one client, use `--client hermes|claude|opencode|openclaw|codex
 | **Hermes Agent** | Automatic — native `tool_execution` middleware | 0.22.5; install/validate rechecked on 0.22.7 | Plugin validated and enabled by the installer; restart the gateway; enable the `sutra` toolset for recovery |
 | **Claude Code** | Automatic — `PostToolUse` hook + MCP recovery | 2.1.268 | Result replaced before the model reads it; start a new session; hook and MCP must share a store |
 | **OpenCode** | Automatic — generated `tool.execute.after` plugin + MCP recovery | 1.19.5 | Oversized string results replaced in place; restart OpenCode |
-|| **OpenClaw** | Adapter exists — live verified 2026-11-11 | Not live-verified | Tool results compressed and recovered via `sutra_restore`; restart OpenClaw |
+| **OpenClaw** | **Automatic — generated plugin + MCP recovery** | 0.1.0 | Tool results compressed and recovered via `sutra_restore`; restart OpenClaw |
 | **Codex CLI** | **Automatic — `PostToolUse` feedback hook + MCP recovery** | 0.166.0 | Compressed result replaces the model-visible tool output; trust the hook once via `/hooks`; start a new session. Codex truncates very large output before the hook, so only the supplied text is compressible and recoverable |
 | **Any MCP client** | Explicit | protocol `2024-11-05` | Register `python -m sutra.mcp`; MCP registration is not interception |
 | **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.13 | `sutra compress` / `sutra restore` as JSON; one process per call |
@@ -364,7 +364,7 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
 - **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made. The policy's prompt cost is measured by the offline replay; its behavioural effect is not.
 - **Reuse is exact-duplicate only, per process session.** A single changed byte, a pruned store entry or a restart means normal compression instead.
-- **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all four adapter dry runs, and verifies OpenCode install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
+- **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all five adapter dry runs, and verifies OpenCode and OpenClaw install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
 
 ## Benchmarks
 
