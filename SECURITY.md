@@ -12,7 +12,7 @@ stored output, escape the store directory, or make a protected payload
 (diff, patch, traceback) lose content.
 
 Supported versions: the latest published release. At the time of writing that is
-`0.6.2`, available on PyPI as `sutra-agent`. Older lines are not patched.
+`0.6.3`, available on PyPI as `sutra-agent`. Older lines are not patched.
 
 ## What is stored, and where
 

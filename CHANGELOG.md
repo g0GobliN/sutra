@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.6.3 - 2026-11-14
+
+### Fixed
+
+- Optional OpenTelemetry telemetry can no longer break compression when the
+  SDK or an exporter fails to initialize. `get_telemetry()` now falls back to
+  a no-op, partial SDK initialization is shut down, and exporter threads are
+  not left running.
+- A dead, unreachable, malformed, or hanging OTLP collector no longer adds
+  OpenTelemetry's default 30-second shutdown wait or writes exporter failures
+  to an unconfigured CLI's stderr. Export and shutdown now use a bounded
+  2-second budget per exporter. The CLI still exits 0 and emits one JSON
+  object when compression finishes.
+- `SUTRA_TELEMETRY_SAMPLE_RATE` now controls trace sampling through
+  OpenTelemetry's `TraceIdRatioBased` sampler. The previous implementation
+  only used the value as an on/off gate, so `0.5` still emitted every metric
+  and trace. `0.0` disables spans and metric recording; `1.0` samples every
+  span. Metrics remain exact counters and histograms and are not
+  probabilistically downsampled; this is now stated in the docs.
+- Enabled telemetry re-reads its endpoint and sample settings and rebuilds the
+  exporter when they change, instead of keeping the first configuration for
+  the lifetime of the process.
+- A source checkout reports the package `__version__` instead of a hardcoded
+  telemetry version.
+
+### Changed
+
+- `SECURITY.md`, `docs/contract.md`, `CONTRIBUTING.md`,
+  `docs/semantic-retrieval.md`, and `docs/telemetry.md` now describe the
+  opt-in OTLP exporter accurately instead of claiming that SUTRA has no
+  telemetry or network code at all.
+- Telemetry documentation now covers the 2-second export budget, clean CLI
+  output on exporter failure, trace-only sampling, and why metric volume is
+  not reduced by `SUTRA_TELEMETRY_SAMPLE_RATE`.
+
+### Verification
+
+- Telemetry tests: 22 passed. Full test suite: 728 passed, 16 skipped.
+  `ruff check .` passed.
+- Real OpenTelemetry 1.45.2 runs against the built wheel covered disabled
+  telemetry, dead and unresolvable endpoints, invalid URLs, malformed HTTP
+  responses, HTTP 500, and hanging responses. Every compression run exited 0
+  with one parseable JSON object on stdout and no stderr output; explicit
+  shutdown left no exporter threads behind.
+- Published `sutra-agent 0.6.2` reproduces the old 12.44-second dead-endpoint
+  delay and stderr noise. These fixes are source-only for the previously
+  published release; 0.6.3 is the first release containing them.
+
 ## 0.6.2 - 2026-11-14
 
 ### Fixed

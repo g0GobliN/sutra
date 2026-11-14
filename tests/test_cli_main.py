@@ -66,7 +66,7 @@ def _install_fakes(monkeypatch, present=()):
 def test_version_prints_version_and_exits_zero(capsys):
     assert cli.main(["--version"]) == 0
     out = capsys.readouterr().out
-    assert "sutra" in out and "0.6.2" in out
+    assert "sutra" in out and cli.__version__ in out
 
 
 def test_help_without_args_prints_usage_and_exits_zero(capsys):
