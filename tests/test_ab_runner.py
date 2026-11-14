@@ -9,6 +9,7 @@ Hermetic: no model, no `hermes` host — dry runs and scorer self-checks only.
 
 import importlib.util
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -78,6 +79,17 @@ def test_existing_arm_interface_unchanged(monkeypatch):
 
 def test_scorer_selfcheck_passes_for_all_thirty_tasks():
     assert run.selfcheck() == 0
+
+
+def test_help_survives_a_cp932_console():
+    env = {**os.environ, "PYTHONIOENCODING": "cp932"}
+    for name in ("run.py", "report.py"):
+        completed = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "ab" / name), "--help"],
+            capture_output=True, timeout=60, cwd=str(ROOT), env=env)
+        stderr = completed.stderr.decode("cp932", "replace")
+        assert completed.returncode == 0, (name, stderr)
+        assert b"usage:" in completed.stdout, name
 
 
 def test_dry_run_records_one_row_per_task_for_both_arms(tmp_path):

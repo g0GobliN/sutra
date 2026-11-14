@@ -15,6 +15,8 @@ there is no daemon or network listener.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
 import shutil
 import sys
 from pathlib import Path
@@ -188,10 +190,18 @@ def _apply(action: str, args) -> int:
     required = bool(args.client)
     status = 0
     results: dict[str, int] = {}
+    json_mode = getattr(args, "json", False) or _json_env()
     for client in clients:
         operation = _install_one if action == "install" else _uninstall_one
         try:
-            code = operation(client, args, required=required)
+            if json_mode:
+                # The adapters predate --json and print their own progress and
+                # summaries. Keep stdout machine-readable: discard those lines
+                # and let this command emit the one JSON object callers parse.
+                with contextlib.redirect_stdout(io.StringIO()):
+                    code = operation(client, args, required=required)
+            else:
+                code = operation(client, args, required=required)
         except Exception as exc:  # one broken adapter must not block the others
             if isinstance(exc, PermissionError):
                 friendly = format_error(
@@ -211,14 +221,13 @@ def _apply(action: str, args) -> int:
         results[client] = code
         status = max(status, code)
     verb = "install" if action == "install" else "uninstall"
-    json_mode = getattr(args, "json", False) or _json_env()
     if json_mode:
         skipped_clients: list[str] = []
         if action == "install":
             # A zero exit only means the adapter did not fail: a client whose
             # host is absent is skipped, and must not be reported as configured.
             try:
-                rows = {row.get("client"): row for row in _rows()
+                rows = {row.get("client"): row for row in _rows(args.config)
                         if row.get("client") and "error" not in row}
             except Exception:
                 rows = {}
@@ -261,7 +270,7 @@ def _apply(action: str, args) -> int:
             next_steps=next_steps,
         )
     elif action == "install":
-        _install_summary(clients, results, args.dry_run)
+        _install_summary(clients, results, args.dry_run, args.config)
     return status
 
 
@@ -279,10 +288,11 @@ def _dry_run_label(label: str) -> str:
     return label
 
 
-def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool) -> None:
+def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool,
+                     config_path: str | None = None) -> None:
     """One concise, truthful line after an install attempt."""
     try:
-        rows = {row.get("client"): row for row in _rows()
+        rows = {row.get("client"): row for row in _rows(config_path)
                 if row.get("client") and "error" not in row}
     except Exception:  # a summary must never turn a completed install into a failure
         rows = {}
@@ -342,7 +352,7 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool)
         print("sutra: run `sutra doctor` to verify the installed paths")
 
 
-def _rows() -> list[dict]:
+def _rows(config_path: str | None = None) -> list[dict]:
     import shutil
 
     rows: list[dict] = []
@@ -353,14 +363,15 @@ def _rows() -> list[dict]:
     except Exception as exc:  # a broken settings file is reported, not raised
         rows.append({"client": "claude", "error": str(exc)})
     from . import opencode
-    opencode_path = installer.opencode_config()
+    opencode_path = installer.opencode_config(config_path)
+    installed_plugin = opencode.configured(config_path)
     rows.append({
         "client": "opencode",
         "binary": shutil.which("opencode"),
         "config": str(opencode_path),
         "mcp": "configured" if installer.opencode_configured(opencode_path) else "not configured",
-        "plugin": "installed" if opencode.configured() else "not installed",
-        "automatic": opencode.configured(),
+        "plugin": "installed" if installed_plugin else "not installed",
+        "automatic": installed_plugin,
         "home": str(opencode.default_home()),
     })
     try:

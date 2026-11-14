@@ -29,7 +29,7 @@ def _fake_client_module(name, *, binary=False):
         plugin_dir=lambda: here / "plugins",
         plugin_path=lambda config_path=None: here / "plugins" / "sutra.js",
         default_home=lambda: here,
-        configured=lambda: False,
+        configured=lambda config_path=None: False,
         install=lambda dry_run=False, **_kwargs: 0,
         uninstall=lambda dry_run=False, **_kwargs: 0,
         doctor=lambda **_kwargs: {"client": name, "status": "not-installed"},
@@ -107,6 +107,31 @@ def test_install_required_client_that_is_installed_succeeds(
     _install_fakes(monkeypatch, present=("claude_code",))
     assert cli.main(["install", "--client", "claude", "--dry-run"]) == 0
     assert "dry-run summary" in capsys.readouterr().out
+
+
+def test_install_json_with_custom_config_is_one_configured_document(tmp_path, capsys):
+    config = tmp_path / "opencode.json"
+    config.write_text('{"theme": "dark"}', encoding="utf-8")
+
+    assert cli.main([
+        "install", "--client", "opencode", "--config", str(config), "--json",
+    ]) == 0
+
+    data = json.loads(capsys.readouterr().out)
+    assert data["status"] == "success"
+    assert data["skipped"] == 0
+    assert data["integrated_clients"] == ["opencode: configured"]
+
+
+def test_install_summary_uses_the_explicit_opencode_config(tmp_path, capsys):
+    config = tmp_path / "opencode.json"
+    config.write_text('{"theme": "dark"}', encoding="utf-8")
+
+    assert cli.main([
+        "install", "--client", "opencode", "--config", str(config),
+    ]) == 0
+
+    assert "opencode=configured" in capsys.readouterr().out
 
 
 def test_install_opencode_dry_run_writes_nothing(monkeypatch, capsys):

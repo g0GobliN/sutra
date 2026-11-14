@@ -1,6 +1,6 @@
 # Universal automatic integration audit
 
-SUTRA has one deterministic core and four host adapters. This page is the
+SUTRA has one deterministic core and five host adapters. This page is the
 current audit of what each host actually supports, what `sutra install`
 configures, and how each claim is verified. It deliberately separates a host
 capability from a SUTRA integration: a binary on `PATH` does not prove that
@@ -110,7 +110,6 @@ another client's compression logic or duplicates the engine.
 
 ```bash
 pytest tests -q
-pytest spikes -q
 ruff check .
 sutra detect
 sutra doctor

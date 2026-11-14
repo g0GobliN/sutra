@@ -1,8 +1,8 @@
-# SUTRA v0.6.1 Performance Benchmarks
+# SUTRA Performance Benchmarks
 
 ## Overview
 
-This document describes the comprehensive performance benchmarking suite for SUTRA v0.6.1 compression, which measures compression effectiveness across real-world tool outputs and synthetic benchmarks.
+This document describes the comprehensive performance benchmarking suite for SUTRA compression, which measures compression effectiveness across real-world tool outputs and synthetic benchmarks.
 
 The benchmark suite addresses three key questions:
 
@@ -120,11 +120,11 @@ python3 bench/compression_bench.py --out /tmp/run
 #### 1. Markdown Report (`bench/compression_benchmarks.md`)
 
 ```markdown
-# SUTRA v0.6.1 Performance Benchmarks
+# SUTRA Performance Benchmarks
 Generated: 2026-11-11T17:06:00+00:00
-Total fixtures: 53
-Real tool outputs: 48
-Synthetic benchmarks: 8
+Total fixtures: 46
+Real tool outputs: 46
+Synthetic benchmarks: 0
 
 ## Overall Compression Results
 | Metric | Before | After | Saved | Saved % |
@@ -152,7 +152,7 @@ Synthetic benchmarks: 8
 {
   "metadata": {
     "generated": "2026-11-11T17:06:00+00:00",
-    "sutra_version": "0.6.1",
+    "sutra_version": "0.6.2",
     "tiktoken_available": true,
     "tiktoken_version": "0.14.0",
     "tiktoken_encoding": "o200k_base",
@@ -392,15 +392,15 @@ if "GITHUB_REF" in os.environ and "PULL_REQUEST" in os.environ:
 
 ### Dependencies
 
-- **Required**: Python 3.13+, SUTRA 0.6.1 plugin
+- **Required**: Python 3.13+, SUTRA 0.6.2 plugin
 - **Optional**: tiktoken 0.14.0 for token counting
 - **Benchmark-specific**: Python packages in `bench/requirements.txt`
 
 ## References
 
 - [docs/benchmark.md](benchmark.md) - Original benchmark methodology documentation
-- [bench/benchmark.py](benchmark.py) - Synthetic benchmark suite (legacy)
-- [bench/tokens.py](tokens.py) - Token counting benchmark (legacy)
+- [bench/benchmark.py](../bench/benchmark.py) - Synthetic benchmark suite (legacy)
+- [bench/tokens.py](../bench/tokens.py) - Token counting benchmark (legacy)
 - [benchmarks/fixtures/](../benchmarks/fixtures) - Captured tool output corpus
 
 ## Conclusion
@@ -413,4 +413,4 @@ The new compression_bench.py script provides **significant value** over the prev
 4. **Future-proof**: Architecture supports easy addition of kubectl, terraform, gh, aws
 5. **CI-ready**: Native support for automated publishing and documentation updates
 
-This represents a major step forward in providing **actionable evidence** for SUTRA v0.6.1 performance claims, moving from synthetic examples to real-world tool outputs that developers actually encounter.
+This represents a major step forward in providing **actionable evidence** for SUTRA performance claims, moving from synthetic examples to real-world tool outputs that developers actually encounter.

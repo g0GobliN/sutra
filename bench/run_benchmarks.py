@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Performance benchmarks for SUTRA compression across real-world CLI tool outputs.
 
-This script builds and publishes performance benchmarks for SUTRA compression version v0.6.1
+This script builds and publishes performance benchmarks for the installed SUTRA compression version
 in the repository. It measures compression ratio, latency (ms), and token savings vs original
 for SUTRA adaptive compression (with/without parser) compared to gzip and zstd.
 
-The script loads the corpus from bench/corpus.py and generates the required metrics
+The script loads the committed corpus from benchmarks/fixtures/ and generates the required metrics
 for CI (Linux) and publishes results as GitHub Pages or artifact.
 
 Usage:
@@ -44,6 +44,7 @@ spec = importlib.util.spec_from_file_location(
 sutra = importlib.util.module_from_spec(spec)
 sys.modules["sutra_bench_pkg"] = sutra
 spec.loader.exec_module(sutra)
+SUTRA_VERSION = getattr(sutra, "__version__", "unknown")
 
 # Import tiktoken for token counting (optional)
 try:
@@ -179,7 +180,7 @@ def environment() -> dict:
 def generate_markdown_table(compression_rows: list[dict], tool_categories: dict) -> str:
     """Generate markdown table summarizing compression results."""
     lines = []
-    lines.append("# SUTRA v0.6.1 Performance Benchmarks")
+    lines.append(f"# SUTRA v{SUTRA_VERSION} Performance Benchmarks")
     lines.append("")
     lines.append(f"Generated: {datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()}")
     lines.append(f"Total fixtures: {len(compression_rows)}")
@@ -251,7 +252,7 @@ def generate_json_artifact(compression_rows: list[dict], tool_categories: dict, 
     """Generate JSON artifact for programmatic access."""
     return {
         "metadata": {
-            "version": "v0.6.1",
+            "version": f"v{SUTRA_VERSION}",
             "generated_at": env_info["timestamp"],
             "python_version": env_info["python_version"],
             "platform": env_info["platform"],

@@ -29,6 +29,12 @@ import sys
 import tempfile
 import time
 
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
+
 HERMES_STATE = pathlib.Path.home() / ".hermes/state.db"
 SESSION_RE = re.compile(r"Session:\s+(\S+)")
 

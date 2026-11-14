@@ -31,7 +31,7 @@ Measured through `scripts/sutra-cli.py compress` with an isolated `HERMES_HOME`
 
 For the first two, the CLI reports `changed: false` and `id: null`; the
 benchmark reports the rule as `json-kept`. For the third, the CLI reports
-`changed: true` and an id; `sutra restore --mode full --max-bytes 65536` returns
+`changed: true` and an id; `sutra restore --id <id> --mode full --max-bytes 65536` returns
 `status: ok`, `sha256_verified: true`, and the exact original text. The default
 8 KiB content cap would answer `too_large` for this 31,568-byte original, which
 is why the test and this reproduction raise it.

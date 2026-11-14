@@ -13,6 +13,7 @@ need the detail behind a claim.
 | [automatic-install.md](automatic-install.md) | What `sutra install` changes for each client, with backups and rollback |
 | [universal-integration.md](universal-integration.md) | Host-API evidence: which hook each agent documents, including Codex's PostToolUse feedback contract |
 | [configuration.md](configuration.md) | Every environment variable, default and bound |
+| [custom-parsers.md](custom-parsers.md) | The parser contract and runtime registration with `register_parser()` |
 | [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
 
 ## Correctness and recovery
@@ -44,7 +45,7 @@ need the detail behind a claim.
 
 ## Historical prototypes
 
-The `docs/prototypes/` directory records how the OpenCode integration was proven
-before it shipped, and `../spikes/opencode-poc/` holds the original bridge spike
-and its evidence. They are kept as engineering evidence, not as supported
-entry points.
+The original OpenCode bridge spike and internal prototypes were removed from the
+public release. The shipped integration is documented in
+[automatic-install.md](automatic-install.md) and
+[integrations.md](integrations.md).

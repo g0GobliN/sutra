@@ -102,13 +102,13 @@ deriving one. `bench/tokens.json` records the same environment block.
 
 ### Provenance and historical runs
 
-`bench/*.json` are generated and ignored by git. Two fixed references are kept
-so a change can be compared against the data it replaced:
+`bench/*.json` are generated and ignored by git. Two historical references are
+described below; they are not shipped in this checkout:
 
 | Directory | What it is |
 |---|---|
-| [`bench/reference/2026-10-25/`](../bench/reference/2026-10-25/README.md) | the artifacts found in the checkout before this harness was hardened; published numbers came from this run |
-| [`bench/reference/2026-10-29-contended/`](../bench/reference/2026-10-29-contended/timing.json) | a forced timing run at load 19.04 on 4 CPUs, kept to show what contention does to these numbers |
+| `bench/reference/2026-10-25/` (not shipped in this checkout) | the artifacts found in the checkout before this harness was hardened; published numbers came from this run |
+| `bench/reference/2026-10-29-contended/` (not shipped in this checkout) | a forced timing run at load 19.04 on 4 CPUs, kept to show what contention does to these numbers |
 
 ## Results
 
@@ -118,7 +118,7 @@ One command writes `bench/results.json`, `bench/recovery.json`,
 ```bash
 python3 bench/benchmark.py                  # defers timing on a loaded machine
 python3 bench/benchmark.py --timing force   # records a contended run
-python3 bench/benchmark.py --check          # re-verify without writing
+python3 bench/benchmark.py --check          # re-verify existing artifacts (run once first)
 python3 bench/benchmark.py --out /tmp/run   # isolated run
 ```
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Performance benchmarks for SUTRA v0.6.1 compression across real tool outputs.
+"""Performance benchmarks for SUTRA compression across real tool outputs.
 
 This script provides comprehensive benchmarks for SUTRA (Smart Universal Transformer
 Architecture) compression performance on real-world tool outputs, including
@@ -52,6 +52,7 @@ spec = importlib.util.spec_from_file_location(
 sutra = importlib.util.module_from_spec(spec)
 sys.modules["sutra_bench_pkg"] = sutra
 spec.loader.exec_module(sutra)
+SUTRA_VERSION = getattr(sutra, "__version__", "unknown")
 
 # Import tiktoken for token counting (optional)
 try:
@@ -190,7 +191,7 @@ def measure_latency(payload: dict, repeats: int = 5) -> dict:
 def generate_markdown_table(compression_rows: list[dict], tool_categories: dict) -> str:
     """Generate markdown table summarizing compression results."""
     lines = []
-    lines.append("# SUTRA v0.6.1 Performance Benchmarks")
+    lines.append(f"# SUTRA v{SUTRA_VERSION} Performance Benchmarks")
     lines.append("")
     lines.append(f"Generated: {datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()}")
     lines.append(f"Total fixtures: {len(compression_rows)}")
@@ -250,7 +251,7 @@ def generate_json_artifact(compression_rows: list[dict], tool_categories: dict, 
     artifact = {
         "metadata": {
             "generated": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
-            "sutra_version": "0.6.1",
+            "sutra_version": SUTRA_VERSION,
             "tiktoken_available": HAS_TIKTOKEN,
             "tiktoken_version": tiktoken.__version__ if HAS_TIKTOKEN else None,
             "tiktoken_encoding": "o200k_base" if HAS_TIKTOKEN else None,
@@ -323,7 +324,7 @@ def main() -> int:
     if not output_dir.exists():
         output_dir.mkdir(parents=True)
     
-    print("Starting SUTRA v0.6.1 performance benchmarks...")
+    print(f"Starting SUTRA v{SUTRA_VERSION} performance benchmarks...")
     print(f"Output directory: {output_dir}")
     print(f"Tiktoken available: {HAS_TIKTOKEN}")
     print(f"Timing repeats: {args.repeats}")
