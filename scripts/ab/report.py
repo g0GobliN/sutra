@@ -21,7 +21,15 @@ import argparse
 import json
 import math
 import pathlib
+import sys
 from collections import defaultdict
+
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(errors="replace")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
+
 
 ARMS = ("off", "on")
 

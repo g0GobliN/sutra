@@ -259,7 +259,7 @@ Live evidence (2026-11-01): Codex CLI 0.166.0, isolated `CODEX_HOME`, a local
 scripted Responses provider and a real Bash `seq 1 20000` call. The second model
 request carried **4,837 bytes** with the marker and id instead of the 10,110-byte
 host-truncated result (no middle `10000` line); Codex logged `hook: PostToolUse
-Stopped`; `sutra restore --mode lines --start 1000 --end 1002` returned
+Stopped`; `sutra restore --id <id> --mode lines --start 1000 --end 1002` returned
 `status: ok` and the omitted line. No provider or model was contacted.
 
 Installation edits are idempotent, preserve other hooks and settings, write a

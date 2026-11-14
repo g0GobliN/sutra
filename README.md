@@ -338,7 +338,7 @@ If you only want one client, use `--client hermes|claude|opencode|openclaw|codex
 | **OpenClaw** | **Automatic — generated plugin + MCP recovery** | 0.1.0 | Tool results compressed and recovered via `sutra_restore`; restart OpenClaw |
 | **Codex CLI** | **Automatic — `PostToolUse` feedback hook + MCP recovery** | 0.166.0 | Compressed result replaces the model-visible tool output; trust the hook once via `/hooks`; start a new session. Codex truncates very large output before the hook, so only the supplied text is compressible and recoverable |
 | **Any MCP client** | Explicit | protocol `2024-11-05` | Register `python -m sutra.mcp`; MCP registration is not interception |
-| **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.13 | `sutra compress` / `sutra restore` as JSON; one process per call |
+| **Any subprocess-capable agent** | Explicit CLI | Python 3.11–3.14 | `sutra compress` / `sutra restore` as JSON; one process per call |
 | **Cursor, Windsurf/Cascade** | No adapter | — | No generic built-in-tool result hook; MCP registration only, by hand |
 
 The authoritative, per-client matrix — mechanisms, install paths, evidence and known limits — is [docs/integrations.md](https://github.com/g0GobliN/sutra/blob/main/docs/integrations.md). The host-API audit is [docs/universal-integration.md](https://github.com/g0GobliN/sutra/blob/main/docs/universal-integration.md).
@@ -376,7 +376,7 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 
 ## Benchmarks
 
-Performance benchmarks for SUTRA v0.6.1 compression are continuously run and published:
+Performance benchmarks for SUTRA compression are continuously run and published; generated reports label the installed SUTRA version:
 
 - [📊 Benchmarks Report](https://github.com/g0GobliN/sutra/tree/main/bench) - Detailed markdown reports
 - [📈 Live Results](https://g0goblin.github.io/sutra/) - GitHub Pages with latest benchmark data
@@ -409,10 +409,10 @@ python3 bench/run_benchmarks.py --out /tmp/sutra-bench
 
 ### Benchmark Components
 
-- **Corpus**: `bench/corpus.py` - Real tool outputs from kubectl, terraform, docker, aws, gcloud
+- **Corpus**: `benchmarks/fixtures/` - Captured real tool outputs with provenance sidecars
 - **Script**: `bench/run_benchmarks.py` - Comprehensive benchmark suite with algorithm comparison
-- **Results**: `bench/run_benchmarks.md` - Detailed markdown reports
-- **Artifacts**: `bench/run_benchmarks.json` - JSON artifacts for programmatic access
+- **Results**: `bench/run_benchmarks.md` - Generated markdown report (not committed)
+- **Artifacts**: `bench/run_benchmarks.json` - Generated JSON artifact (not committed)
 
 ### Benchmark Metrics
 

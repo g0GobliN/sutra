@@ -641,14 +641,13 @@ def emit_json(
 
 
 def _should_emit_json() -> bool:
-    """Check if SUTRA_JSON env var is set or stdout is not a TTY."""
-    if os.environ.get("SUTRA_JSON", "") == "1":
-        return True
-    # Emit JSON when piped (not a TTY) to provide structured output
-    try:
-        return not sys.stdout.isatty()
-    except Exception:
-        return False
+    """True only when JSON output was explicitly requested.
+
+    Being piped is not a request for machine output: the adapters write human
+    progress to stdout as well, which would corrupt a JSON stream. The CLI's
+    documented --json flag and SUTRA_JSON=1 are the explicit selectors.
+    """
+    return _json_env()
 
 
 def _json_env() -> bool:

@@ -265,6 +265,9 @@ the workflow instead of passing silently.
   ~/.sutra-venv/bin/sutra install --dry-run
   ```
 
+  `install --dry-run` exits 1 with an explanation when no supported client is
+  installed; that is expected on a bare machine, not a failed installation.
+
 - The README install section is what PyPI renders as the long description for
   this version, and that description is frozen per release. Update it before
   tagging; an edit after publication does not change the released page.

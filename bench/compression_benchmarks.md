@@ -1,5 +1,9 @@
 # SUTRA v0.6.1 Performance Benchmarks
 
+> Historical result: this report was generated with SUTRA 0.6.1. The benchmark
+> generator now labels the installed SUTRA version; re-run it to produce a
+> current report.
+
 Generated: 2026-11-14T02:16:51+00:00
 Total fixtures: 46
 Real tool outputs: 46

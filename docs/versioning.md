@@ -243,10 +243,10 @@ main (stable)
 #!/bin/bash
 
 # Deploy new version
-sutra install --new-version v0.5.0
+python3 -m pip install --upgrade "sutra-agent==0.5.0"
 
 # Start monitoring
-python3 monitor.py --version v0.5.0
+sutra --version && sutra status
 
 # Gradual traffic redirection
 sleep 300  # 5 minutes
@@ -488,7 +488,7 @@ python3 -m pytest tests/ -q --tb=short
 ### Related Documents
 - [Configuration Management Guide](migration.md): Detailed configuration migration procedures
 - [Release Process Documentation](release.md): Detailed release process
-- [Security Model](SECURITY.md): Security considerations and threats
+- [Security Model](../SECURITY.md): Security considerations and threats
 - [Adapter Integration Guide](integrations.md): Integration with host environments
 
 ### External References
@@ -497,8 +497,8 @@ python3 -m pytest tests/ -q --tb=short
 - [JSON Schema](https://json-schema.org/): JSON validation framework
 
 ### Internal References
-- [Core API Documentation](core.py): Core public API documentation
-- [CLI Interface Documentation](scripts/sutra-cli.py): CLI interface documentation
-- [MCP Protocol Documentation](scripts/sutra-mcp-server.py): MCP protocol documentation
+- [Core API Documentation](../core.py): Core public API documentation
+- [CLI Interface Documentation](../scripts/sutra-cli.py): CLI interface documentation
+- [MCP Protocol Documentation](../scripts/sutra-mcp-server.py): MCP protocol documentation
 
 This document provides a comprehensive framework for managing SUTRA's API versioning, ensuring backward compatibility, and providing clear migration procedures for all stakeholders. It emphasizes maintaining stability while enabling innovation and feature development.

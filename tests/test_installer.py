@@ -272,6 +272,17 @@ def test_uninstall_reports_a_removal_not_a_registration(tmp_path, capsys):
     assert "SUTRA UNINSTALLATION REPORT" in output
 
 
+def test_piped_install_does_not_auto_emit_machine_json(tmp_path, capsys):
+    path = tmp_path / "opencode.json"
+    path.write_text(JSON_CONFIG, encoding="utf-8")
+
+    assert installer.install(path) == 0
+
+    output = capsys.readouterr().out
+    assert '"integrated_clients"' not in output
+    assert "SUTRA INSTALLATION REPORT" in output
+
+
 def test_the_package_declares_its_console_entry_points():
     import tomllib
     root = pathlib.Path(__file__).resolve().parent.parent

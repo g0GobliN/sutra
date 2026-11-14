@@ -12,6 +12,8 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_STATS_FILE` | `$HERMES_HOME/cache/sutra-stats.jsonl` | where savings are recorded |
 | `SUTRA_STATS_MAX_BYTES` | `5242880` | rotate the log at this size (one `.1` file is kept) |
 | `SUTRA_STORE` | `1` | `0` stops retaining originals; markers then say "not retained" |
+| `SUTRA_STORE_DIR` | `$HERMES_HOME/cache/sutra-store` | where originals are retained |
+| `SUTRA_STORE_TTL_HOURS` | `168` | age at which a retained original expires (7 days) |
 | `SUTRA_STORE_MAX_BYTES` | `134217728` | total size of the store (128 MiB) |
 | `SUTRA_STORE_MAX_ENTRY_BYTES` | `33554432` | largest single original retained (32 MiB) |
 | `SUTRA_STORE_MAX_ENTRIES` | `2000` | most originals retained |
@@ -20,6 +22,11 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` agent guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
+| `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
+| `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
+| `SUTRA_TELEMETRY` | `0` | enable OpenTelemetry export; see [telemetry.md](telemetry.md) |
+| `SUTRA_TELEMETRY_ENDPOINT` | `http://localhost:4318/v1/metrics` | OTLP HTTP metrics endpoint |
+| `SUTRA_TELEMETRY_SAMPLE_RATE` | `1.0` | trace sampling rate from `0.0` to `1.0` |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
 
 ## Store behaviour
