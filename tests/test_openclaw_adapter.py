@@ -106,6 +106,18 @@ def test_uninstall_removes_only_a_generated_plugin(paths):
     assert path.exists()
 
 
+def test_cli_uninstall_removes_the_plugin_without_the_host_binary(
+        paths, monkeypatch, capsys):
+    root, config_dir, config = paths
+    path = openclaw.plugin_path(config_dir)
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
+
+    assert cli.main(["uninstall", "--client", "openclaw"]) == 0
+    assert not path.exists()
+
+
 def test_dry_run_writes_nothing(paths, capsys):
     _, config_dir, config = paths
     path = openclaw.plugin_path(config_dir)

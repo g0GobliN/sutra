@@ -198,6 +198,18 @@ def test_dry_run_writes_nothing_and_runs_no_claude(isolated, monkeypatch, capsys
     assert "dry run" in output and "PostToolUse" in output and "claude mcp add" in output
 
 
+def test_cli_uninstall_removes_the_hook_without_the_host(isolated, monkeypatch):
+    path = claude_code.settings_path()
+    document = {"theme": "dark"}
+    command, args = claude_code.hook_command()
+    assert claude_code.add_hook(document, command, args)
+    _settings(path, document)
+    monkeypatch.setattr(claude_code, "binary", lambda: None)
+
+    assert cli.main(["uninstall", "--client", "claude"]) == 0
+    assert json.loads(path.read_text(encoding="utf-8")) == {"theme": "dark"}
+
+
 def test_uninstall_removes_only_the_hook_and_mcp(isolated, monkeypatch, capsys):
     path = claude_code.settings_path()
     _settings(path, {"theme": "dark"})

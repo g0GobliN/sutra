@@ -122,6 +122,18 @@ def test_validation_failure_restores_the_previous_plugin(isolated, monkeypatch, 
     assert "rejected" in capsys.readouterr().err
 
 
+def test_cli_uninstall_removes_the_plugin_without_the_host(isolated, monkeypatch):
+    _fake_runner(monkeypatch)
+    assert cli.main(["install", "--client", "hermes"]) == 0
+    target = hermes.plugin_dir()
+    assert hermes.is_ours(target)
+    monkeypatch.setattr(hermes, "binary", lambda: None)
+    monkeypatch.setattr(hermes, "_run", lambda *_a, **_k: None)
+
+    assert cli.main(["uninstall", "--client", "hermes"]) == 0
+    assert not target.exists()
+
+
 def test_uninstall_disables_and_removes_only_our_plugin(isolated, monkeypatch, capsys):
     calls = _fake_runner(monkeypatch)
     assert hermes.install() == 0

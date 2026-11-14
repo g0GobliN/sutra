@@ -131,28 +131,19 @@ def _install_one(client: str, args, *, required: bool) -> int:
 
 
 def _uninstall_one(client: str, args, *, required: bool) -> int:
+    # Uninstall never requires the host binary: the artifacts SUTRA wrote must
+    # still be removable after a client is uninstalled or renamed. Each adapter
+    # handles a missing host and reports what it could not clean up.
     if client == "claude":
         from . import claude_code
-        if not claude_code.binary():
-            if required:
-                print_error("claude is not installed")
-                return 1
-            print_warning("claude is not installed; skipped")
-            return 0
         return claude_code.uninstall(dry_run=args.dry_run)
     if client == "hermes":
         from . import hermes
-        if not hermes.binary():
-            print_warning("hermes is not installed; skipped")
-            return 0
         return hermes.uninstall(dry_run=args.dry_run)
     if client == "codex":
         from . import codex
         return codex.uninstall(dry_run=args.dry_run)
     if client == "openclaw":
-        if shutil.which("openclaw") is None:
-            print_warning("openclaw is not installed; skipped")
-            return 0
         return openclaw.uninstall(dry_run=args.dry_run)
     from . import opencode
     status = opencode.uninstall(dry_run=args.dry_run, config_path=args.config)
