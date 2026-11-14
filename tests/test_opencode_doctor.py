@@ -12,7 +12,9 @@ import sys
 
 import pytest
 
-from conftest import ROOT, plugin_module
+from conftest import expose_package
+
+from conftest import plugin_module
 
 opencode = plugin_module("opencode")
 claude_code = plugin_module("claude_code")
@@ -29,8 +31,7 @@ def installed(tmp_path, monkeypatch):
     assert opencode.install(python=sys.executable, home=home,
                             config_path=config) == 0
     library = tmp_path / "lib"
-    library.mkdir()
-    (library / "sutra").symlink_to(ROOT, target_is_directory=True)
+    expose_package(library / "sutra")
     monkeypatch.setenv("PYTHONPATH", str(library))
     return tmp_path, config, home
 

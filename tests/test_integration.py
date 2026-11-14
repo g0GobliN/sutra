@@ -10,10 +10,17 @@ tested without importing the Hermes runtime.
 import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 
+from conftest import plugin_module
 from test_sutra import big
+
+engine = plugin_module("engine")
+core = plugin_module("core")
+config = plugin_module("config")
+FIXTURES = Path(__file__).resolve().parent.parent / "benchmarks" / "fixtures"
 
 ID_RE = re.compile(r"id=(su_[0-9a-f]{32})")
 
@@ -163,3 +170,42 @@ def test_end_to_end_journey(sutra):
     assert "FAIL src/module_3000.test.ts" in found["content"]
     # Exit code is machine-readable state: it must survive untouched.
     assert result["exit_code"] == 1
+
+
+def test_a_parser_rewrite_names_its_recovery_id(sutra, monkeypatch, tmp_path):
+    """Regression: parser summaries stored the original but quoted no id."""
+    monkeypatch.setenv("SUTRA_MAX_BYTES", "512")
+    monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path / "store"))
+    monkeypatch.setenv("SUTRA_STATS_FILE", str(tmp_path / "stats.jsonl"))
+    text = (FIXTURES / "python" / "pytest" / "pytest_failing.txt").read_text(
+        encoding="utf-8")
+
+    visible = sutra.compress_result({"output": text}, tool_name="terminal")["output"]
+
+    assert visible != text
+    match = ID_RE.search(visible)
+    assert match, "a stored parser summary must quote the id that recovers it"
+    restored = json.loads(sutra.recovery.restore(
+        {"id": match.group(1), "mode": "full", "max_bytes": 64_000}))
+    assert restored["status"] == "ok"
+    assert restored["content"] == text
+
+
+def test_a_markerless_rewrite_does_not_claim_a_stored_entry(monkeypatch, tmp_path):
+    """Regression: a rewrite with no id left an unreachable store entry."""
+    monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path / "store"))
+    monkeypatch.setenv("SUTRA_STATS_FILE", str(tmp_path / "stats.jsonl"))
+
+    def fake_compress(text, **_kwargs):
+        return "short", {
+            "changed": True, "original_bytes": len(text.encode("utf-8")),
+            "compressed_bytes": 5, "rule": "fake", "omitted_bytes": 0,
+            "partial": True, "stored": False, "id": None,
+        }
+
+    monkeypatch.setattr(engine, "compress", fake_compress)
+    _, stats = core._compress_and_store("payload\n" * 500, cfg=config.resolve())
+
+    assert stats["changed"] is True
+    assert stats["stored"] is False
+    assert stats["id"] is None

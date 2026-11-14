@@ -23,5 +23,19 @@ def load_sutra():
     ROOT = pathlib.Path(__file__).resolve().parents[1]
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    import sutra
-    return sutra
+    try:
+        import sutra
+        return sutra
+    except Exception:
+        # Fallback: load the package __init__ directly by file path when the
+        # normal import fails (e.g. under pytest's isolated interpreter).
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "sutra", ROOT / "__init__.py",
+            submodule_search_locations=[str(ROOT)])
+        if spec is None or spec.loader is None:  # pragma: no cover
+            raise
+        module = importlib.util.module_from_spec(spec)
+        sys.modules["sutra"] = module
+        spec.loader.exec_module(module)
+        return module

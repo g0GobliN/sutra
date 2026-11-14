@@ -130,7 +130,9 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                 # marker can quote a real id instead of promising one.
                 kept_out, kept_stats = engine.compress(
                     text, ref=Ref(entry.id, cfg.store_ttl_hours), cfg=cfg)
-                if kept_stats.get("changed"):
+                # A rewrite that quotes no id cannot be recovered, so it must
+                # not leave an unreachable entry behind or claim one.
+                if kept_stats.get("changed") and "[sutra:" in kept_out:
                     out, stats = kept_out, kept_stats
                     stats = dict(stats)
                     stats["stored"] = True

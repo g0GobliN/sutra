@@ -2,7 +2,7 @@
 
 **Status: completed pilot; live-agent arm not run.** This report records a
 deterministic, offline measurement of SUTRA's tool-output handling plus
-adapter-surface checks for the four supported hosts. It is not a live-model A/B
+adapter-surface checks for four hosts. It is not a live-model A/B
 result, not a provider bill, and not evidence of live task success.
 
 The pilot was run to find out where SUTRA works, where it does not, and what

@@ -255,8 +255,21 @@ def test_one_adapter_exception_does_not_stop_the_next(monkeypatch, capsys):
     assert calls == ["claude", "hermes"]
     output = capsys.readouterr()
     assert "claude install failed" in output.err
+    assert "RuntimeError: broken adapter" in output.err
     assert "claude=failed" in output.out
     assert "hermes=skipped" in output.out
+
+
+def test_uninstall_reports_a_removal_not_a_registration(tmp_path, capsys):
+    path = tmp_path / "opencode.json"
+    path.write_text(JSON_CONFIG, encoding="utf-8")
+    assert installer.install(path) == 0
+    capsys.readouterr()
+    assert installer.uninstall(path) == 0
+    output = capsys.readouterr().out
+    assert "Removed sutra MCP entry" in output
+    assert "Registered" not in output
+    assert "SUTRA UNINSTALLATION REPORT" in output
 
 
 def test_the_package_declares_its_console_entry_points():

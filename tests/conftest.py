@@ -8,7 +8,9 @@ import ``.engine``, ``.store`` and ``.recovery`` exactly as Hermes loads it.
 from __future__ import annotations
 
 import importlib.util
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -58,6 +60,49 @@ def plugin_module(name: str):
     return importlib.import_module(f"{load_plugin().__name__}.{name}")
 
 
+def expose_package(destination: Path) -> Path:
+    """Make the checkout importable as ``sutra`` at ``destination``.
+
+    The repository root *is* the package, so hosts that run a separate
+    interpreter need it on ``PYTHONPATH`` under the import name. A symlink is
+    the cheapest way to do that, but Windows without Developer Mode or an
+    elevated shell cannot create one (``WinError 1314``). Fall back to a
+    filtered copy so these tests still run there instead of erroring at setup.
+    """
+    destination = Path(destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        destination.symlink_to(ROOT, target_is_directory=True)
+        return destination
+    except (OSError, NotImplementedError):
+        shutil.copytree(
+            ROOT, destination,
+            ignore=shutil.ignore_patterns(
+                ".git", ".venv", "venv", "__pycache__", "build", "dist",
+                ".pytest_cache", ".ruff_cache"),
+        )
+        return destination
+
+
+def symlink_supported() -> bool:
+    """True when this account can create symlinks."""
+    global _SYMLINK_SUPPORTED
+    if _SYMLINK_SUPPORTED is None:
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            target.mkdir()
+            link = Path(tmp) / "link"
+            try:
+                link.symlink_to(target, target_is_directory=True)
+                _SYMLINK_SUPPORTED = link.is_symlink()
+            except (OSError, NotImplementedError):
+                _SYMLINK_SUPPORTED = False
+    return _SYMLINK_SUPPORTED
+
+
+_SYMLINK_SUPPORTED: bool | None = None
+
+
 def _alias_root_package_for_pytest() -> None:
     """Make the repository root's package importable under the name pytest derives.
 
@@ -80,7 +125,7 @@ def _alias_root_package_for_pytest() -> None:
         return
     module = load_plugin()
     # Identifier-named checkouts: pytest resolves the root package to its
-    # dotted directory name ("tooltrim"). Non-identifier checkouts: resolution
+    # dotted directory name ("sutra"). Non-identifier checkouts: resolution
     # fails and pytest's fallback imports the file under the literal name
     # "__init__". Register both so either path finds the real module.
     sys.modules.setdefault(".".join(reversed(parts)), module)
@@ -103,6 +148,13 @@ def isolated_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     yield
+
+
+@pytest.fixture()
+def requires_symlink():
+    """Skip a test whose subject *is* symlink behaviour when the OS refuses."""
+    if not symlink_supported():
+        pytest.skip("symlinks are not available for this account")
 
 
 @pytest.fixture()

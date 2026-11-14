@@ -129,7 +129,7 @@ def test_prune_sweeps_stale_temp_files_and_orphan_meta(tmp_path):
     assert store.get(real.id).status == "ok"
 
 
-def test_store_refuses_a_symlink_directory(tmp_path):
+def test_store_refuses_a_symlink_directory(tmp_path, requires_symlink):
     real = tmp_path / "real"
     real.mkdir()
     link = tmp_path / "link"

@@ -22,12 +22,14 @@ import re
 import shutil
 import subprocess
 
-CLIENTS = ("hermes", "claude", "opencode", "cursor", "codex", "windsurf")
+CLIENTS = ("hermes", "claude", "opencode", "openclaw", "cursor", "codex",
+           "windsurf")
 
 _AUTOMATIC = {
     "hermes": "native tool_execution middleware",
     "claude": "PostToolUse hook (updatedToolOutput) + MCP recovery",
     "opencode": "generated tool.execute.after plugin + sutra_restore",
+    "openclaw": "generated tool.execute.after plugin + sutra_restore",
 }
 _MCP_ONLY = {
     "cursor": "MCP server; built-in tool output cannot be replaced",
@@ -78,12 +80,24 @@ def _probe_version(executable: str) -> tuple[str | None, str | None]:
         return None, "version probe timed out"
     except OSError as exc:
         return None, f"version probe failed: {exc}"
-    output = (result.stdout or result.stderr or "").strip()
+    output = "\n".join(part for part in (result.stdout, result.stderr)
+                      if part and part.strip()).strip()
     if not output:
+        if result.returncode:
+            return None, f"version probe exited with status {result.returncode} and no output"
         return None, "version probe returned no output"
     first = next((line.strip() for line in output.splitlines() if line.strip()), "")
-    match = _VERSION_RE.search(first)
-    return (match.group(1) if match else first[:120], None)
+    detail = f": {first[:120]}" if first else ""
+    if result.returncode:
+        # A failed probe may print its runtime's version (for example, Node's
+        # "Node.js v24.14.0" after a loader error). That is not the client's
+        # version, so a nonzero exit never yields one.
+        return None, f"version probe exited with status {result.returncode}{detail}"
+    for line in output.splitlines():
+        match = _VERSION_RE.search(line)
+        if match:
+            return match.group(1), None
+    return None, f"version probe printed no version{detail}"
 
 
 def _hermes_config() -> pathlib.Path | None:
@@ -130,6 +144,25 @@ def _codex_config() -> pathlib.Path | None:
                        _config_home() / "codex" / "config.toml")
 
 
+def _openclaw_config() -> pathlib.Path | None:
+    """OpenClaw's config file, or the SUTRA plugin already written into it.
+
+    The plugin can be installed before the OpenClaw host exists, so it is
+    concrete evidence of the config tree in the same way OpenCode's generated
+    plugin is. The config directory honors ``SUTRA_OPENCLAW_CONFIG`` and
+    otherwise defaults to ``~/.openclaw``.
+    """
+    try:
+        from . import openclaw
+        config = openclaw.openclaw_config_dir() / "openclaw.json"
+        if config.is_file():
+            return config
+        plugin = openclaw.plugin_path()
+        return plugin if plugin.is_file() else None
+    except Exception:
+        return None
+
+
 def _codex_hook() -> bool:
     """True when Codex's user hooks.json carries the SUTRA handler."""
     try:
@@ -159,6 +192,9 @@ def _spec(name: str) -> tuple[tuple[str, ...], pathlib.Path | None, str, str]:
     if name == "opencode":
         return (("opencode",), _opencode_config(), "automatic",
                 _AUTOMATIC["opencode"])
+    if name == "openclaw":
+        return (("openclaw",), _openclaw_config(), "automatic",
+                _AUTOMATIC["openclaw"])
     if name == "cursor":
         return (("cursor", "cursor-agent"), _cursor_config(), "mcp-only",
                 _MCP_ONLY["cursor"])

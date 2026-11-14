@@ -33,6 +33,8 @@ import sys
 import tempfile
 import tomllib
 
+from .ui import print_error, print_info, print_success
+
 CLIENT = "codex"
 SERVER_NAME = "sutra"
 HOOK_MARKER = "sutra-codex-hook.py"
@@ -257,37 +259,37 @@ def _install_hook(python: str, *, dry_run: bool) -> tuple[int, bool]:
     try:
         document = _load_hooks(path)
     except ValueError as exc:
-        print(f"sutra: could not read Codex hooks: {exc}", file=sys.stderr)
+        print_error(f"could not read Codex hooks: {exc}")
         return 1, False
     command = _hook_command(python)
     located = _locate_hook(document)
     if located is not None:
         handler = document["hooks"]["PostToolUse"][located[0]]["hooks"][located[1]]
         if handler.get("command") == command and handler.get("type") == "command":
-            print("sutra: Codex already has the SUTRA PostToolUse hook; nothing to do")
+            print_info("Codex already has the SUTRA PostToolUse hook; nothing to do")
             return 0, False
         if dry_run:
-            print(f"sutra: dry run, would update the SUTRA Codex hook in {path}")
+            print_info(f"sutra: dry run, would update the SUTRA Codex hook in {path}")
             return 0, False
         handler["command"] = command
         handler.setdefault("type", "command")
         handler.setdefault("timeout", 30)
         backup = _write_hooks(path, document)
-        print(f"sutra: updated the SUTRA PostToolUse hook in {path}")
+        print_success(f"sutra: updated the SUTRA PostToolUse hook in {path}")
         if backup:
-            print(f"sutra: backup at {backup}")
-        print("sutra: run /hooks in Codex and trust the SUTRA hook")
+            print_info(f"sutra: backup at {backup}")
+        print_info("sutra: run /hooks in Codex and trust the SUTRA hook")
         return 0, True
     if dry_run:
-        print(f"sutra: dry run, would add the SUTRA PostToolUse hook to {path}")
+        print_info(f"sutra: dry run, would add the SUTRA PostToolUse hook to {path}")
         return 0, False
     document.setdefault("hooks", {}).setdefault("PostToolUse", []).append(
         _group(command))
     backup = _write_hooks(path, document)
-    print(f"sutra: installed the SUTRA PostToolUse hook in {path}")
+    print_success(f"sutra: installed the SUTRA PostToolUse hook in {path}")
     if backup:
-        print(f"sutra: backup at {backup}")
-    print("sutra: Codex requires one-time trust: run /hooks and trust the SUTRA hook")
+        print_info(f"sutra: backup at {backup}")
+    print_info("sutra: Codex requires one-time trust: run /hooks and trust the SUTRA hook")
     return 0, True
 
 
@@ -296,14 +298,14 @@ def _remove_hook(*, dry_run: bool) -> tuple[int, bool]:
     try:
         document = _load_hooks(path)
     except ValueError as exc:
-        print(f"sutra: could not read Codex hooks: {exc}", file=sys.stderr)
+        print_error(f"could not read Codex hooks: {exc}")
         return 1, False
     located = _locate_hook(document)
     if located is None:
-        print("sutra: Codex has no SUTRA PostToolUse hook; nothing to do")
+        print_info("Codex has no SUTRA PostToolUse hook; nothing to do")
         return 0, False
     if dry_run:
-        print(f"sutra: dry run, would remove the SUTRA PostToolUse hook from {path}")
+        print_info(f"sutra: dry run, would remove the SUTRA PostToolUse hook from {path}")
         return 0, False
     group_index, handler_index = located
     groups = document["hooks"]["PostToolUse"]
@@ -317,8 +319,8 @@ def _remove_hook(*, dry_run: bool) -> tuple[int, bool]:
     else:
         backup = _write_hooks(path, document)
         if backup:
-            print(f"sutra: backup at {backup}")
-    print(f"sutra: removed the SUTRA PostToolUse hook from {path}")
+            print_info(f"sutra: backup at {backup}")
+    print_success(f"sutra: removed the SUTRA PostToolUse hook from {path}")
     return 0, True
 
 
@@ -329,83 +331,81 @@ def _install_mcp(python: str, *, dry_run: bool) -> int:
     if dry_run:
         entry, error = _config_entry() if config_home().is_dir() else (None, None)
         if error not in (None, "not configured"):
-            print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+            print_error(f"could not read Codex MCP config: {error}")
             return 1
         if entry is not None:
             if _matches(entry, python):
-                print("sutra: Codex already has the sutra MCP entry; nothing to do")
+                print_info("Codex already has the sutra MCP entry; nothing to do")
                 return 0
-            print("sutra: a different sutra MCP entry already exists in Codex; "
-                  "run `sutra uninstall --client codex` first", file=sys.stderr)
+            print_error("a different sutra MCP entry already exists in Codex; "
+                        "run `sutra uninstall --client codex` first")
             return 1
-        print(f"sutra: dry run, would run: codex {' '.join(command)}")
+        print_info(f"sutra: dry run, would run: codex {' '.join(command)}")
         return 0
     if config_home().is_dir():
         entries, error = _list()
     else:
         entries, error = [], None
     if entries is None:
-        print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+        print_error(f"could not read Codex MCP config: {error}")
         return 1
     entry = _entry(entries)
     if entry is not None:
         if _matches(entry, python):
-            print("sutra: Codex already has the sutra MCP entry; nothing to do")
+            print_info("Codex already has the sutra MCP entry; nothing to do")
             return 0
-        print("sutra: a different sutra MCP entry already exists in Codex; "
-              "run `sutra uninstall --client codex` first", file=sys.stderr)
+        print_error("a different sutra MCP entry already exists in Codex; "
+                    "run `sutra uninstall --client codex` first")
         return 1
     config_home().mkdir(parents=True, exist_ok=True)
     result = _run(command, timeout=60)
     if result is None or result.returncode != 0:
         detail = ((result.stderr or result.stdout) if result else "codex did not run")
-        print(f"sutra: could not register the Codex MCP server: "
-              f"{(detail or '').strip()[-300:]}", file=sys.stderr)
+        print_error(f"could not register the Codex MCP server: {(detail or '').strip()[-300:]}")
         return 1
     entries, error = _list()
     if entries is None or not _matches(_entry(entries) or {}, python):
-        print(f"sutra: Codex MCP registration could not be verified: "
-              f"{error or 'entry missing'}", file=sys.stderr)
+        print_error(f"Codex MCP registration could not be verified: {error or 'entry missing'}")
         _run(["mcp", "remove", SERVER_NAME], timeout=45)
         return 1
-    print("sutra: registered the sutra MCP server with Codex")
+    print_success("sutra: registered the sutra MCP server with Codex")
     return 0
 
 
 def _remove_mcp(*, dry_run: bool) -> int:
     if binary() is None:
-        print("sutra: codex is not installed; nothing to uninstall")
+        print_info("sutra: codex is not installed; nothing to uninstall")
         return 0
     if not config_home().is_dir():
-        print("sutra: Codex has no sutra MCP entry; nothing to do")
+        print_info("sutra: Codex has no sutra MCP entry; nothing to do")
         return 0
     if dry_run:
         entry, error = _config_entry()
         if error not in (None, "not configured"):
-            print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+            print_error(f"could not read Codex MCP config: {error}")
             return 1
         if entry is None:
-            print("sutra: Codex has no sutra MCP entry; nothing to do")
+            print_info("sutra: Codex has no sutra MCP entry; nothing to do")
             return 0
-        print("sutra: dry run, would remove the sutra MCP entry from Codex")
+        print_info("sutra: dry run, would remove the sutra MCP entry from Codex")
         return 0
     entries, error = _list()
     if entries is None:
-        print(f"sutra: could not read Codex MCP config: {error}", file=sys.stderr)
+        print_error(f"could not read Codex MCP config: {error}")
         return 1
     if _entry(entries) is None:
-        print("sutra: Codex has no sutra MCP entry; nothing to do")
+        print_info("sutra: Codex has no sutra MCP entry; nothing to do")
         return 0
     if dry_run:
-        print("sutra: dry run, would remove the sutra MCP entry from Codex")
+        print_info("sutra: dry run, would remove the sutra MCP entry from Codex")
         return 0
     result = _run(["mcp", "remove", SERVER_NAME], timeout=45)
     if result is None or result.returncode != 0:
         detail = ((result.stderr or result.stdout) if result else "codex did not run")
-        print(f"sutra: could not remove the Codex MCP entry: "
-              f"{(detail or '').strip()[-300:]}", file=sys.stderr)
+        print_error(f"could not remove the Codex MCP entry: "
+                    f"{(detail or '').strip()[-300:]}")
         return 1
-    print("sutra: removed the sutra MCP entry from Codex")
+    print_success("sutra: removed the sutra MCP entry from Codex")
     return 0
 
 
@@ -440,7 +440,7 @@ def status() -> dict:
 def install(*, python: str | None = None, dry_run: bool = False) -> int:
     """Install the PostToolUse hook and the MCP recovery server."""
     if binary() is None:
-        print("sutra: codex is not installed; nothing to configure", file=sys.stderr)
+        print_error("sutra: codex is not installed; nothing to configure")
         return 1
     python = python or sys.executable
     code, hook_added = _install_hook(python, dry_run=dry_run)

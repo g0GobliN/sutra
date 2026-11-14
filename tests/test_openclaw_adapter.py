@@ -8,7 +8,6 @@ scripted-provider run documented in docs/automatic-install.md.
 
 import json
 import os
-import pathlib
 import shlex
 import shutil
 import stat
@@ -17,9 +16,10 @@ import sys
 
 import pytest
 
-from conftest import plugin_module
+from conftest import expose_package, plugin_module
 
 openclaw = plugin_module("openclaw")
+installer = plugin_module("installer")
 cli = plugin_module("cli")
 
 
@@ -68,6 +68,23 @@ def test_install_writes_a_private_plugin_and_is_idempotent(paths, capsys):
     assert "nothing to do" in capsys.readouterr().out
 
 
+def test_install_auto_detection_includes_an_installed_openclaw(paths):
+    root, config_dir, _ = paths
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    assert "openclaw" in installer.detect_clients()
+
+
+def test_openclaw_dry_run_is_reported_as_would_configure(paths, capsys):
+    root, config_dir, _ = paths
+    assert cli.main(["install", "--client", "openclaw", "--dry-run"]) == 0
+    output = capsys.readouterr().out
+    assert "writing the plugin so it is ready" in output
+    assert "openclaw=would configure" in output
+    assert "openclaw=skipped" not in output
+    assert not openclaw.plugin_path(config_dir).exists()
+
+
 def test_reinstall_after_an_interpreter_change_backs_up_the_old_plugin(paths):
     root, config_dir, config = paths
     path = openclaw.plugin_path(config_dir)
@@ -105,6 +122,18 @@ def test_uninstall_removes_only_a_generated_plugin(paths):
     path.write_text("// not ours\n", encoding="utf-8")
     assert openclaw.uninstall(config_path=config_dir) == 1
     assert path.exists()
+
+
+def test_cli_uninstall_removes_the_plugin_without_the_host_binary(
+        paths, monkeypatch, capsys):
+    root, config_dir, config = paths
+    path = openclaw.plugin_path(config_dir)
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    monkeypatch.setattr(cli.shutil, "which", lambda _name: None)
+
+    assert cli.main(["uninstall", "--client", "openclaw"]) == 0
+    assert not path.exists()
 
 
 def test_dry_run_writes_nothing(paths, capsys):
@@ -217,9 +246,7 @@ console.log("openclaw plugin ok")
     # directory has another name needs the package exposed under its import
     # name. A real install provides that; the test builds the same shape.
     library = tmp_path / "lib"
-    library.mkdir()
-    (library / "sutra").symlink_to(pathlib.Path(__file__).resolve().parents[1],
-                                    target_is_directory=True)
+    expose_package(library / "sutra")
     env = dict(os.environ, PYTHONPATH=str(library), HERMES_HOME=str(home))
     result = subprocess.run([node, str(script)], capture_output=True, text=True,
                             timeout=90, cwd=str(tmp_path), env=env)
@@ -261,9 +288,7 @@ assert.ok(!output.output.includes("openclaw-slow-token-7Q"))
 console.log("openclaw slow hook ok")
 """, encoding="utf-8")
     library = tmp_path / "lib"
-    library.mkdir()
-    (library / "sutra").symlink_to(pathlib.Path(__file__).resolve().parents[1],
-                                    target_is_directory=True)
+    expose_package(library / "sutra")
     env = dict(os.environ, PYTHONPATH=str(library), HERMES_HOME=str(home))
     result = subprocess.run([node, str(script)], capture_output=True, text=True,
                             timeout=30, cwd=str(tmp_path), env=env)

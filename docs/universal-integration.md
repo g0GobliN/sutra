@@ -80,9 +80,9 @@ sutra status                 # current per-host state
 sutra uninstall              # remove only SUTRA-owned entries
 ```
 
-`sutra install` auto-detects Hermes, Claude Code, OpenCode, and Codex. A
-detected host is never reported as automatically integrated merely because
-its config file exists:
+`sutra install` auto-detects Hermes, Claude Code, OpenCode, OpenClaw, and
+Codex. A detected host is never reported as automatically integrated merely
+because its config file exists:
 
 - Hermes is automatic only after the plugin validates and is enabled;
 - Claude Code is automatic only after the hook and MCP connection pass the
