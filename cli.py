@@ -594,7 +594,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _update(argv: list[str]) -> int:
-    """Check PyPI for a newer release, and upgrade only when asked."""
+    """Check the configured package index, and upgrade only when asked."""
     from . import update as update_module
 
     parser = argparse.ArgumentParser(

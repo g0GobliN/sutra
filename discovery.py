@@ -78,12 +78,24 @@ def _probe_version(executable: str) -> tuple[str | None, str | None]:
         return None, "version probe timed out"
     except OSError as exc:
         return None, f"version probe failed: {exc}"
-    output = (result.stdout or result.stderr or "").strip()
+    output = "\n".join(part for part in (result.stdout, result.stderr)
+                      if part and part.strip()).strip()
     if not output:
+        if result.returncode:
+            return None, f"version probe exited with status {result.returncode} and no output"
         return None, "version probe returned no output"
     first = next((line.strip() for line in output.splitlines() if line.strip()), "")
-    match = _VERSION_RE.search(first)
-    return (match.group(1) if match else first[:120], None)
+    detail = f": {first[:120]}" if first else ""
+    if result.returncode:
+        # A failed probe may print its runtime's version (for example, Node's
+        # "Node.js v24.14.0" after a loader error). That is not the client's
+        # version, so a nonzero exit never yields one.
+        return None, f"version probe exited with status {result.returncode}{detail}"
+    for line in output.splitlines():
+        match = _VERSION_RE.search(line)
+        if match:
+            return match.group(1), None
+    return None, f"version probe printed no version{detail}"
 
 
 def _hermes_config() -> pathlib.Path | None:

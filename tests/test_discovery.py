@@ -6,6 +6,7 @@ binary mutate a temporary home.
 """
 
 import json
+import types
 
 import pytest
 
@@ -98,6 +99,43 @@ def test_hermes_config_yields_automatic_tier_without_a_binary(isolated):
     assert row["automatic"] is True
     assert row["config"] == str(config)
     assert row["executable"] is None
+
+
+def test_a_failing_probe_is_not_reported_as_a_version(monkeypatch):
+    output = ("node:internal/modules/cjs/loader:1459\n"
+              "Error: Cannot find module 'claude'\n"
+              "Node.js v24.14.0\n")
+    monkeypatch.setattr(
+        discovery.subprocess, "run",
+        lambda *_a, **_k: types.SimpleNamespace(
+            returncode=1, stdout="", stderr=output))
+
+    version, error = discovery._probe_version("/usr/bin/claude")
+    assert version is None
+    assert error.startswith("version probe exited with status 1")
+    assert "loader" not in (version or "")
+    assert "24.14.0" not in (version or "")
+
+
+def test_a_version_is_found_after_other_output(monkeypatch):
+    monkeypatch.setattr(
+        discovery.subprocess, "run",
+        lambda *_a, **_k: types.SimpleNamespace(
+            returncode=0, stdout="warning: update available\nclaude 2.1.316\n",
+            stderr=""))
+
+    assert discovery._probe_version("/usr/bin/claude") == ("2.1.316", None)
+
+
+def test_output_without_a_version_is_reported_as_an_error(monkeypatch):
+    monkeypatch.setattr(
+        discovery.subprocess, "run",
+        lambda *_a, **_k: types.SimpleNamespace(
+            returncode=0, stdout="Claude Code\n", stderr=""))
+
+    version, error = discovery._probe_version("/usr/bin/claude")
+    assert version is None
+    assert error == "version probe printed no version: Claude Code"
 
 
 def test_a_failed_version_probe_does_not_hide_an_installed_binary(isolated, monkeypatch):
