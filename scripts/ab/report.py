@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Render the A/B results into the frozen report shape — see docs/ab-benchmark.md.
 
-Reads the runner's per-arm records (`results-<arm>-pass<n>.jsonl`) and emits a
+Reads the runner's per-arm records (`results-<protocol>-<arm>-pass<n>.jsonl`) and emits a
 markdown report that keeps the three evidence classes apart:
 
 1. **Task completion** — objective pass/fail per task per arm, with sample
@@ -32,6 +32,7 @@ for _stream in (sys.stdout, sys.stderr):
 
 
 ARMS = ("off", "on")
+SUPPORTED_PROTOCOLS = ("v1", "v2")
 
 
 def load(paths: list[str]) -> list[dict]:
@@ -50,6 +51,36 @@ def fmt_int(value: int | float | None) -> str:
 
 def task_name(record: dict) -> str:
     return str(record.get("task"))
+
+
+def record_protocol(record: dict) -> str:
+    value = record.get("protocol")
+    return str(value).strip() if value is not None else ""
+
+
+def single_protocol(records: list[dict]) -> str | None:
+    """Return the one protocol shared by every record, or None.
+
+    Mixing protocols silently would make task counts, rates and costs describe
+    no documented experiment, so the report refuses both mixed and unlabelled
+    evidence.
+    """
+    protocols = sorted({record_protocol(r) for r in records} - {""})
+    missing = sum(1 for r in records if not record_protocol(r))
+    if missing:
+        print(f"error: {missing} record(s) do not identify a protocol; "
+              "re-run the runner so every row carries `protocol`")
+        return None
+    if len(protocols) != 1:
+        print(f"error: mixed protocols in one report: {', '.join(protocols)}; "
+              "report each protocol separately")
+        return None
+    protocol = protocols[0]
+    if protocol not in SUPPORTED_PROTOCOLS:
+        print(f"error: unsupported protocol `{protocol}`; expected one of "
+              f"{', '.join(SUPPORTED_PROTOCOLS)}")
+        return None
+    return protocol
 
 
 # --- Phase Four additions: statistical honesty and cost -------------------
@@ -112,12 +143,16 @@ def fmt_usd(value) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("records", nargs="+", help="results-<arm>-pass<n>.jsonl files")
+    parser.add_argument("records", nargs="+",
+                        help="results-<protocol>-<arm>-pass<n>.jsonl files")
     parser.add_argument("--out", default=None, help="write markdown here (default stdout)")
     args = parser.parse_args(argv)
     records = load(args.records)
     if not records:
         print("no records; nothing to report")
+        return 1
+    protocol = single_protocol(records)
+    if protocol is None:
         return 1
 
     by_task: dict[str, dict[str, list[dict]]] = defaultdict(lambda: defaultdict(list))
@@ -134,6 +169,7 @@ def main(argv: list[str] | None = None) -> int:
 
     lines: list[str] = []
     lines.append("# A/B results — SUTRA on vs off\n")
+    lines.append(f"- protocol: {protocol}")
     lines.append(f"- records: {len(records)} from {len(args.records)} file(s); "
                  f"tasks: {len(tasks)}; seeds: {', '.join(seeds)}")
     if dry:

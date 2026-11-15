@@ -1,5 +1,5 @@
-"""Tests for the Phase Four A/B runner extensions: expanded task corpus
-(8 -> 30 representative repo tasks), paired experiment mode
+"""Tests for the A/B protocols: the original frozen eight-task v1 corpus,
+the expanded 30-task v2 corpus, paired experiment mode
 (control off / treatment on, identical conditions), and the usage /
 tool-call / SUTRA-evidence metrics, plus the report's statistical-honesty
 and cost helpers.
@@ -39,13 +39,33 @@ EXTRA = ("eslint", "mypy", "pytest-fail", "cargo-fail", "go-fail",
 ALL_TASKS = BUILTIN + EXTRA
 
 
-def test_task_corpus_expanded_to_thirty_representative_tasks():
-    names = [name for name, _, _, _ in run.TASKS]
-    assert len(run.TASKS) == 30, len(run.TASKS)
+def test_protocol_v1_is_the_original_eight_ordered_tasks():
+    names = [name for name, _, _, _ in run.PROTOCOLS["v1"]]
+    assert names == list(BUILTIN)
     assert len(names) == len(set(names)), "duplicate task names"
-    assert list(names[:8]) == list(BUILTIN)
-    assert list(names[8:]) == list(EXTRA)
+
+
+def test_protocol_v2_is_the_expanded_thirty_task_corpus():
+    names = [name for name, _, _, _ in run.PROTOCOLS["v2"]]
+    assert len(names) == 30, len(names)
+    assert len(names) == len(set(names)), "duplicate task names"
+    assert tuple(names) == ALL_TASKS
     assert len(run.EXTRA_TASKS) == 22
+
+
+def test_default_protocol_is_v1(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_execute(args):
+        captured["protocol"] = args.protocol
+        return 0
+
+    monkeypatch.setattr(run, "execute", fake_execute)
+    monkeypatch.setattr(sys, "argv",
+                        ["run.py", "--dry-run", "--out", str(tmp_path / "r")])
+    assert run.main() == 0
+    assert run.DEFAULT_PROTOCOL == "v1"
+    assert captured["protocol"] == "v1"
 
 
 def test_paired_flag_stored_true_defaults_false(monkeypatch, tmp_path):
@@ -53,14 +73,16 @@ def test_paired_flag_stored_true_defaults_false(monkeypatch, tmp_path):
 
     def fake_execute(args):
         captured["paired"] = args.paired
+        captured["protocol"] = args.protocol
         return 0
 
     monkeypatch.setattr(run, "execute", fake_execute)
     monkeypatch.setattr(sys, "argv",
-                        ["run.py", "--paired", "--dry-run", "--out",
+                        ["run.py", "--paired", "--protocol", "v2", "--dry-run", "--out",
                          str(tmp_path / "r1")])
     assert run.main() == 0
     assert captured["paired"] is True
+    assert captured["protocol"] == "v2"
 
     monkeypatch.setattr(sys, "argv",
                         ["run.py", "--dry-run", "--out",
@@ -77,8 +99,10 @@ def test_existing_arm_interface_unchanged(monkeypatch):
     assert excinfo.value.code == 2
 
 
-def test_scorer_selfcheck_passes_for_all_thirty_tasks():
+def test_scorer_selfcheck_passes_for_both_protocols():
     assert run.selfcheck() == 0
+    assert run.selfcheck(["v1"]) == 0
+    assert run.selfcheck(["v2"]) == 0
 
 
 def test_help_survives_a_cp932_console():
@@ -92,24 +116,31 @@ def test_help_survives_a_cp932_console():
         assert b"usage:" in completed.stdout, name
 
 
-def test_dry_run_records_one_row_per_task_for_both_arms(tmp_path):
+@pytest.mark.parametrize(
+    ("protocol", "expected_tasks"),
+    (("v1", BUILTIN), ("v2", ALL_TASKS)),
+)
+def test_dry_run_records_one_row_per_task_for_both_arms(
+        tmp_path, protocol, expected_tasks):
     out = tmp_path / "ab"
     for arm in ("off", "on"):
         completed = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "ab" / "run.py"),
-             "--dry-run", "--paired", "--arm", arm, "--out", str(out)],
+             "--dry-run", "--paired", "--protocol", protocol,
+             "--arm", arm, "--out", str(out)],
             capture_output=True, text=True, timeout=180, cwd=str(ROOT))
         assert completed.returncode == 0, completed.stderr
 
     def read(arm):
-        path = out / f"results-{arm}-pass1.jsonl"
+        path = out / f"results-{protocol}-{arm}-pass1.jsonl"
         return [json.loads(line) for line in path.read_text().splitlines()
                 if line.strip()]
 
     off, on = read("off"), read("on")
-    assert len(off) == len(on) == 30
+    assert len(off) == len(on) == len(expected_tasks)
     for records in (off, on):
-        assert {r["task"] for r in records} == set(ALL_TASKS)
+        assert {r["task"] for r in records} == set(expected_tasks)
+        assert all(r["protocol"] == protocol for r in records)
         assert all(r["scored"] is False for r in records)  # mechanics, not results
         assert all(r["paired"] is True for r in records)
         assert all(r["dry_run"] is True for r in records)
@@ -156,7 +187,8 @@ def test_report_helpers_read_optional_fields_gracefully():
 
 def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
     off_record = {
-        "arm": "off", "task": "log-failure", "seed": 1, "pass_index": 1,
+        "protocol": "v1", "arm": "off", "task": "log-failure", "seed": 1,
+        "pass_index": 1,
         "scored": True, "timed_out": False, "duration_s": 1.5,
         "usage": {"total": {"input_tokens": 1000, "output_tokens": 500,
                             "actual_cost_usd": 0.0075}},
@@ -165,7 +197,8 @@ def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
         "exit_code": 0, "stderr_tail": "",
     }
     on_record = {
-        "arm": "on", "task": "log-failure", "seed": 1, "pass_index": 1,
+        "protocol": "v1", "arm": "on", "task": "log-failure", "seed": 1,
+        "pass_index": 1,
         "scored": False, "timed_out": True, "duration_s": 900.0,
         "usage": None,
         "runner_tokens": {"input": 900, "output": 450},
@@ -174,13 +207,14 @@ def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
                            "restore_statuses": ["ok"]},
         "exit_code": None, "stderr_tail": "timed out after 900s",
     }
-    p_off = tmp_path / "results-off-pass1.jsonl"
-    p_on = tmp_path / "results-on-pass1.jsonl"
+    p_off = tmp_path / "results-v1-off-pass1.jsonl"
+    p_on = tmp_path / "results-v1-on-pass1.jsonl"
     p_off.write_text(json.dumps(off_record) + "\n", encoding="utf-8")
     p_on.write_text(json.dumps(on_record) + "\n", encoding="utf-8")
     out = tmp_path / "report.md"
     assert report.main([str(p_off), str(p_on), "--out", str(out)]) == 0
     text = out.read_text(encoding="utf-8")
+    assert "- protocol: v1" in text
     assert "| tasks | 1 |" in text
     assert "| trials per arm per task | 1–1 recorded sessions |" in text
     assert "| total sessions | 2 |" in text
@@ -190,3 +224,31 @@ def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
     assert "- on/log-failure (seed 1): timed out" in text  # deviation listed, never dropped
     assert "Deterministic compression savings" in text
     assert "documented default rates for gpt-4o; estimates only, not provider bills" in text
+
+
+def _write_record(path, protocol, arm, task):
+    record = {"protocol": protocol, "arm": arm, "task": task, "seed": 1,
+              "pass_index": 1, "scored": True, "timed_out": False,
+              "duration_s": 1.0, "usage": None, "runner_tokens": None,
+              "tool_calls": 0, "sutra_evidence": None, "exit_code": 0,
+              "stderr_tail": ""}
+    path.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+
+def test_report_rejects_mixed_protocol_evidence(tmp_path, capsys):
+    p_v1 = tmp_path / "results-v1-off-pass1.jsonl"
+    p_v2 = tmp_path / "results-v2-on-pass1.jsonl"
+    _write_record(p_v1, "v1", "off", "log-failure")
+    _write_record(p_v2, "v2", "on", "log-failure")
+    out = tmp_path / "report.md"
+    assert report.main([str(p_v1), str(p_v2), "--out", str(out)]) == 1
+    assert "mixed protocols" in capsys.readouterr().out
+    assert not out.exists()
+
+
+def test_report_rejects_records_without_a_protocol(tmp_path, capsys):
+    path = tmp_path / "results-on-pass1.jsonl"
+    path.write_text(json.dumps({"arm": "on", "task": "log-failure"}) + "\n",
+                    encoding="utf-8")
+    assert report.main([str(path)]) == 1
+    assert "do not identify a protocol" in capsys.readouterr().out

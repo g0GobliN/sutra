@@ -131,4 +131,6 @@ model or billing measurements.
 - Cursor or Windsurf automatic replacement — no supported generic result hook.
 - Compression of MCP tool results through OpenCode's after-hook in 1.19.5.
 - A live model task-success score or invoice saving.
-- Windows verification. The current CI coverage is Linux and macOS.
+- Windows live-host verification. Windows has functional full-suite CI coverage,
+  but the live Claude/Codex/Hermes host probes have not been run on Windows and
+  remain Linux-only.

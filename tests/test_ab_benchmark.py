@@ -31,7 +31,7 @@ def test_every_scorer_accepts_its_own_answer_and_rejects_a_wrong_one():
 
 def test_every_text_fixture_is_sized_for_the_real_pipeline():
     workspace = pathlib.Path(tempfile.mkdtemp(prefix="sutra-ab-size-"))
-    for index, (name, _, setup, _) in enumerate(ab.TASKS):
+    for index, (name, _, setup, _) in enumerate(ab.PROTOCOLS["v2"]):
         evidence = setup(workspace / name, random.Random(1_000 + index))
         if "test_cmd" in evidence:  # the coding task is a repo, not a payload
             continue
@@ -44,7 +44,7 @@ def test_buried_clue_is_elided_and_boundary_token_survives(sutra):
     task 6's clue must vanish from the compressed copy (recovery is required),
     task 7's token must stay visible (boundary evidence is kept)."""
     for name, index, expected_visible in (("buried", 5, False), ("boundary", 6, True)):
-        task, prompt, setup, scorer = ab.TASKS[index]
+        task, prompt, setup, scorer = ab.PROTOCOLS["v1"][index]
         del task, prompt, scorer
         workspace = pathlib.Path(tempfile.mkdtemp(prefix="sutra-ab-place-"))
         evidence = setup(workspace, random.Random(2_000 + index))
@@ -80,7 +80,7 @@ def test_rerunning_into_existing_records_aborts(tmp_path):
          "--dry-run", "--arm", "on", "--out", str(out)],
         capture_output=True, text=True, timeout=120, cwd=str(ROOT))
     assert first.returncode == 0
-    assert (out / "results-on-pass1.jsonl").stat().st_size > 0
+    assert (out / "results-v1-on-pass1.jsonl").stat().st_size > 0
     second = subprocess.run(
         [_sys.executable, str(ROOT / "scripts" / "ab" / "run.py"),
          "--dry-run", "--arm", "on", "--out", str(out)],
@@ -107,7 +107,7 @@ def test_a_dry_run_never_probes_the_host(tmp_path):
     assert done.returncode == 0, done.stderr
     assert elapsed < 30, f"the dry run waited {elapsed:.0f}s on the host"
     assert "host state not probed" in done.stdout
-    assert (out / "results-on-pass1.jsonl").stat().st_size > 0
+    assert (out / "results-v1-on-pass1.jsonl").stat().st_size > 0
 
 
 @needs_posix_stub
@@ -152,7 +152,7 @@ def test_probe_timeout_flag_is_parsed_and_forwarded(tmp_path, monkeypatch, capsy
     assert seen == [0.5]
     out = capsys.readouterr().out
     assert "could not read the live plugin state" in out
-    assert not (tmp_path / "v5" / "results-on-pass1.jsonl").exists()
+    assert not (tmp_path / "v5" / "results-v1-on-pass1.jsonl").exists()
 
 
 def test_probe_timeout_rejects_nonpositive_values(tmp_path, monkeypatch, capsys):

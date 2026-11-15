@@ -160,7 +160,7 @@ What the numbers are — and are not:
 
 The [effectiveness pilot](docs/effectiveness-pilot.md) separately measured 23 deterministic fixtures: 91.01% byte and tokenizer-estimated token reduction on the 17 rewritten fixtures, 0.00% on six protection cases, 17/17 byte-exact restores, and 18/18 host-adapter checks. It did not call a model; live task success, provider input-token reduction and live host ranking remain unmeasured. The [Phase 2 cost replay](docs/phase2-hermes-cost-report.md) measures tool-result context, exact-duplicate reuse and policy prompt cost on eight deterministic workloads, also without a model.
 
-Method, fixtures, per-phase timings, memory, recovery costs and reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). The frozen live-model A/B protocol is in [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md); it has not been run.
+Method, fixtures, per-phase timings, memory, recovery costs and reproduction: [docs/benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/benchmark.md). The live-model A/B protocols are in [docs/ab-benchmark.md](https://github.com/g0GobliN/sutra/blob/main/docs/ab-benchmark.md): v1 (the original eight tasks, the default) and v2 (the expanded 30-task corpus). Neither has been run.
 
 ## Safety, recovery and trust
 
