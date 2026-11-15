@@ -244,11 +244,13 @@ job stops depending on `verify-testpypi`, starts rebuilding, or loses the
 checksum verification.
 
 The final job downloads the verified `dist` artifact, re-checks
-`SHA256SUMS`, installs `sutra-agent==X.Y.Z` from PyPI with a bounded retry for
-simple-index propagation, and runs `sutra --version` and `sutra config`. It then
-compares the wheel and sdist hashes PyPI serves with the built manifest, so a
-successful upload that cannot be installed, or whose served bytes differ, fails
-the workflow instead of passing silently.
+`SHA256SUMS`, installs `sutra-agent==X.Y.Z` from PyPI with a 20-minute bounded
+retry for simple-index propagation, and runs `sutra --version` and `sutra config`.
+Each attempt is logged with the remaining window and the retry delay grows from
+10 to 60 seconds. It then compares the served version, wheel and sdist hashes
+with the built manifest, so a successful upload that cannot be installed, a
+wrong version, or differing bytes fails the workflow instead of passing
+silently.
 
 ## Post-publication verification
 
@@ -307,7 +309,9 @@ the workflow instead of passing silently.
   rehearsal itself was wrong.
 - **The TestPyPI install cannot find the package.** Confirm the run reached
   `verify-testpypi` and that the version exists on TestPyPI; index propagation can
-  take a short time, and the verification job polls for up to ten minutes.
+  lag the upload. Both verification jobs poll the JSON API and the real simple
+  index for up to 20 minutes, logging each attempt with bounded backoff before
+  failing.
 - **A release was started with the wrong tag.** Nothing is uploaded until the
   build and smoke jobs pass; if a publish job already ran on TestPyPI, fix the
   problem and publish the next version to production. Tags that were never

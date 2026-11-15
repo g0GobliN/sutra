@@ -49,3 +49,10 @@ def test_every_action_is_pinned_to_a_commit_with_a_version_comment():
             reference = line.split("@", 1)[1].split("#", 1)[0].strip()
             assert re.fullmatch(r"[0-9a-f]{40}", reference), line
             assert " # " in line, line
+
+
+def test_the_test_jobs_install_the_telemetry_extra():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert text.count('pip install -e ".[telemetry]"') >= 4, (
+        "every normal product-suite job must install the optional OTel stack "
+        "so the telemetry failure tests exercise real exporters")
