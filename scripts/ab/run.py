@@ -123,8 +123,8 @@ def setup_coding(workspace: pathlib.Path, rng: random.Random) -> dict:
 
 
 # --- Phase Four additions: representative repo tasks ----------------------
-# Appended to TASKS below; pilot tasks 0-7 keep their indices so existing
-# tests and scorers are unaffected.
+# The expanded corpus used by protocol v2; pilot tasks 0-7 keep their indices
+# so existing tests and scorers are unaffected.
 
 def _big_text(workspace: pathlib.Path, rel: str, lines: list[str]) -> None:
     text = "\n".join(lines) + "\n"
@@ -482,7 +482,7 @@ EXTRA_TASKS = [
 ]
 
 
-TASKS = [
+CORE_TASKS = [
     ("log-failure", "The file run.log in this directory is a test-run log. "
      "Use the terminal to inspect it and tell me the exact name of the ONE "
      "failing test. Reply with just that name.",
@@ -520,7 +520,15 @@ TASKS = [
          subprocess.run(ev["test_cmd"], cwd=ws, capture_output=True).returncode == 0,
          "test exits 0")),
 ]
-TASKS.extend(EXTRA_TASKS)
+
+# Protocol v1 is the original frozen eight-task experiment. Protocol v2 is the
+# expanded 30-task corpus; it is opt-in so the first live experiment remains the
+# documented, cheaper protocol rather than silently using every added task.
+PROTOCOLS = {
+    "v1": CORE_TASKS,
+    "v2": CORE_TASKS + EXTRA_TASKS,
+}
+DEFAULT_PROTOCOL = "v1"
 
 # Sanity: every fixture must be big enough that SUTRA would rewrite it if it
 # reached the model whole (SUTRA_MAX_BYTES 24,576), and small enough to survive
@@ -719,15 +727,16 @@ def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
 # --- the runner -------------------------------------------------------------
 
 def execute(args: argparse.Namespace) -> int:
+    tasks = PROTOCOLS[args.protocol]
     expected_enabled = args.arm == "on"
     if args.dry_run:
         # Mechanics only: a dry run must not depend on the operator's host (the
         # probe is a full CLI start), so it records an unknown state instead.
         state = {"sutra_installed": None, "sutra_enabled": None}
-        print(f"arm={args.arm}: dry run, host state not probed")
+        print(f"protocol={args.protocol} arm={args.arm}: dry run, host state not probed")
     else:
         state = plugin_state(getattr(args, "probe_timeout", HOST_PROBE_TIMEOUT_S))
-        print(f"arm={args.arm}: hermes reports sutra_installed="
+        print(f"protocol={args.protocol} arm={args.arm}: hermes reports sutra_installed="
               f"{state['sutra_installed']} sutra_enabled={state['sutra_enabled']}")
         if state["sutra_enabled"] is None:
             if state["sutra_installed"] is None:
@@ -747,7 +756,8 @@ def execute(args: argparse.Namespace) -> int:
 
     out_dir = pathlib.Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
-    results_path = out_dir / f"results-{args.arm}-pass{args.pass_index}.jsonl"
+    results_path = out_dir / (
+        f"results-{args.protocol}-{args.arm}-pass{args.pass_index}.jsonl")
     if results_path.exists() and results_path.stat().st_size > 0:
         # A stale file must never mix with a fresh run: records carry
         # started_at/plugin_state, but file-level freshness would be lost.
@@ -757,7 +767,7 @@ def execute(args: argparse.Namespace) -> int:
         return 2
     seed_base = args.seed
     failures = 0
-    for index, (name, prompt, setup, scorer) in enumerate(TASKS):
+    for index, (name, prompt, setup, scorer) in enumerate(tasks):
         rng = random.Random(seed_base + index)
         workspace = out_dir / "workspace" / name
         workspace.mkdir(parents=True, exist_ok=True)
@@ -768,7 +778,8 @@ def execute(args: argparse.Namespace) -> int:
             print(f"{name}: fixture is {size} B, outside the sized window — "
                   f"fix the fixture before running, results would not be comparable")
             return 2
-        record = {"arm": args.arm, "paired": args.paired, "task": name,
+        record = {"protocol": args.protocol, "arm": args.arm,
+                  "paired": args.paired, "task": name,
                   "seed": seed_base + index, "pass_index": args.pass_index,
                   "dry_run": args.dry_run, "plugin_state": state,
                   "fixture_bytes": size, "evidence": evidence,
@@ -798,47 +809,54 @@ def execute(args: argparse.Namespace) -> int:
     return 0
 
 
-def selfcheck() -> int:
+def selfcheck(protocols: list[str] | None = None) -> int:
     """Feed every scorer its own fixture's expected answer; all must pass, and a
     wrong answer must fail. Validates the frozen scoring without any model."""
+    selected = protocols or list(PROTOCOLS)
     failures = 0
-    for index, (name, _, setup, scorer) in enumerate(TASKS):
-        rng = random.Random(9_000 + index)
-        # A per-run temp directory works on every OS; a literal "/tmp" is not a
-        # valid path on Windows, where it resolves to the current drive root.
-        workspace = pathlib.Path(tempfile.mkdtemp(prefix=f"sutra-ab-selfcheck-{name}-"))
-        try:
-            evidence = setup(workspace, rng)
-            if "test_cmd" in evidence:  # the coding task: score the workspace itself
-                bad, _ = scorer(workspace, "", evidence)
-                fix_source = evidence.get("fix_source")
-                fix_content = evidence.get("fix_content")
-                if fix_source is not None and fix_content is not None:
-                    (workspace / fix_source).write_text(fix_content)
+    for protocol in selected:
+        print(f"protocol {protocol}")
+        for index, (name, _, setup, scorer) in enumerate(PROTOCOLS[protocol]):
+            rng = random.Random(9_000 + index)
+            # A per-run temp directory works on every OS; a literal "/tmp" is not
+            # a valid path on Windows, where it resolves to the current drive root.
+            workspace = pathlib.Path(
+                tempfile.mkdtemp(prefix=f"sutra-ab-selfcheck-{protocol}-{name}-"))
+            try:
+                evidence = setup(workspace, rng)
+                if "test_cmd" in evidence:  # the coding task: score the workspace itself
+                    bad, _ = scorer(workspace, "", evidence)
+                    fix_source = evidence.get("fix_source")
+                    fix_content = evidence.get("fix_content")
+                    if fix_source is not None and fix_content is not None:
+                        (workspace / fix_source).write_text(fix_content)
+                    else:
+                        (workspace / "discount.py").write_text(
+                        "def final_price(price, percent_off):\n"
+                        "    return price * (100 - percent_off) / 100\n")
+                    good, _ = scorer(workspace, "", evidence)
                 else:
-                    (workspace / "discount.py").write_text(
-                    "def final_price(price, percent_off):\n"
-                    "    return price * (100 - percent_off) / 100\n")
-                good, _ = scorer(workspace, "", evidence)
-            else:
-                planted = evidence.get("planted") or (
-                    f'{evidence["planted_type"]} {evidence["planted_token"]}'
-                    if "planted_type" in evidence
-                    else f'{evidence["planted_file"]} {evidence["planted_token"]}')
-                good, _ = scorer(workspace, f"the answer is {planted}", evidence)
-                bad, _ = scorer(workspace, "I do not know", evidence)
-            ok = good and not bad
-        finally:
-            shutil.rmtree(workspace, ignore_errors=True)
-        print(f"{name}: scorer {'OK' if ok else 'BROKEN'}")
-        if not ok:
-            failures += 1
+                    planted = evidence.get("planted") or (
+                        f'{evidence["planted_type"]} {evidence["planted_token"]}'
+                        if "planted_type" in evidence
+                        else f'{evidence["planted_file"]} {evidence["planted_token"]}')
+                    good, _ = scorer(workspace, f"the answer is {planted}", evidence)
+                    bad, _ = scorer(workspace, "I do not know", evidence)
+                ok = good and not bad
+            finally:
+                shutil.rmtree(workspace, ignore_errors=True)
+            print(f"{protocol}/{name}: scorer {'OK' if ok else 'BROKEN'}")
+            if not ok:
+                failures += 1
     return 1 if failures else 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--arm", choices=("off", "on"), default="on")
+    parser.add_argument("--protocol", choices=tuple(PROTOCOLS), default=None,
+                        help="task protocol; v1 is the default for runs, while "
+                             "--selfcheck validates both unless one is named")
     parser.add_argument("--paired", action="store_true",
                         help="paired experiment mode: run every task on both "
                              "arms (control off / treatment on) with identical "
@@ -860,7 +878,9 @@ def main() -> int:
                         help="validate the scorers and exit")
     args = parser.parse_args()
     if args.selfcheck:
-        return selfcheck()
+        return selfcheck([args.protocol] if args.protocol else None)
+    if args.protocol is None:
+        args.protocol = DEFAULT_PROTOCOL
     return execute(args)
 
 
