@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: "20"
       - run: pip install pytest tiktoken
-      - run: pip install -e .
+      - run: pip install -e ".[telemetry]"
       - name: Product suite
         run: python -m pytest tests -q
 
@@ -46,7 +46,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: pip install pytest build tiktoken
-      - run: pip install -e .
+      - run: pip install -e ".[telemetry]"
       - name: Product suite
         run: python -m pytest tests -q
       - name: Build and install the wheel
@@ -106,7 +106,7 @@ jobs:
         with:
           node-version: "20"
       - run: pip install pytest tiktoken
-      - run: pip install -e .
+      - run: pip install -e ".[telemetry]"
       - run: python -m pytest tests -q
 
   lint:
@@ -265,7 +265,7 @@ jobs:
           git clone . sutra-main
           cd sutra-main
           pip install pytest tiktoken
-          pip install -e .
+          pip install -e ".[telemetry]"
           python -m pytest tests -q
 
   validate:

@@ -247,19 +247,33 @@ jobs:
           python - <<'PY'
           import json, os, sys, time, urllib.request
           version = os.environ["VERSION"]
-          for attempt in range(30):
+          deadline = time.monotonic() + 20 * 60
+          attempt = 0
+          delay = 10
+          served = False
+          while time.monotonic() < deadline:
+              attempt += 1
               try:
                   with urllib.request.urlopen(
                           "https://test.pypi.org/pypi/sutra-agent/json", timeout=20) as r:
                       data = json.load(r)
                   if version in data.get("releases", {}):
-                      print("testpypi serves", version)
+                      print(f"testpypi JSON attempt {attempt}: serves {version}")
+                      served = True
                       break
+                  print(f"testpypi JSON attempt {attempt}: {version} is not listed yet")
               except Exception as exc:
-                  print("not yet:", exc)
-              time.sleep(20)
-          else:
-              sys.exit(f"testpypi did not serve {version} within 10 minutes")
+                  print(f"testpypi JSON attempt {attempt}: {exc}")
+              remaining = deadline - time.monotonic()
+              if remaining <= 0:
+                  break
+              pause = min(delay, remaining)
+              print(f"testpypi JSON attempt {attempt}: retrying in {pause:.0f}s "
+                    f"({remaining:.0f}s left)")
+              time.sleep(pause)
+              delay = min(delay * 2, 60)
+          if not served:
+              sys.exit(f"testpypi did not serve {version} within 20 minutes")
           PY
       - name: Install from TestPyPI and run it
         run: |
@@ -268,17 +282,33 @@ jobs:
           installed=0
           # The JSON API can list a release before the simple index does, so
           # retry the real resolution instead of trusting that signal.
-          for attempt in $(seq 1 30); do
+          deadline=$((SECONDS + 1200))
+          attempt=0
+          delay=10
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
             if ./venv/bin/pip install --quiet --no-deps \
                 --index-url https://test.pypi.org/simple/ "sutra-agent==${VERSION}"; then
               installed=1
               break
             fi
-            echo "simple index does not serve sutra-agent==${VERSION} yet (attempt ${attempt}/30)"
-            sleep 10
+            remaining=$((deadline - SECONDS))
+            if [ "$remaining" -le 0 ]; then
+              break
+            fi
+            pause=$delay
+            if [ "$pause" -gt "$remaining" ]; then
+              pause=$remaining
+            fi
+            echo "TestPyPI simple index attempt ${attempt}: sutra-agent==${VERSION} is not resolvable yet; retrying in ${pause}s (${remaining}s left)"
+            sleep "$pause"
+            delay=$((delay * 2))
+            if [ "$delay" -gt 60 ]; then
+              delay=60
+            fi
           done
           if [ "$installed" != 1 ]; then
-            echo "could not install sutra-agent==${VERSION} from TestPyPI" >&2
+            echo "could not install sutra-agent==${VERSION} from TestPyPI within 20 minutes" >&2
             exit 1
           fi
           ./venv/bin/sutra --version
@@ -296,6 +326,9 @@ jobs:
           url = f"https://test.pypi.org/pypi/sutra-agent/{os.environ['VERSION']}/json"
           with urllib.request.urlopen(url, timeout=60) as response:
               data = json.load(response)
+          if data.get("info", {}).get("version") != os.environ["VERSION"]:
+              sys.exit(f"index reports version {data.get('info', {}).get('version')}, "
+                       f"expected {os.environ['VERSION']}")
           served = {item["filename"]: item["digests"]["sha256"]
                     for item in data.get("urls", [])}
           if set(served) != set(expected):
@@ -357,19 +390,33 @@ jobs:
           python - <<'PY'
           import json, os, sys, time, urllib.request
           version = os.environ["VERSION"]
-          for attempt in range(30):
+          deadline = time.monotonic() + 20 * 60
+          attempt = 0
+          delay = 10
+          served = False
+          while time.monotonic() < deadline:
+              attempt += 1
               try:
                   with urllib.request.urlopen(
                           "https://pypi.org/pypi/sutra-agent/json", timeout=20) as r:
                       data = json.load(r)
                   if version in data.get("releases", {}):
-                      print("pypi serves", version)
+                      print(f"pypi JSON attempt {attempt}: serves {version}")
+                      served = True
                       break
+                  print(f"pypi JSON attempt {attempt}: {version} is not listed yet")
               except Exception as exc:
-                  print("not yet:", exc)
-              time.sleep(20)
-          else:
-              sys.exit(f"pypi did not serve {version} within 10 minutes")
+                  print(f"pypi JSON attempt {attempt}: {exc}")
+              remaining = deadline - time.monotonic()
+              if remaining <= 0:
+                  break
+              pause = min(delay, remaining)
+              print(f"pypi JSON attempt {attempt}: retrying in {pause:.0f}s "
+                    f"({remaining:.0f}s left)")
+              time.sleep(pause)
+              delay = min(delay * 2, 60)
+          if not served:
+              sys.exit(f"pypi did not serve {version} within 20 minutes")
           PY
       - name: Install the published release
         run: |
@@ -378,17 +425,33 @@ jobs:
           installed=0
           # PyPI's JSON API can list a release before the simple index serves
           # it; retry the real resolution instead of trusting that signal.
-          for attempt in $(seq 1 30); do
+          deadline=$((SECONDS + 1200))
+          attempt=0
+          delay=10
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            attempt=$((attempt + 1))
             if ./venv/bin/pip install --quiet --index-url https://pypi.org/simple/ \
                 "sutra-agent==${VERSION}"; then
               installed=1
               break
             fi
-            echo "PyPI simple index does not serve sutra-agent==${VERSION} yet (attempt ${attempt}/30)"
-            sleep 10
+            remaining=$((deadline - SECONDS))
+            if [ "$remaining" -le 0 ]; then
+              break
+            fi
+            pause=$delay
+            if [ "$pause" -gt "$remaining" ]; then
+              pause=$remaining
+            fi
+            echo "PyPI simple index attempt ${attempt}: sutra-agent==${VERSION} is not resolvable yet; retrying in ${pause}s (${remaining}s left)"
+            sleep "$pause"
+            delay=$((delay * 2))
+            if [ "$delay" -gt 60 ]; then
+              delay=60
+            fi
           done
           if [ "$installed" != 1 ]; then
-            echo "could not install sutra-agent==${VERSION} from PyPI" >&2
+            echo "could not install sutra-agent==${VERSION} from PyPI within 20 minutes" >&2
             exit 1
           fi
           ./venv/bin/sutra --version
@@ -406,6 +469,9 @@ jobs:
           url = f"https://pypi.org/pypi/sutra-agent/{os.environ['VERSION']}/json"
           with urllib.request.urlopen(url, timeout=60) as response:
               data = json.load(response)
+          if data.get("info", {}).get("version") != os.environ["VERSION"]:
+              sys.exit(f"index reports version {data.get('info', {}).get('version')}, "
+                       f"expected {os.environ['VERSION']}")
           served = {item["filename"]: item["digests"]["sha256"]
                     for item in data.get("urls", [])}
           if set(served) != set(expected):

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Release verification now polls TestPyPI and PyPI for up to 20 minutes,
+  logging each JSON-API and simple-index attempt and backing off from 10 to 60
+  seconds. Index propagation no longer requires a manual rerun, while the
+  checks still require the exact version and both built distribution files.
+- The normal CI product-suite jobs install the `telemetry` extra and run
+  CLI-level tests for dead, malformed, and hanging OTLP endpoints. Those tests
+  prove compression still exits 0, emits one parseable JSON object, and writes
+  no exporter noise.
+
 ## 0.6.3 - 2026-11-14
 
 ### Fixed

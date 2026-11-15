@@ -115,9 +115,6 @@ def test_the_testpypi_verification_checks_the_served_files():
     assert "SHA256SUMS" in verify, "the served files must be compared with the build"
     assert "digests" in verify and "sha256" in verify
     assert "sutra --version" in verify
-    assert "for attempt in $(seq 1 30)" in verify, (
-        "the JSON API can lead the simple index; pip resolution must be retried")
-    assert "sleep 10" in verify
 
 
 def test_production_promotes_and_never_rebuilds():
@@ -175,17 +172,30 @@ def test_the_pypi_verification_checks_served_files_and_retries():
     assert "sha256sum -c SHA256SUMS" in verify
     assert "https://pypi.org/simple/" in verify
     assert "sutra-agent==${VERSION}" in verify
-    assert "for attempt in $(seq 1 30)" in verify, (
-        "the JSON API can lead the simple index; pip resolution must be retried")
-    assert "sleep 10" in verify
     assert "SHA256SUMS" in verify
     assert "digests" in verify and "sha256" in verify
+
+
+def test_post_publish_index_polling_is_bounded_to_twenty_minutes_with_logs():
+    for name in ("verify-testpypi", "verify-pypi"):
+        verify = _job_blocks()[name]
+        assert "deadline = time.monotonic() + 20 * 60" in verify, (
+            f"{name} must bound the JSON wait to 20 minutes")
+        assert "deadline=$((SECONDS + 1200))" in verify, (
+            f"{name} must bound the simple-index install wait to 20 minutes")
+        assert "retrying in" in verify, (
+            f"{name} must log every retry with its remaining window")
+        assert "within 20 minutes" in verify, (
+            f"{name} must fail after the bounded window")
+        assert 'data.get("info", {}).get("version")' in verify, (
+            f"{name} must still require the served project version to match")
 
 
 def test_the_release_document_describes_the_same_path():
     text = RELEASE_DOC.read_text(encoding="utf-8")
     assert "SHA256SUMS" in text
     assert "verify-testpypi" in text
+    assert "20 minutes" in text
     assert "promotion" in text, "production must be documented as a promotion"
     assert "artifact_run_id" in text, (
         "the release guide must explain how to promote the rehearsal artifact")
