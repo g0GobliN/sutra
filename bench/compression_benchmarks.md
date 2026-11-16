@@ -1,43 +1,48 @@
-# SUTRA v0.6.1 Performance Benchmarks
+# SUTRA v0.6.3 Performance Benchmarks
 
-> Historical result: this report was generated with SUTRA 0.6.1. The benchmark
-> generator now labels the installed SUTRA version; re-run it to produce a
-> current report.
-
-Generated: 2026-11-14T02:16:51+00:00
-Total fixtures: 46
-Real tool outputs: 46
+Generated: 2026-11-16T03:39:06+00:00
+Total fixtures: 51
+Real tool outputs: 51
 Synthetic benchmarks: 0
 
 ## Overall Compression Results
 
 | Metric | Before | After | Saved | Saved % |
 |--------|--------|-------|-------|---------|
-| **Total** | **503.5 kB** | **503.5 kB** | **0 B** | **0.0%** |
+| **Total** | **507.9 kB** | **507.9 kB** | **0 B** | **0.0%** |
 
 ## Per-Tool Category Results (with Token Counts)
 
 | Tool | Category | Cases | Original | Compressed | Saved | Saved % | Tokens Before | Tokens After | Tokens Saved | Tokens Saved % |
 |------|----------|-------|----------|------------|-------|---------|---------------|--------------|---------------|-----------------|
-| gcc | general/compiler_errors | 1 | 265 B | 265 B | 0 B | 0.0% | 67 | 67 | -198 | -295.5% |
-| git | general/git_diff | 6 | 748 B | 748 B | 0 B | 0.0% | 260 | 260 | -488 | -187.7% |
-| python3 (generated) | general/large_json | 1 | 480.2 kB | 480.2 kB | 0 B | 0.0% | 127,771 | 127,771 | -352,461 | -275.9% |
-| node | general/long_stack_trace | 4 | 1.9 kB | 1.9 kB | 0 B | 0.0% | 587 | 587 | -1,332 | -226.9% |
-| python3 | general/long_stack_trace | 5 | 1.5 kB | 1.5 kB | 0 B | 0.0% | 424 | 424 | -1,092 | -257.5% |
-| pytest | general/repeated_test_output | 6 | 10.2 kB | 10.2 kB | 0 B | 0.0% | 2,349 | 2,349 | -7,810 | -332.5% |
-| go (not installed) | go/compiler | 4 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 320 | 320 | -717 | -224.1% |
-| eslint | javascript/eslint | 3 | 627 B | 627 B | 0 B | 0.0% | 192 | 192 | -435 | -226.6% |
-| jest | javascript/jest | 2 | 887 B | 887 B | 0 B | 0.0% | 306 | 306 | -581 | -189.9% |
-| tsc | javascript/tsc | 3 | 591 B | 591 B | 0 B | 0.0% | 184 | 184 | -407 | -221.2% |
-| vitest | javascript/vitest | 2 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 444 | 444 | -604 | -136.0% |
-| mypy | python/mypy | 2 | 385 B | 385 B | 0 B | 0.0% | 108 | 108 | -277 | -256.5% |
-| pip | python/pip | 1 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 237 | 237 | -787 | -332.1% |
-| cargo | rust/cargo_check | 6 | 3.1 kB | 3.1 kB | 0 B | 0.0% | 955 | 955 | -2,114 | -221.4% |
+| docker | build/docker_build | 2 | 2.2 kB | 2.2 kB | 0 B | 0.0% | 747 | 747 | 0 | 0.0% |
+| npm | build/npm | 1 | 443 B | 443 B | 0 B | 0.0% | 146 | 146 | 0 | 0.0% |
+| pnpm (binary broken at runtime) | build/pnpm | 1 | 858 B | 858 B | 0 B | 0.0% | 195 | 195 | 0 | 0.0% |
+| yarn | build/yarn | 1 | 905 B | 905 B | 0 B | 0.0% | 257 | 257 | 0 | 0.0% |
+| gcc | general/compiler_errors | 1 | 265 B | 265 B | 0 B | 0.0% | 67 | 67 | 0 | 0.0% |
+| git | general/git_diff | 6 | 748 B | 748 B | 0 B | 0.0% | 260 | 260 | 0 | 0.0% |
+| python3 (generated) | general/large_json | 1 | 480.2 kB | 480.2 kB | 0 B | 0.0% | 127,771 | 127,771 | 0 | 0.0% |
+| node | general/long_stack_trace | 4 | 1.9 kB | 1.9 kB | 0 B | 0.0% | 587 | 587 | 0 | 0.0% |
+| python3 | general/long_stack_trace | 5 | 1.5 kB | 1.5 kB | 0 B | 0.0% | 424 | 424 | 0 | 0.0% |
+| pytest | general/repeated_test_output | 6 | 10.2 kB | 10.2 kB | 0 B | 0.0% | 2,349 | 2,349 | 0 | 0.0% |
+| go (not installed) | go/compiler | 4 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 320 | 320 | 0 | 0.0% |
+| eslint | javascript/eslint | 3 | 627 B | 627 B | 0 B | 0.0% | 192 | 192 | 0 | 0.0% |
+| jest | javascript/jest | 2 | 887 B | 887 B | 0 B | 0.0% | 306 | 306 | 0 | 0.0% |
+| tsc | javascript/tsc | 3 | 591 B | 591 B | 0 B | 0.0% | 184 | 184 | 0 | 0.0% |
+| vitest | javascript/vitest | 2 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 444 | 444 | 0 | 0.0% |
+| mypy | python/mypy | 2 | 385 B | 385 B | 0 B | 0.0% | 108 | 108 | 0 | 0.0% |
+| pip | python/pip | 1 | 1.0 kB | 1.0 kB | 0 B | 0.0% | 237 | 237 | 0 | 0.0% |
+| cargo | rust/cargo_check | 6 | 3.1 kB | 3.1 kB | 0 B | 0.0% | 955 | 955 | 0 | 0.0% |
 
 ## Individual Tool Results
 
 | Case | Tool | Original | Compressed | Saved | Saved % | Rule |
 |------|------|----------|------------|-------|---------|------|
+| build/docker_build/docker_build_copy_missing.txt | docker | 1.1 kB | 1.1 kB | 0 B | 0.0% | `none` |
+| build/docker_build/docker_build_run_fails.txt | docker | 1.0 kB | 1.0 kB | 0 B | 0.0% | `none` |
+| build/npm/npm_install_fails.txt | npm | 443 B | 443 B | 0 B | 0.0% | `none` |
+| build/pnpm/pnpm_install_failure.txt | pnpm (binary broken at runtime) | 858 B | 858 B | 0 B | 0.0% | `none` |
+| build/yarn/yarn_add_fails.txt | yarn | 905 B | 905 B | 0 B | 0.0% | `none` |
 | general/compiler_errors/gcc_type_error.txt | gcc | 265 B | 265 B | 0 B | 0.0% | `none` |
 | general/git_diff/git_diff_staged.txt | git | 116 B | 116 B | 0 B | 0.0% | `none` |
 | general/git_diff/git_diff_unstaged.txt | git | 118 B | 118 B | 0 B | 0.0% | `none` |
