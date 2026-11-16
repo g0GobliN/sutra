@@ -1,24 +1,24 @@
-# SUTRA v0.6.1 Performance Benchmarks
+# SUTRA v0.6.4 Performance Benchmarks
 
-> Historical result: this report was generated with SUTRA 0.6.1. The benchmark
-> generator now labels the installed SUTRA version; re-run it to produce a
-> current report.
-
-Generated: 2026-11-14T02:16:51+00:00
-Total fixtures: 46
-Real tool outputs: 46
+Generated: 2026-11-16T03:37:56+00:00
+Total fixtures: 51
+Real tool outputs: 51
 Synthetic benchmarks: 0
 
 ## Overall Compression Results
 
 | Metric | Before | After | Saved | Saved % |
 |--------|--------|-------|-------|---------|
-| **Total** | **503.5 kB** | **503.5 kB** | **0 B** | **0.0%** |
+| **Total** | **507.9 kB** | **507.9 kB** | **0 B** | **0.0%** |
 
 ## Per-Tool Category Results (with Token Counts)
 
 | Tool | Category | Cases | Original | Compressed | Saved | Saved % | Tokens Before | Tokens After | Tokens Saved | Tokens Saved % |
 |------|----------|-------|----------|------------|-------|---------|---------------|--------------|---------------|-----------------|
+| docker | build/docker_build | 2 | 2.2 kB | 2.2 kB | 0 B | 0.0% | 747 | 747 | -1,442 | -193.0% |
+| npm | build/npm | 1 | 443 B | 443 B | 0 B | 0.0% | 146 | 146 | -297 | -203.4% |
+| pnpm (binary broken at runtime) | build/pnpm | 1 | 858 B | 858 B | 0 B | 0.0% | 195 | 195 | -663 | -340.0% |
+| yarn | build/yarn | 1 | 905 B | 905 B | 0 B | 0.0% | 257 | 257 | -648 | -252.1% |
 | gcc | general/compiler_errors | 1 | 265 B | 265 B | 0 B | 0.0% | 67 | 67 | -198 | -295.5% |
 | git | general/git_diff | 6 | 748 B | 748 B | 0 B | 0.0% | 260 | 260 | -488 | -187.7% |
 | python3 (generated) | general/large_json | 1 | 480.2 kB | 480.2 kB | 0 B | 0.0% | 127,771 | 127,771 | -352,461 | -275.9% |
@@ -38,6 +38,11 @@ Synthetic benchmarks: 0
 
 | Case | Tool | Original | Compressed | Saved | Saved % | Rule |
 |------|------|----------|------------|-------|---------|------|
+| build/docker_build/docker_build_copy_missing.txt | docker | 1.1 kB | 1.1 kB | 0 B | 0.0% | `none` |
+| build/docker_build/docker_build_run_fails.txt | docker | 1.0 kB | 1.0 kB | 0 B | 0.0% | `none` |
+| build/npm/npm_install_fails.txt | npm | 443 B | 443 B | 0 B | 0.0% | `none` |
+| build/pnpm/pnpm_install_failure.txt | pnpm (binary broken at runtime) | 858 B | 858 B | 0 B | 0.0% | `none` |
+| build/yarn/yarn_add_fails.txt | yarn | 905 B | 905 B | 0 B | 0.0% | `none` |
 | general/compiler_errors/gcc_type_error.txt | gcc | 265 B | 265 B | 0 B | 0.0% | `none` |
 | general/git_diff/git_diff_staged.txt | git | 116 B | 116 B | 0 B | 0.0% | `none` |
 | general/git_diff/git_diff_unstaged.txt | git | 118 B | 118 B | 0 B | 0.0% | `none` |

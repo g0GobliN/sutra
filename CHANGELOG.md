@@ -1,15 +1,6 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- The live-model A/B experiment now has explicit protocol versions. `v1` keeps
-  the original frozen eight tasks and is the default for a live run; `v2` is
-  the expanded 30-task corpus and is opt-in. Result rows and filenames carry the
-  protocol, and `scripts/ab/report.py` prints it and refuses mixed or unlabelled
-  evidence instead of silently aggregating different task sets. No live model
-  was called.
+## 0.6.4 - 2026-11-16
 
 ### Changed
 
