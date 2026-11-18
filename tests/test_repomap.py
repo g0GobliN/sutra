@@ -27,6 +27,24 @@ def test_map_lists_top_level_definitions_by_folder(tmp_path):
     assert "web/: render, make" in built
 
 
+def test_map_reads_every_supported_language(tmp_path):
+    _write(tmp_path, "svc/handler.go",
+           "package svc\n\nfunc Serve() {}\ntype Request struct{}\n")
+    _write(tmp_path, "svc/lib.rs",
+           "pub fn parse() {}\npub struct Node {}\n")
+    _write(tmp_path, "svc/Model.java",
+           "public class Model {}\n")
+    _write(tmp_path, "svc/tool.rb", "def run\nend\nclass Tool\nend\n")
+    built = repomap.build(tmp_path)
+    assert "svc/:" in built
+    assert "Serve" in built and "Request" in built
+    assert "parse" in built and "Node" in built
+    assert "Model" in built
+    assert "Tool" in built
+    # Lowercase Go/Rust names are unexported and stay out, like Ponytail's map.
+    assert "serve" not in built
+
+
 def test_map_skips_tests_vendored_and_generated_files(tmp_path):
     _write(tmp_path, "pkg/core.py", "def keep():\n    pass\n")
     _write(tmp_path, "pkg/test_core.py", "def never_shown():\n    pass\n")
