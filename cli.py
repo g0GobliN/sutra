@@ -917,6 +917,13 @@ def _cost(argv: list[str]) -> int:
                         help="price per million output tokens (optional)")
     parser.add_argument("--cached-price", type=float, default=None,
                         help="price per million cached input tokens (optional)")
+    parser.add_argument("--cache-write-price", type=float, default=None,
+                        help="price per million cache-write tokens (optional)")
+    parser.add_argument("--usage-file", default=None,
+                        help="read provider usage metadata from this JSON file")
+    parser.add_argument("--provider", default=None,
+                        choices=["openai", "anthropic", "google", "deepseek"],
+                        help="provider whose usage shape the file holds")
     parser.add_argument("--original-input", type=int, default=None,
                         help="full accounting: input tokens before optimization")
     parser.add_argument("--billed-input", type=int, default=None,
@@ -941,13 +948,34 @@ def _cost(argv: list[str]) -> int:
                         help="mark the baseline as an estimate, not a measurement")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
+    reported = None
+    if args.usage_file is not None:
+        from . import providers as providers_module
+        if args.provider is None:
+            print_error("sutra cost: --usage-file needs --provider")
+            return 2
+        try:
+            with open(args.usage_file, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            reported = providers_module.usage_from(args.provider, payload)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+        if args.original_input is None:
+            print_error("sutra cost: --usage-file needs --original-input, the "
+                        "provider reports the optimized run only")
+            return 2
+    elif args.provider is not None:
+        print_error("sutra cost: --provider needs --usage-file")
+        return 2
     pricing = None
     if args.input_price is not None and args.output_price is not None:
         try:
             pricing = cost_module.Pricing(
                 input_per_million=args.input_price,
                 output_per_million=args.output_price,
-                cached_input_per_million=args.cached_price)
+                cached_input_per_million=args.cached_price,
+                cache_write_per_million=args.cache_write_price)
         except ValueError as exc:
             print_error(f"sutra cost: {exc}")
             return 2
@@ -956,15 +984,21 @@ def _cost(argv: list[str]) -> int:
         try:
             accounting = cost_module.Accounting(
                 original_input_tokens=args.original_input or 0,
-                billed_input_tokens=(args.billed_input
-                                     if args.billed_input is not None
-                                     else (args.optimized_input
-                                           if args.optimized_input else 0)),
-                cached_input_tokens=(args.cached
-                                     if args.cached is not None
-                                     else args.optimized_cached),
-                output_tokens=(args.output if args.output is not None
-                               else args.optimized_output),
+                billed_input_tokens=(
+                    reported.input_tokens if reported is not None
+                    else (args.billed_input
+                          if args.billed_input is not None
+                          else (args.optimized_input
+                                if args.optimized_input else 0))),
+                cached_input_tokens=(
+                    reported.cached_input_tokens if reported is not None
+                    else (args.cached if args.cached is not None
+                          else args.optimized_cached)),
+                cache_write_input_tokens=(
+                    reported.cache_write_tokens if reported is not None else 0),
+                output_tokens=(reported.output_tokens if reported is not None
+                               else (args.output if args.output is not None
+                                     else args.optimized_output)),
                 model_calls=args.model_calls or 0,
                 tool_calls=args.tool_calls or 0,
                 processing_ms=args.processing_ms or 0.0,

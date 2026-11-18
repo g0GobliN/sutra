@@ -37,9 +37,11 @@ class Usage:
     input_tokens: int = 0
     output_tokens: int = 0
     cached_input_tokens: int = 0
+    cache_write_tokens: int = 0
 
     def __post_init__(self) -> None:
-        for name in ("input_tokens", "output_tokens", "cached_input_tokens"):
+        for name in ("input_tokens", "output_tokens", "cached_input_tokens",
+                     "cache_write_tokens"):
             value = getattr(self, name)
             if not isinstance(value, int) or value < 0:
                 raise ValueError(f"{name} must be a non-negative int")
@@ -47,6 +49,12 @@ class Usage:
             raise ValueError(
                 "cached_input_tokens cannot exceed input_tokens: "
                 f"{self.cached_input_tokens} > {self.input_tokens}"
+            )
+        if self.cached_input_tokens + self.cache_write_tokens > self.input_tokens:
+            raise ValueError(
+                "cached read plus cache-write tokens cannot exceed input_tokens: "
+                f"{self.cached_input_tokens} + {self.cache_write_tokens} > "
+                f"{self.input_tokens}"
             )
 
     def total_tokens(self) -> int:
@@ -58,6 +66,7 @@ class Usage:
             "input_tokens": self.input_tokens,
             "output_tokens": self.output_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_tokens": self.cache_write_tokens,
         }
 
 
@@ -68,10 +77,11 @@ class Pricing:
     input_per_million: float
     output_per_million: float
     cached_input_per_million: float | None = None
+    cache_write_per_million: float | None = None
 
     def __post_init__(self) -> None:
         for name in ("input_per_million", "output_per_million",
-                     "cached_input_per_million"):
+                     "cached_input_per_million", "cache_write_per_million"):
             value = getattr(self, name)
             if value is None:
                 continue
@@ -85,6 +95,7 @@ class Pricing:
             "input_per_million": self.input_per_million,
             "output_per_million": self.output_per_million,
             "cached_input_per_million": self.cached_input_per_million,
+            "cache_write_per_million": self.cache_write_per_million,
         }
 
 
@@ -93,19 +104,27 @@ def price(usage: Usage, pricing: Pricing | None) -> float | None:
 
     Cached input without its own rate is billed at the input rate; that is an
     explicit assumption, reported by ``savings_report`` as
-    ``cached_input_rate == "assumed at input rate"``.
+    ``cached_input_rate == "assumed at input rate"``. Cache-write tokens are
+    different: providers that report them charge a premium rate, so a usage
+    with cache writes and no cache-write rate returns ``None`` rather than
+    silently billing them at the plain input rate.
     """
     if pricing is None:
+        return None
+    if usage.cache_write_tokens and pricing.cache_write_per_million is None:
         return None
     cached_rate = (
         pricing.cached_input_per_million
         if pricing.cached_input_per_million is not None
         else pricing.input_per_million
     )
-    uncached = usage.input_tokens - usage.cached_input_tokens
+    write_rate = pricing.cache_write_per_million or 0.0
+    uncached = (usage.input_tokens - usage.cached_input_tokens
+                - usage.cache_write_tokens)
     total = (
         uncached * pricing.input_per_million
         + usage.cached_input_tokens * cached_rate
+        + usage.cache_write_tokens * write_rate
         + usage.output_tokens * pricing.output_per_million
     ) / 1_000_000
     return round(total, _ROUND)
@@ -223,6 +242,7 @@ class Accounting:
     original_input_tokens: int = 0
     billed_input_tokens: int = 0
     cached_input_tokens: int = 0
+    cache_write_input_tokens: int = 0
     output_tokens: int = 0
     model_calls: int = 0
     tool_calls: int = 0
@@ -237,8 +257,8 @@ class Accounting:
 
     def __post_init__(self) -> None:
         for name in ("original_input_tokens", "billed_input_tokens",
-                     "cached_input_tokens", "output_tokens", "model_calls",
-                     "tool_calls"):
+                     "cached_input_tokens", "cache_write_input_tokens",
+                     "output_tokens", "model_calls", "tool_calls"):
             _number(getattr(self, name), name, integer=True)
         for name in ("processing_ms", "validation_ms", "extra_cost"):
             _number(getattr(self, name), name)
@@ -250,11 +270,18 @@ class Accounting:
             raise ValueError(
                 "cached_input_tokens cannot exceed billed_input_tokens: "
                 f"{self.cached_input_tokens} > {self.billed_input_tokens}")
+        if (self.cached_input_tokens + self.cache_write_input_tokens
+                > self.billed_input_tokens):
+            raise ValueError(
+                "cached read plus cache-write tokens cannot exceed "
+                "billed_input_tokens: "
+                f"{self.cached_input_tokens} + {self.cache_write_input_tokens} "
+                f"> {self.billed_input_tokens}")
 
     def usage(self) -> Usage:
         """The billed usage of the optimized run."""
         return Usage(self.billed_input_tokens, self.output_tokens,
-                     self.cached_input_tokens)
+                     self.cached_input_tokens, self.cache_write_input_tokens)
 
     def baseline(self) -> Usage:
         """The counterfactual: original input, same output, no cache."""
@@ -294,6 +321,7 @@ class Accounting:
             "original_input_tokens": self.original_input_tokens,
             "billed_input_tokens": self.billed_input_tokens,
             "cached_input_tokens": self.cached_input_tokens,
+            "cache_write_input_tokens": self.cache_write_input_tokens,
             "output_tokens": self.output_tokens,
             "model_calls": self.model_calls,
             "tool_calls": self.tool_calls,

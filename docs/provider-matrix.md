@@ -31,9 +31,11 @@ provider. That has three consequences this page states plainly:
 Rules encoded in `cost.Accounting`:
 
 - `cached_input_tokens` is a subset of billed input, never an addition.
-- Cache-write tokens (Anthropic) are a separate charge. They are not modelled
-  as a field; a caller who has them adds their cost to `extra_cost` and the
-  report keeps that visible.
+- Cache-write tokens (Anthropic) are a separate charge with their own field:
+  `cost.Usage.cache_write_tokens` and `cost.Pricing.cache_write_per_million`.
+  A usage that reports cache writes but a pricing table without a cache-write
+  rate prices as `None` instead of silently billing the writes at the plain
+  input rate.
 - `provider_latency_ms` and `total_latency_ms` are separate from SUTRA's own
   `processing_ms` and `validation_ms`, so overhead is never hidden in latency.
 - `estimated_baseline` records whether the counterfactual was measured or

@@ -15,7 +15,9 @@ C_total = Σ_calls (input_tokens × input_price / 1e6)
 `cached_input_tokens` are part of `input_tokens`, not extra: the provider
 already counts them in the input figure, so adding them again would double
 count. When a cached rate is supplied it replaces the input rate for exactly
-those tokens.
+those tokens. `cache_write_input_tokens` are also a subset of billed input,
+billed at their own premium rate; with cache writes present and no
+`cache_write_per_million`, `price()` returns `None` instead of guessing.
 
 ## What one report contains
 
@@ -59,7 +61,8 @@ overhead. Net savings are `0.039`, and efficiency is `4 / 0.169`.
 - No price table and no default rate. `Pricing` must be constructed by the
   caller, and without it every cost field is `None` with
   `basis: "unavailable: no pricing supplied"`.
-- `cached_input_tokens > billed_input_tokens` is an error, not a clamp.
+- `cached_input_tokens > billed_input_tokens`, or cached read plus cache write
+  above billed input, is an error, not a clamp.
 - Negative or non-finite counts, times and costs are errors.
 - `percent_saved` is `None` when the baseline has no tokens; it is never `0%`.
 - A token reduction is only called comparable when the tokenizer is named;
@@ -71,7 +74,9 @@ overhead. Net savings are `0.039`, and efficiency is `4 / 0.169`.
 
 There is no provider call in this module, so the provider's own usage metadata
 must be supplied by the host (`--billed-input`, `--cached`, `--output`,
-`--provider-ms`). The project's measured, model-free numbers live in
+`--provider-ms`) or read from a saved response body with
+`--usage-file response.json --provider anthropic` (parsing in `providers.py`,
+shapes in [provider-matrix.md](provider-matrix.md)). The project's measured, model-free numbers live in
 [benchmark.md](benchmark.md) and
 [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md); the frozen live
 A/B protocols in [ab-benchmark.md](ab-benchmark.md) have not been run.
