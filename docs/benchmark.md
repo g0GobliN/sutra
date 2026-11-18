@@ -325,6 +325,85 @@ phase; peak heap and RSS delta. Any future numeric target (for example, "at leas
 40% saved and no more than one extra call per task") must be set from a measured
 baseline on real trajectories, not chosen to make the table look good.
 
+## Maximum-effort search layer
+
+`bench/maximum.py` measures the opt-in layer in ``SUTRA_SEARCH`` on the same
+eight fixtures plus one prose fixture (a verbose tool description repeated to
+about 33 kB), because formatting strategies cannot help prose and wording
+strategies cannot help logs. Each mode reports o200k tokens for the text the
+model would read and wall-clock milliseconds for the whole call.
+
+Measured on the development host on 2026-11-18 (Python 3.13.5, `tiktoken
+0.14.0`, `o200k_base`; the archived artifact records the load and git SHA):
+
+| Mode | Tokens in | Tokens out | Saved | Median call | Max call |
+|---|---|---|---|---|---|
+| `off` (default) | 588,058 | 264,598 | 55.0% | 61.9 ms | 437.1 ms |
+| `balanced` | 588,058 | 264,597 | 55.0% | 95.0 ms | 445.6 ms |
+| `aggressive` (+ `SUTRA_LANGUAGE=1`) | 588,058 | 264,198 | 55.1% | 82.8 ms | 398.2 ms |
+
+The layer's own contribution is visible on the prose fixture, where the
+deterministic pass changes nothing: `aggressive` with wording enabled takes it
+from 2,081 to 1,681 tokens (400 tokens, 19.2% of that fixture). On the log, JSON,
+diff and traceback fixtures the formatting strategies find nothing to remove,
+so the measured gain is zero — that is the expected result, not a failure, and
+the mode costs at most about 15 ms there because it runs on the already-reduced
+text.
+
+What this does **not** measure: provider cost. There is no provider call and no
+authoritative usage or price, so the artifact reports `"cost": "unavailable"`.
+A tokenizer count is not a bill.
+
+## Marginal passes and rerun idempotence
+
+`bench/passes.py` answers two questions a mode table cannot: whether more
+passes buy anything, and whether compressing the result again finds something
+the first run left behind. It runs the optimizer with 1–4 passes on
+the same fixtures, then feeds each result back through the optimizer.
+
+Measured 2026-11-18 on the development host:
+
+| Passes | Saved bytes | Marginal bytes | Saved tokens | Second run | Median call |
+|---|---|---|---|---|---|
+| 1 | 2,081 | 2,081 | 400 | 0 B | 21.6 ms |
+| 2 | 2,081 | 0 | 400 | 0 B | 22.9 ms |
+| 3 | 2,081 | 0 | 400 | 0 B | 26.2 ms |
+| 4 | 2,081 | 0 | 400 | 0 B | 26.1 ms |
+
+The honest reading: on these fixtures one pass finds everything the current
+strategies can find, and a second compression is a no-op. Extra passes cost
+milliseconds and produce no additional saving. That is a property of this
+strategy set, not a proof about every payload — the loop still re-evaluates
+because a combination can unlock a saving a single strategy cannot, which the
+optimize tests cover with a synthetic pair — but no measured fixture rewards
+passes beyond the first. The gain here is entirely the prose fixture; the log,
+JSON, diff and traceback fixtures measure zero in every column.
+
+## Reporting cost from explicit measurements
+
+`cost.py` converts two explicit `Usage` records (input, output, cached input
+tokens) into a savings report. It ships **no price table**: without prices the
+report still states token savings and returns `"cost": "unavailable: no pricing
+supplied"`. With caller-supplied prices it reports the basis as `"explicit
+pricing"` and the three dollar figures.
+
+`sutra cost` exposes the same calculation without a network call:
+
+```console
+$ sutra cost --baseline-input 100000 --baseline-output 5000 \
+             --optimized-input 45000 --optimized-output 5000
+tokens: 105000 -> 50000 (saved 55000)
+percent saved: 52.380952%
+cost: unavailable: no pricing supplied
+
+$ sutra cost --baseline-input 1000000 --optimized-input 400000 \
+             --input-price 3 --output-price 15 --json
+```
+
+The second form reports `baseline_usd 3.0`, `optimized_usd 1.2` and
+`saved_usd 1.8` under an explicit pricing block. Token counts must come from
+the provider's usage record; the command never estimates them.
+
 ## Limitations
 
 - Fixtures are synthetic. They are representative in shape, not in distribution
