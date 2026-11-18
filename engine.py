@@ -786,10 +786,10 @@ def _search_limits(cfg: config.Config) -> tuple[int, float]:
     """Passes and time budget for the configured search mode.
 
     ``balanced`` is one bounded pass over the formatting strategies;
-    ``maximum`` spends the configured pass count and budget. ``off`` never
+    ``aggressive`` spends the configured pass count and budget. ``off`` never
     reaches this function.
     """
-    if cfg.search_mode == "balanced":
+    if cfg.search_mode != "aggressive":
         return 1, cfg.search_budget_ms
     return cfg.search_passes, cfg.search_budget_ms
 

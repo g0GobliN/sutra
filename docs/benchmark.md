@@ -340,10 +340,10 @@ Measured on the development host on 2026-11-18 (Python 3.13.5, `tiktoken
 |---|---|---|---|---|---|
 | `off` (default) | 588,058 | 264,598 | 55.0% | 61.9 ms | 437.1 ms |
 | `balanced` | 588,058 | 264,597 | 55.0% | 95.0 ms | 445.6 ms |
-| `maximum` (+ `SUTRA_LANGUAGE=1`) | 588,058 | 264,198 | 55.1% | 82.8 ms | 398.2 ms |
+| `aggressive` (+ `SUTRA_LANGUAGE=1`) | 588,058 | 264,198 | 55.1% | 82.8 ms | 398.2 ms |
 
 The layer's own contribution is visible on the prose fixture, where the
-deterministic pass changes nothing: `maximum` with wording enabled takes it
+deterministic pass changes nothing: `aggressive` with wording enabled takes it
 from 2,081 to 1,681 tokens (400 tokens, 19.2% of that fixture). On the log, JSON,
 diff and traceback fixtures the formatting strategies find nothing to remove,
 so the measured gain is zero — that is the expected result, not a failure, and

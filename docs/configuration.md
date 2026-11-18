@@ -22,7 +22,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` agent guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
-| `SUTRA_SEARCH` | `off` | `off`, `balanced` or `maximum` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
+| `SUTRA_SEARCH` | `off` | `off`, `safe`/`balanced` or `aggressive` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
 | `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | time budget for the optimization loop (1-5000 ms) |
 | `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
@@ -77,6 +77,9 @@ must pass the protected-span check (paths, URLs, numbers, identifiers,
 commands, negations, error and security terms all survive) and must be
 strictly smaller; at most `SUTRA_SEARCH_PASSES` passes run inside
 `SUTRA_SEARCH_BUDGET_MS`. `off` is the default and changes nothing.
+`balanced` (also reachable as `safe` or `on`) runs a single bounded pass;
+`aggressive` (also accepted as `maximum`) spends the full pass count and
+budget.
 
 `SUTRA_LANGUAGE=1` adds one more strategy, only while a search mode is active:
 a fixed table of verbose phrases and politeness fillers is removed from prose

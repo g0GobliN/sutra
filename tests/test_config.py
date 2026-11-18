@@ -220,10 +220,10 @@ def test_search_mode_defaults_to_off_and_is_resolved(sutra, monkeypatch):
     monkeypatch.delenv("SUTRA_SEARCH", raising=False)
     cfg = sutra.configuration()
     assert cfg.search_mode == "off"
-    monkeypatch.setenv("SUTRA_SEARCH", "maximum")
+    monkeypatch.setenv("SUTRA_SEARCH", "aggressive")
     cfg = sutra.configuration()
     assert (cfg.search_mode, cfg.search_passes, cfg.search_budget_ms) == (
-        "maximum", 4, 50)
+        "aggressive", 4, 50)
 
 
 def test_search_aliases_and_bounds(sutra, monkeypatch):
@@ -231,7 +231,11 @@ def test_search_aliases_and_bounds(sutra, monkeypatch):
     assert sutra.configuration().search_mode == "balanced"
     monkeypatch.setenv("SUTRA_SEARCH", "0")
     assert sutra.configuration().search_mode == "off"
+    monkeypatch.setenv("SUTRA_SEARCH", "safe")
+    assert sutra.configuration().search_mode == "balanced"
     monkeypatch.setenv("SUTRA_SEARCH", "maximum")
+    assert sutra.configuration().search_mode == "aggressive"
+    monkeypatch.setenv("SUTRA_SEARCH", "aggressive")
     monkeypatch.setenv("SUTRA_SEARCH_PASSES", "99")
     monkeypatch.setenv("SUTRA_SEARCH_BUDGET_MS", "0")
     cfg = sutra.configuration()

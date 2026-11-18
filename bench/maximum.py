@@ -12,7 +12,7 @@ help, so the wording pass is measured on its own kind of input:
 
 ``off``       the shipped deterministic pass (default)
 ``balanced``  the same pass, then one bounded formatting pass
-``maximum``   the same pass, then the configured pass count and budget
+``aggressive`` the same pass, then the configured pass count and budget
 
 Each mode reports o200k tokens for the text the model would read, wall-clock
 milliseconds for the whole call, and whether every protected span outside the
@@ -43,8 +43,8 @@ except ImportError:  # pragma: no cover - exercised only without the extra
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 ENCODING = "o200k_base"
-MODES = ("off", "balanced", "maximum")
-MAXIMUM_ENV = {"SUTRA_SEARCH": "maximum", "SUTRA_SEARCH_PASSES": "4",
+MODES = ("off", "balanced", "aggressive")
+MAXIMUM_ENV = {"SUTRA_SEARCH": "aggressive", "SUTRA_SEARCH_PASSES": "4",
                "SUTRA_SEARCH_BUDGET_MS": "50", "SUTRA_LANGUAGE": "1"}
 BALANCED_ENV = {"SUTRA_SEARCH": "balanced"}
 
@@ -110,7 +110,7 @@ def main() -> int:
     })
     off_cfg = _resolved()
     balanced_cfg = _resolved(**BALANCED_ENV)
-    maximum_cfg = _resolved(**MAXIMUM_ENV)
+    aggressive_cfg = _resolved(**MAXIMUM_ENV)
 
     rows: dict[str, list[dict]] = {mode: [] for mode in MODES}
     search_only: list[dict] = []
@@ -119,7 +119,7 @@ def main() -> int:
         before_tokens = len(encoder.encode(text))
         before_bytes = len(text.encode("utf-8"))
         for mode, cfg in (("off", off_cfg), ("balanced", balanced_cfg),
-                          ("maximum", maximum_cfg)):
+                          ("aggressive", aggressive_cfg)):
             (out, stats), elapsed = _timed(lambda cfg=cfg: engine.compress(text, cfg=cfg))
             after_tokens = len(encoder.encode(out))
             ok, reasons = preserve.preservation_ok(text, out)
@@ -181,9 +181,9 @@ def main() -> int:
             "balanced": {"search_mode": balanced_cfg.search_mode,
                          "search_passes": balanced_cfg.search_passes,
                          "search_budget_ms": balanced_cfg.search_budget_ms},
-            "maximum": {"search_mode": maximum_cfg.search_mode,
-                        "search_passes": maximum_cfg.search_passes,
-                        "search_budget_ms": maximum_cfg.search_budget_ms},
+            "aggressive": {"search_mode": aggressive_cfg.search_mode,
+                        "search_passes": aggressive_cfg.search_passes,
+                        "search_budget_ms": aggressive_cfg.search_budget_ms},
         },
         "cases": rows,
         "search_only": search_only,
