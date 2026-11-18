@@ -140,6 +140,32 @@ label the measured modes that are genuine trade-offs rather than dominated:
 with o200k tokens on one axis and median milliseconds on the other, all three
 modes can be non-dominated because each additional token saved costs time.
 
+## The PART 5 loop, step by step
+
+goals.md PART 5 draws the loop as a diagram. This is where each step lives, so
+the diagram is a description of the code rather than an aspiration:
+
+| PART 5 step | Where it happens |
+|---|---|
+| Observe request and workflow | the host calls `core.process_text` / `process_result`; SUTRA sees one payload, not the workflow |
+| Identify plausible opportunities | `engine._apply_search` runs only for payloads the deterministic pass left alone; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
+| Generate candidates | `optimize.STRATEGIES` (formatting, wording) plus ordered pairs when `combine=True` |
+| Rank candidates | `scoring.seof(saved_bytes, elapsed_ms)` — savings over cost, never a probability cutoff |
+| Test cheap candidates first | strategies are evaluated in fixed order inside one pass; the cheapest timings surface in `Evaluation.elapsed_ms` |
+| Check preservation constraints | `preserve.preservation_ok` against the start-of-run text, for single candidates and pairs alike |
+| Reject and try next | a rejected candidate returns an `Evaluation(accepted=False, reason=…)` and changes nothing |
+| Estimate net benefit | `scoring.net_benefit(saved, overhead)`; below `min_saved_bytes` is rejected |
+| Apply validated optimization | `Report.applied` records the winning name; the text is replaced only after acceptance |
+| Measure actual result | `Report.saved_bytes`, `Report.elapsed_ms`, per-candidate evaluations |
+| Search again for remaining opportunities | the next pass re-evaluates every strategy against the new text (and, in aggressive mode, pairs) |
+| Final validation | the loop re-runs `preservation_ok` on the final text and `engine.compress` re-checks the JSON invariant before returning |
+| Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_SEARCH` selects the effort level. Learned policies are still deferred — see the limits below |
+| Stop conditions | `max_passes`, `max_ms`, or no accepted candidate; no unbounded loop |
+
+The loop is opt-in and fail-open: with `SUTRA_SEARCH=off` the diagram above does
+not execute at all, and a broken strategy or validator can only lose its own
+candidate, never the caller's text.
+
 ## Implementation map
 
 | Component | Code | Live use |
@@ -162,6 +188,7 @@ modes can be non-dominated because each additional token saved costs time.
   explicit price.
 - The model ranks candidates; it does not prove semantic equivalence. Proof is
   the exact protected-span check plus keeping the original recoverable.
-- Adaptive policies are a later phase: `goals.md` says not to add machine
-  learning or bandits until enough reliable data exists, and that data does not
-  exist yet.
+- Deterministic adaptation exists: the scoped failure ledger and the mode
+  switch. Learned adaptation (bandits, estimated probabilities) is still
+  deferred — `goals.md` says not to add machine learning until enough
+  reliable data exists, and that data does not exist yet.
