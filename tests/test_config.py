@@ -232,7 +232,8 @@ def test_search_aliases_and_bounds(sutra, monkeypatch):
     monkeypatch.setenv("SUTRA_SEARCH", "0")
     assert sutra.configuration().search_mode == "off"
     monkeypatch.setenv("SUTRA_SEARCH", "safe")
-    assert sutra.configuration().search_mode == "balanced"
+    # safe is its own conservative mode, no longer an alias for balanced
+    assert sutra.configuration().search_mode == "safe"
     monkeypatch.setenv("SUTRA_SEARCH", "maximum")
     assert sutra.configuration().search_mode == "aggressive"
     monkeypatch.setenv("SUTRA_SEARCH", "aggressive")
