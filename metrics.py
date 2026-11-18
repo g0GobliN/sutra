@@ -170,6 +170,9 @@ def _compression_record(stats: dict[str, Any]) -> dict[str, Any]:
         "id": stats.get("id"),
         "duration_ms": stats.get("duration_ms"),
         "fail_open": bool(stats.get("fail_open")),
+        "search_mode": str(stats.get("search_mode") or ""),
+        "search_applied": str(stats.get("search_applied") or ""),
+        "search_saved_bytes": max(0, int(stats.get("search_saved_bytes") or 0)),
     }
 
 

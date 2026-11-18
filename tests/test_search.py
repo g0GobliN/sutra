@@ -159,3 +159,39 @@ def test_safe_mode_is_its_own_conservative_mode(monkeypatch):
     assert "language" in balanced.search_applied.split("+")
     assert len(balanced_text) <= len(safe_text)
 
+
+
+def test_stats_and_the_log_name_the_mode_that_ran(monkeypatch):
+    """A host can tell which mode produced a result from the record alone."""
+    metrics = plugin_module("metrics")
+    for mode in ("off", "safe", "balanced", "aggressive"):
+        _, stats = engine.compress(PAYLOAD, cfg=_cfg(monkeypatch, SUTRA_SEARCH=mode))
+        assert stats.search_mode == mode
+        record = metrics._compression_record(dict(stats))
+        assert record["search_mode"] == mode
+        assert record["search_applied"] == stats.search_applied
+        assert record["search_saved_bytes"] == stats.search_saved_bytes
+
+
+def test_json_field_search_is_reported_on_the_document_record(monkeypatch):
+    """A JSON result whose prose field was optimised must say so.
+
+    The search layer runs on each decoded string field, because that is where
+    prose is visible as prose. The document record used to drop those names and
+    savings, so a host saw a smaller payload with an empty search report.
+    """
+    prose = "".join(
+        "It is important to note that worker %d needs to check the queue.   \n" % i
+        for i in range(200))
+    payload = json.dumps({"stdout": prose, "exit_code": 0})
+    balanced, stats = engine.compress(
+        payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="balanced", SUTRA_LANGUAGE="1"))
+    assert json.loads(balanced)["exit_code"] == 0
+    assert "language" in stats.search_applied.split("+")
+    assert stats.search_saved_bytes > 0
+
+    off_text, off_stats = engine.compress(
+        payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="off", SUTRA_LANGUAGE="1"))
+    assert off_stats.search_applied == ""
+    assert off_stats.search_saved_bytes == 0
+    assert len(balanced) < len(off_text)

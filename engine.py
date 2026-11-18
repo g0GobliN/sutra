@@ -117,6 +117,7 @@ class CompressionStats:
     budget_exceeded: bool = False
     search_applied: str = ""
     search_saved_bytes: int = 0
+    search_mode: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -539,13 +540,19 @@ def _compress_json_values(value: Any, depth: int = 0, path: str = "",
                           ref: Ref | None = None,
                           max_bytes: int = _DEFAULT_MAX_BYTES,
                           field_budget: int | None = None,
-                          marker_reserve: int = _MARKER_BUDGET) -> tuple[Any, int, int, bool]:
+                          marker_reserve: int = _MARKER_BUDGET) -> tuple[
+                              Any, int, int, bool, tuple[str, ...], int]:
     """Compress the string fields of a decoded document, preserving its shape.
 
-    Returns ``(new_value, original_bytes, compressed_bytes, changed)``. Only
-    strings are rewritten; every other type comes back untouched. Strings that
-    cannot exceed the threshold are skipped without a second classification
-    pass, which keeps a 10,000-field document cheap to inspect.
+    Returns ``(new_value, original_bytes, compressed_bytes, changed,
+    search_applied, search_saved_bytes)``. Only strings are rewritten; every
+    other type comes back untouched. Strings that cannot exceed the threshold
+    are skipped without a second classification pass, which keeps a 10,000-field
+    document cheap to inspect.
+
+    The search layer runs on each decoded field, where prose is visible as
+    prose; its names and savings are collected here so the outer document
+    record does not lose them.
 
     ``field_budget`` caps each individual field. It is the document's
     ``max_bytes`` share for one field, not the whole budget: compressing every
@@ -553,24 +560,29 @@ def _compress_json_values(value: Any, depth: int = 0, path: str = "",
     """
     budget = max_bytes if field_budget is None else max(64, int(field_budget))
     if depth > _JSON_MAX_DEPTH:
-        return value, 0, 0, False
+        return value, 0, 0, False, (), 0
     if isinstance(value, str):
         # Four bytes per character is the worst case, so this bound is safe.
         if len(value) <= max_bytes // 4:
-            return value, 0, 0, False
+            return value, 0, 0, False, (), 0
         if ref and not path:  # the document root itself: nothing to scope to
-            return value, 0, 0, False
+            return value, 0, 0, False, (), 0
         field_ref = Ref(ref.id, ref.ttl_hours, field=path) if ref else None
         out, stats = compress(value, max_bytes=budget, head_bytes=budget // 2,
                               tail_bytes=budget // 4, ref=field_ref,
                               marker_reserve=marker_reserve)
+        applied = (stats["search_applied"],) if stats.get("search_applied") else ()
+        saved = int(stats.get("search_saved_bytes") or 0)
         if stats["changed"]:
-            return out, stats["original_bytes"], stats["compressed_bytes"], True
-        return value, 0, 0, False
+            return (out, stats["original_bytes"], stats["compressed_bytes"],
+                    True, applied, saved)
+        return value, 0, 0, False, applied, saved
     if isinstance(value, list):
         items: list[Any] = []
         original = compressed = 0
         changed = False
+        names: list[str] = []
+        search_saved = 0
         for index, item in enumerate(value):
             # Paths are computed on both passes (ref present or not), so the
             # fields skipped as unrepresentable are the same fields both times.
@@ -578,30 +590,36 @@ def _compress_json_values(value: Any, depth: int = 0, path: str = "",
             if child is None:  # pointer not representable: leave this field alone
                 items.append(item)
                 continue
-            new, orig, comp, did = _compress_json_values(
+            new, orig, comp, did, applied, saved = _compress_json_values(
                 item, depth + 1, child, ref, max_bytes, field_budget, marker_reserve)
             items.append(new)
             original += orig
             compressed += comp
             changed = changed or did
-        return (items if changed else value), original, compressed, changed
+            names.extend(applied)
+            search_saved += saved
+        return (items if changed else value), original, compressed, changed, tuple(names), search_saved
     if isinstance(value, dict):
         out_map: dict[Any, Any] = {}
         original = compressed = 0
         changed = False
+        names: list[str] = []
+        search_saved = 0
         for key, item in value.items():
             child = _field_path(path, key)
             if child is None:  # pointer not representable: leave this field alone
                 out_map[key] = item
                 continue
-            new, orig, comp, did = _compress_json_values(
+            new, orig, comp, did, applied, saved = _compress_json_values(
                 item, depth + 1, child, ref, max_bytes, field_budget, marker_reserve)
             out_map[key] = new
             original += orig
             compressed += comp
             changed = changed or did
-        return (out_map if changed else value), original, compressed, changed
-    return value, 0, 0, False
+            names.extend(applied)
+            search_saved += saved
+        return (out_map if changed else value), original, compressed, changed, tuple(names), search_saved
+    return value, 0, 0, False, (), 0
 
 
 # --- policies --------------------------------------------------------------
@@ -666,7 +684,7 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
         share = max(256, (max_bytes - skeleton) // fields)
         for _attempt in range(4):
             field_reserve = min(_MARKER_BUDGET, max(64, share // 2))
-            new_doc, _, _, changed = _compress_json_values(
+            new_doc, _, _, changed, applied, search_saved = _compress_json_values(
                 cls.document, ref=ref, max_bytes=max_bytes, field_budget=share,
                 marker_reserve=field_reserve)
             # A document in must be a document out, of the same top-level type.
@@ -680,7 +698,9 @@ def _compress_impl(text: str, *, max_bytes: int | None = None, head_bytes: int |
                 stats.update(compressed_bytes=encoded_bytes, changed=True,
                              rule="json-fields",
                              omitted_bytes=max(0, original_bytes - encoded_bytes),
-                             partial=True)
+                             partial=True,
+                             search_applied="+".join(dict.fromkeys(applied)),
+                             search_saved_bytes=search_saved)
                 return encoded, stats
             if share <= 256:
                 break
@@ -872,7 +892,11 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             budget_exceeded=stats.budget_exceeded,
         )
 
-    if cfg.search_mode != "off":
+    # A JSON document's search already ran on each decoded string field, where
+    # prose is visible as prose. Re-running it over the serialized document
+    # finds nothing and would only add latency, so the recorded field-level
+    # result stands as the document's result.
+    if cfg.search_mode != "off" and not stats.search_applied:
         before = out
         out, stats = _apply_search(out, stats, cfg)
         if (out is not before and not _parses_as_json(out)
@@ -881,6 +905,7 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             out = before
             stats = replace(stats, compressed_bytes=len(before.encode("utf-8")),
                             search_applied="", search_saved_bytes=0)
+    stats = replace(stats, search_mode=cfg.search_mode)
 
     # Record telemetry
     latency_ms = (time.perf_counter() - start_time) * 1000
