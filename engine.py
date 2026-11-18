@@ -785,9 +785,10 @@ def _ledger(cfg: config.Config) -> failure.Ledger:
 def _search_limits(cfg: config.Config) -> tuple[int, float]:
     """Passes and time budget for the configured search mode.
 
-    ``balanced`` is one bounded pass over the formatting strategies;
-    ``aggressive`` spends the configured pass count and budget. ``off`` never
-    reaches this function.
+    ``safe`` and ``balanced`` are one bounded pass over the formatting
+    strategies (``safe`` never adds the language strategy); ``aggressive``
+    spends the configured pass count and budget and may try combinations.
+    ``off`` never reaches this function.
     """
     if cfg.search_mode != "aggressive":
         return 1, cfg.search_budget_ms
@@ -806,13 +807,15 @@ def _apply_search(out: str, stats: CompressionStats,
     """
     passes, budget_ms = _search_limits(cfg)
     strategies = list(optimize.default_strategies())
-    if cfg.language:
+    if cfg.language and cfg.search_mode != "safe":
         strategies.append(optimize.Strategy(
             "language", language.compress_text,
             "remove verbosity fillers on prose lines, validated against SPC"))
     try:
-        report = optimize.optimize(out, max_passes=passes, max_ms=float(budget_ms),
-                                   strategies=strategies, ledger=_ledger(cfg))
+        report = optimize.optimize(
+            out, max_passes=passes, max_ms=float(budget_ms),
+            strategies=strategies, ledger=_ledger(cfg),
+            combine=cfg.search_mode == "aggressive")
     except Exception:  # fail open: the deterministic result is still correct
         logger.exception("sutra: search layer failed; keeping the compressed result")
         return out, stats

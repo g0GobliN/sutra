@@ -249,3 +249,35 @@ def test_candidate_smaller_than_min_saved_bytes():
     # "short" is 5 bytes, any change would save at most 4 bytes
     # So nothing should be applied
     assert result.applied == (), f"Expected no applied, got {result.applied}"
+
+def test_combination_search_finds_a_pair_after_singles_are_too_small():
+    """Aggressive mode can accept a pair when neither single meets the minimum."""
+    def remove_aa(text):
+        return text.replace("aa", "")
+
+    def remove_bb(text):
+        return text.replace("bb", "")
+
+    strategies = (
+        optimize.Strategy("aa", remove_aa),
+        optimize.Strategy("bb", remove_bb),
+    )
+    base = "xxaa yybb"
+    result = optimize.optimize(base, strategies=strategies, min_saved_bytes=4,
+                               max_passes=4, combine=True)
+    assert result.saved_bytes == 4
+    assert len(result.applied) == 1 and "+" in result.applied[0]
+
+
+def test_combination_search_is_off_by_default_and_never_grows_text():
+    """Without combine, a pair is not tried; with it, text never grows."""
+    def append(text):
+        return text + "x"
+
+    strategies = (optimize.Strategy("append", append),)
+    base = "line\n"
+    plain = optimize.optimize(base, strategies=strategies, combine=False)
+    assert plain.text == base
+    combined = optimize.optimize(base, strategies=strategies, combine=True,
+                                 max_passes=1)
+    assert len(combined.text) <= len(base)

@@ -144,3 +144,18 @@ def test_search_strategy_names_are_real(monkeypatch):
     known = {s.name for s in optimize.default_strategies()}
     assert stats.search_applied
     assert set(stats.search_applied.split("+")) <= known
+
+
+def test_safe_mode_is_its_own_conservative_mode(monkeypatch):
+    """`safe` stays a distinct mode: formatting only, never the language pass."""
+    resolved = _cfg(monkeypatch, SUTRA_SEARCH="safe")
+    assert resolved.search_mode == "safe"
+    prose = ("It is important to note that the build is very slow. " * 40)
+    safe_text, safe = engine.compress(
+        prose, cfg=_cfg(monkeypatch, SUTRA_SEARCH="safe", SUTRA_LANGUAGE="1"))
+    balanced_text, balanced = engine.compress(
+        prose, cfg=_cfg(monkeypatch, SUTRA_SEARCH="balanced", SUTRA_LANGUAGE="1"))
+    assert "language" not in safe.search_applied.split("+")
+    assert "language" in balanced.search_applied.split("+")
+    assert len(balanced_text) <= len(safe_text)
+

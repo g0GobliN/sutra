@@ -56,7 +56,7 @@ DEFAULT_REUSE_MIN_BYTES = 4096
 # ``maximum`` allows more passes and a larger time budget; both are bounded by
 # an explicit cap so a pathological payload cannot stall a tool result.
 DEFAULT_SEARCH_MODE = "off"
-SEARCH_MODES = ("off", "balanced", "aggressive")
+SEARCH_MODES = ("off", "safe", "balanced", "aggressive")
 DEFAULT_SEARCH_PASSES = 4
 DEFAULT_SEARCH_BUDGET_MS = 50
 # Wording compression is a separate opt-in: it changes prose, not formatting,
@@ -171,8 +171,8 @@ def _policy_mode() -> str:
 _SEARCH_ALIASES = {
     "0": "off", "false": "off", "no": "off", "disabled": "off", "none": "off",
     "1": "balanced", "true": "balanced", "on": "balanced",
-    # "safe" keeps the conservative single pass, which is what balanced does.
-    "safe": "balanced",
+    # "safe" is its own conservative mode: formatting only, one pass, and the
+    # language strategy is never appended.
     # The goals document calls the deepest mode "aggressive"; "maximum" is the
     # name it had during development and stays accepted.
     "maximum": "aggressive", "max": "aggressive",

@@ -241,6 +241,56 @@ def _evaluate(
     return Evaluation(strategy.name, saved, elapsed, True), candidate
 
 
+def _evaluate_pair(
+    base: str,
+    original: str,
+    first: Strategy,
+    second: Strategy,
+    validator: Callable[[str, str], tuple[bool, list[str]]],
+    min_saved_bytes: int,
+) -> tuple[Evaluation, str | None]:
+    """Try two strategies in order, validating against the original text.
+
+    This is the aggressive-mode combination search: when no single strategy is
+    accepted any more, a pair can still be strictly smaller, and validating
+    the result against the text at the start of the run keeps the cumulative
+    guarantee the single-strategy path already has.
+    """
+    name = f"{first.name}+{second.name}"
+    started = time.monotonic()
+    try:
+        intermediate = first.apply(base)
+        if not isinstance(intermediate, str) or not intermediate:
+            elapsed = (time.monotonic() - started) * 1000.0
+            return Evaluation(name, 0, elapsed, False,
+                              "first strategy produced no text"), None
+        candidate = second.apply(intermediate)
+    except Exception as exc:
+        elapsed = (time.monotonic() - started) * 1000.0
+        return Evaluation(name, 0, elapsed, False,
+                          f"strategy raised: {exc}"), None
+    elapsed = (time.monotonic() - started) * 1000.0
+    if not isinstance(candidate, str) or not candidate:
+        return Evaluation(name, 0, elapsed, False,
+                          "candidate is not text"), None
+    saved = len(base) - len(candidate)
+    try:
+        ok, reasons = validator(original, candidate)
+    except Exception as exc:
+        return Evaluation(name, saved, elapsed, False,
+                          f"validator raised: {exc}"), None
+    if not ok:
+        reason = (reasons[0] if reasons else "validator rejected")
+        return Evaluation(name, saved, elapsed, False,
+                          reason[:_MAX_REASON_CHARS]), None
+    if saved < min_saved_bytes:
+        return Evaluation(
+            name, saved, elapsed, False,
+            f"saved {saved} bytes, below the {min_saved_bytes}-byte minimum",
+        ), None
+    return Evaluation(name, saved, elapsed, True), candidate
+
+
 def _empty_report(text: str = "") -> Report:
     return Report(text=text, evaluations=(), applied=(), elapsed_ms=0.0,
                   saved_bytes=0)
@@ -255,6 +305,7 @@ def optimize(
     strategies: Sequence[Strategy] | None = None,
     validator: Callable[[str, str], tuple[bool, list[str]]] | None = None,
     ledger: failure.Ledger | None = None,
+    combine: bool = False,
 ) -> Report:
     """Run the bounded optimization loop over ``text``.
 
@@ -295,6 +346,34 @@ def optimize(
             if candidate is not None:
                 accepted.append((evaluation, candidate))
         if not accepted:
+            if combine and (time.monotonic() - started) * 1000.0 < max_ms:
+                pairs: list[tuple[Evaluation, str]] = []
+                for first in candidates:
+                    for second in candidates:
+                        if first is second:
+                            continue
+                        if (time.monotonic() - started) * 1000.0 >= max_ms:
+                            break
+                        pair_evaluation, pair_text = _evaluate_pair(
+                            current, text, first, second, check,
+                            min_saved_bytes)
+                        evaluations.append(pair_evaluation)
+                        if pair_text is not None:
+                            pairs.append((pair_evaluation, pair_text))
+                    if (time.monotonic() - started) * 1000.0 >= max_ms:
+                        break
+                if pairs:
+                    best, best_text = min(
+                        pairs,
+                        key=lambda item: (
+                            -scoring.seof(item[0].saved_bytes,
+                                          item[0].elapsed_ms),
+                            item[0].name,
+                        ),
+                    )
+                    current = best_text
+                    applied.append(best.name)
+                    continue
             break
         best, best_text = min(
             accepted,
