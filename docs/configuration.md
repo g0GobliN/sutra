@@ -118,3 +118,41 @@ environments when you configure them separately.
 The API form is `sutra.configuration()`, which returns every resolved value as a
 frozen, inspectable object, including `policy_mode`, `reuse` and
 `reuse_min_bytes`.
+
+## Conceptual configuration, and the one resolver
+
+goals.md PART 18 sketches a configuration grouped by concern. SUTRA does not
+read that YAML and does not add a second configuration system: `config.py` is
+the single resolver, and environment variables are its only input. The sketch
+maps onto it like this, so the intent is readable without pretending a file
+exists:
+
+```yaml
+mode: balanced            # SUTRA_SEARCH=off|safe|balanced|aggressive
+optimization:
+  compression: true       # SUTRA_ENABLED
+  reuse: true             # SUTRA_REUSE, SUTRA_REUSE_MIN_BYTES
+  language: false         # SUTRA_LANGUAGE
+  search:
+    maximum_effort: true  # SUTRA_SEARCH=aggressive
+    passes: 4             # SUTRA_SEARCH_PASSES
+    budget_ms: 250        # SUTRA_SEARCH_BUDGET_MS
+safety:
+  protected_spans: true   # always on; preserve.py has no off switch
+  mandatory_context: true # context items marked mandatory are never dropped
+  probability_cutoff: 0   # no probabilistic exclusion at any setting
+cache:
+  local_result: true      # SUTRA_STORE_ENABLED and the SUTRA_STORE_* bounds
+  tool_result: explicit   # redundancy.py; a host must ask
+  provider_prompt: unobservable
+accounting:
+  prices: caller-supplied # sutra cost flags; no price table ships
+benchmarks:
+  tokenizer: o200k_base   # bench/maximum.py; labelled estimated without tiktoken
+```
+
+Two rows deserve their own sentence. `probability_cutoff: 0` is not a default
+that can be raised: no rule in this project drops content because it is
+probably unimportant. And `protected_spans` is not a toggle — every candidate
+must pass the protected-span check or it is not applied; there is no setting
+that turns safety off.
