@@ -2,6 +2,7 @@
 
 import json
 
+import pytest
 
 import redundancy
 
@@ -172,3 +173,12 @@ def test_cli_check_and_record(tmp_path, capsys):
                      "--command", "pytest -q", "--file", str(ledger_path)]) == 1
     assert "MUST_EXECUTE" in capsys.readouterr().out
     assert cli.main(["redundancy", "check", "--file", str(ledger_path)]) == 2
+
+
+def test_a_path_list_is_rejected_instead_of_crashing_later(tmp_path):
+    ledger = redundancy.Ledger(tmp_path / "ledger.json")
+    with pytest.raises(TypeError, match="needs a Snapshot"):
+        ledger.record("k", dependencies=["a.py"])
+    ledger.record("k")
+    with pytest.raises(TypeError, match="needs a Snapshot"):
+        ledger.classify("k", dependencies=["a.py"])

@@ -151,17 +151,17 @@ Caveman's README reports 33.2% fewer input tokens across whole sessions (older e
 
 ![Horizontal bar chart: bytes before and after SUTRA on eight payload shapes. Total 1.63 MB → 742.7 kB, 54.3% saved; the patch and JSON-array rows are unchanged on purpose.](https://raw.githubusercontent.com/g0GobliN/sutra/main/bench/savings.svg)
 
-| Payload | Rule | Bytes before → after | o200k tokens before → after | Saved |
-|---|---|---:|---:|---:|
-| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 35,000 → 10,149 | 71.0% |
-| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 26,012 → 5,670 | 78.2% |
-| Test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 29,998 → 5,529 | 81.6% |
-| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 126,015 → 3,680 | 97.1% |
-| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
-| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 18,906 → 7,543 | 60.1% |
-| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 127,005 → 6,905 | 94.6% |
-| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 103,002 → 103,002 | 0.0% |
-| **Total** | | **1.63 MB → 742.7 kB (54.3%)** | **585,977 → 262,517 (55.2%)** | |
+| Payload | Rule | Bytes before → after | Bytes saved | o200k tokens before → after | Tokens saved |
+|---|---|---:|---:|---:|---:|
+| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 69.5% | 35,000 → 10,149 | 71.0% |
+| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 77.7% | 26,012 → 5,670 | 78.2% |
+| Test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 81.4% | 29,998 → 5,529 | 81.6% |
+| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 97.1% | 126,015 → 3,680 | 97.1% |
+| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 0.0% | 120,039 → 120,039 | 0.0% |
+| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 60.2% | 18,906 → 7,543 | 60.1% |
+| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 94.5% | 127,005 → 6,905 | 94.6% |
+| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 0.0% | 103,002 → 103,002 | 0.0% |
+| **Total** | | **1.63 MB → 742.7 kB** | **54.3%** | **585,977 → 262,517** | **55.2%** |
 
 The patch row saves nothing on purpose: a compressor that shrinks diffs can hide a code change. The JSON-array row saves nothing because keeping the array an array leaves nothing safe to remove. Five buried clues needed one `sutra_restore` call (about 700 B each; the single-line JSON envelope cost 8.9 kB); three were already visible.
 

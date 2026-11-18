@@ -224,6 +224,7 @@ class Ledger:
     def classify(self, key: str, *, dependencies: Snapshot | None = None,
                  command: str = "", now: float | None = None) -> Decision:
         """Classify a call without changing the ledger."""
+        _require_snapshot(dependencies, "classify")
         if command and mandatory_command(command):
             return Decision(
                 MUST_EXECUTE,
@@ -260,6 +261,7 @@ class Ledger:
                result_fingerprint: str = "", ttl_seconds: int | None = None,
                now: float | None = None) -> None:
         """Remember one call, its dependency snapshot and its result digest."""
+        _require_snapshot(dependencies, "record")
         snapshot_value = dependencies if dependencies is not None else Snapshot()
         self._entries[key] = {
             "created": now if now is not None else time.time(),
@@ -284,6 +286,14 @@ class Ledger:
 
     def __len__(self) -> int:
         return len(self._entries)
+
+
+def _require_snapshot(value: object, method: str) -> None:
+    """Reject a path list early: callers must capture a Snapshot themselves."""
+    if value is not None and not isinstance(value, Snapshot):
+        raise TypeError(
+            f"Ledger.{method}() needs a Snapshot, not {type(value).__name__}; "
+            "capture one with redundancy.snapshot(paths) first")
 
 
 def _snapshot_from(entry: Mapping[str, object]) -> Snapshot:
