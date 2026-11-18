@@ -17,13 +17,17 @@ Rules, in the same priority order as the rest of the project:
 2. **Validator first.** A candidate is applied only when the validator accepts
    it, and the validator sees the text at the start of the run, so several
    accepted passes cannot hide a cumulative loss.
-3. **Bounded effort.** At most ``max_passes`` passes and ``max_ms``
-   milliseconds; both are checked between strategies so one large payload
-   cannot stall a tool result.
-4. **Never raise.** A strategy that throws or returns a non-string, a failing
+3. **Bounded effort.** At most ``max_passes`` passes. The pass count is the
+   bound, not a wall-clock deadline: a clock-based stop made the applied
+   strategy depend on host load, so ``max_ms`` is accepted for compatibility
+   and recorded but no longer stops the loop.
+4. **Deterministic pairing bound.** Combination search is skipped above
+   ``PAIR_MAX_BYTES`` (256 KiB); the bound is a size, not a clock, so the same
+   payload always gets the same treatment.
+5. **Never raise.** A strategy that throws or returns a non-string, a failing
    validator and an empty candidate are recorded as rejected evaluations; the
    caller still gets the original text.
-5. **Deterministic.** Strategies run in a fixed order, ranking is
+6. **Deterministic.** Strategies run in a fixed order, ranking is
    ``scoring.seof`` over the measured bytes saved with a fixed nominal
    overhead and the strategy name as tie-break, and the same input always
    produces the same selection. Measured milliseconds are reported per
@@ -55,6 +59,9 @@ _MAX_REASON_CHARS = 200
 # differently, which makes the output depend on host load. Timings are still
 # measured and reported; they just do not decide the winner.
 RANKING_OVERHEAD_MS = 1.0
+# Combination search multiplies the work by the number of ordered pairs. The
+# cap is a payload size, not a clock, so the decision stays deterministic.
+PAIR_MAX_BYTES = 256 * 1024
 
 
 def _size(text: str) -> int:
@@ -333,7 +340,7 @@ def optimize(
     """
     if not isinstance(text, str) or not text:
         return _empty_report()
-    if max_passes <= 0 or max_ms <= 0:
+    if max_passes <= 0:
         return _empty_report(text)
     candidates = tuple(strategies) if strategies is not None else default_strategies()
     if not candidates:
@@ -346,12 +353,8 @@ def optimize(
     applied: list[str] = []
 
     for _ in range(max_passes):
-        if (time.monotonic() - started) * 1000.0 >= max_ms:
-            break
         accepted: list[tuple[Evaluation, str]] = []
         for strategy in candidates:
-            if (time.monotonic() - started) * 1000.0 >= max_ms:
-                break
             if ledger is not None and ledger.is_disabled(strategy.name, scope):
                 evaluations.append(Evaluation(
                     strategy.name, 0, 0.0, False,
@@ -363,22 +366,18 @@ def optimize(
             if candidate is not None:
                 accepted.append((evaluation, candidate))
         if not accepted:
-            if combine and (time.monotonic() - started) * 1000.0 < max_ms:
+            if combine and _size(current) <= PAIR_MAX_BYTES:
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:
                     for second in candidates:
                         if first is second:
                             continue
-                        if (time.monotonic() - started) * 1000.0 >= max_ms:
-                            break
                         pair_evaluation, pair_text = _evaluate_pair(
                             current, text, first, second, check,
                             min_saved_bytes)
                         evaluations.append(pair_evaluation)
                         if pair_text is not None:
                             pairs.append((pair_evaluation, pair_text))
-                    if (time.monotonic() - started) * 1000.0 >= max_ms:
-                        break
                 if pairs:
                     best, best_text = min(
                         pairs,

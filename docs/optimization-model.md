@@ -130,9 +130,12 @@ probability of `0.000001` still has a positive priority, and the loop's
 stopping rule is the configured pass/time budget or the absence of an accepted
 candidate — never a minimum probability or a minimum compression percentage.
 
-Bound the effort, not the discovery: `SUTRA_SEARCH_PASSES` and
-`SUTRA_SEARCH_BUDGET_MS` cap what one call may spend, so the loop cannot cost
-more than the output it is optimizing. `off` remains the default.
+Bound the effort, not the discovery: `SUTRA_SEARCH_PASSES` caps what one call
+may spend, so the loop cannot cost more than the output it is optimizing, and
+the pass cap is deterministic. `SUTRA_SEARCH_BUDGET_MS` is retained for
+compatibility and validated, but it no longer stops the loop: a wall-clock stop
+made the same input produce different output under host load, which the
+determinism invariant caught. `off` remains the default.
 
 ## Pareto comparison
 
@@ -163,7 +166,7 @@ the diagram is a description of the code rather than an aspiration:
 | Search again for remaining opportunities | the next pass re-evaluates every strategy against the new text (and, in aggressive mode, pairs) |
 | Final validation | the loop re-runs `preservation_ok` on the final text and `engine.compress` re-checks the JSON invariant before returning |
 | Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_SEARCH` selects the effort level. Learned policies are still deferred — see the limits below |
-| Stop conditions | `max_passes`, `max_ms`, or no accepted candidate; no unbounded loop |
+| Stop conditions | `max_passes` or no accepted candidate; no clock in the decision, so identical input gives identical output |
 
 The loop is opt-in and fail-open: with `SUTRA_SEARCH=off` the diagram above does
 not execute at all, and a broken strategy or validator can only lose its own

@@ -24,7 +24,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
 | `SUTRA_SEARCH` | `off` | `off`, `safe`, `balanced` or `aggressive` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
 | `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
-| `SUTRA_SEARCH_BUDGET_MS` | `50` | time budget for the optimization loop (1-5000 ms) |
+| `SUTRA_SEARCH_BUDGET_MS` | `50` | retained for compatibility and validated (1-5000 ms), but no longer a stop condition: the pass cap is the deterministic bound (see below) |
 | `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
 | `SUTRA_LANGUAGE` | `0` | opt-in wording compression on prose lines while a search mode is active; never applied to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
@@ -75,8 +75,11 @@ formatting strategies (line endings, unicode spaces, trailing spaces, blank
 runs, deep indentation) on text the engine already compressed. Every candidate
 must pass the protected-span check (paths, URLs, numbers, identifiers,
 commands, negations, error and security terms all survive) and must be
-strictly smaller; at most `SUTRA_SEARCH_PASSES` passes run inside
-`SUTRA_SEARCH_BUDGET_MS`. `off` is the default and changes nothing.
+strictly smaller; at most `SUTRA_SEARCH_PASSES` passes run. The pass count is
+the bound, not a clock: `SUTRA_SEARCH_BUDGET_MS` is still parsed and range
+checked but no longer stops the loop, because a wall-clock stop made two
+identical inputs produce different outputs when the host was busy. `off` is the
+default and changes nothing.
 The modes differ in how much they are allowed to try, not in what they accept:
 
 | Mode | Passes | Strategies | Combination search |
