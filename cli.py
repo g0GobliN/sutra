@@ -55,6 +55,7 @@ usage:
   sutra redundancy record --key K [--dependency PATH]... [--result FINGERPRINT] [--file PATH]
   sutra redundancy forget --key K [--file PATH]
   sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
+  sutra cache [--json] [--write-cost W --read-cost R --miss-cost M --reuses N]
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
              [--cached-price P] [--json]   (accounting with your own prices)
@@ -839,6 +840,59 @@ def _redundancy(argv: list[str]) -> int:
     return 0 if decision.reusable else 1
 
 
+def _cache(argv: list[str]) -> int:
+    from . import cache
+
+    parser = argparse.ArgumentParser(
+        prog="sutra cache",
+        description=("Report which of the five cache layers this project "
+                     "actually owns, and optionally evaluate the break-even "
+                     "arithmetic for one layer. Runs nothing and calls no "
+                     "provider."))
+    parser.add_argument("--write-cost", type=float, default=None,
+        help="cost to write one cache entry, in your billing unit")
+    parser.add_argument("--read-cost", type=float, default=None,
+        help="cost to serve one hit")
+    parser.add_argument("--miss-cost", type=float, default=None,
+        help="cost of the call the cache replaces")
+    parser.add_argument("--reuses", type=int, default=None,
+        help="reuses to evaluate")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    payload = cache.report()
+    costs = (args.write_cost, args.read_cost, args.miss_cost, args.reuses)
+    if any(value is not None for value in costs):
+        if any(value is None for value in costs):
+            print_error("sutra cache: pass all of --write-cost, --read-cost, "
+                        "--miss-cost and --reuses, or none")
+            return 2
+        try:
+            payload["economics"] = cache.parse_costs(
+                args.write_cost, args.read_cost, args.miss_cost, args.reuses)
+        except (TypeError, ValueError) as exc:
+            print_error(f"sutra cache: {exc}")
+            return 2
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    for entry in payload["layers"]:
+        print(f"{entry['layer']:<20} {entry['status']}")
+        print(f"  stores: {entry['stores']}")
+        print(f"  note:   {entry['note']}")
+    economics = payload.get("economics")
+    if economics:
+        print("")
+        print("economics: " + economics["formula"])
+        print(f"  saving per reuse: {economics['saving_per_reuse']}")
+        break_even = economics["break_even_reuses"]
+        print("  break-even reuses: "
+              + ("never (a hit costs at least a miss)" if break_even is None
+                 else f"{break_even}"))
+        print(f"  net at {economics['reuses']} reuses: {economics['net']} "
+              f"(worth it: {economics['worth_it']})")
+    return 0
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -934,6 +988,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _doctor(as_json=args.json, clients=args.client)
+    if argv[:1] == ["cache"]:
+        return _cache(argv[1:])
     if argv[:1] == ["cost"]:
         return _cost(argv[1:])
     if argv[:1] == ["context"]:

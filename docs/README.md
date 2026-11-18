@@ -16,6 +16,7 @@ need the detail behind a claim.
 | [custom-parsers.md](custom-parsers.md) | The parser contract and runtime registration with `register_parser()` |
 | [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
 | [redundancy.md](redundancy.md) | Dependency-aware classification of repeated work: reuse, revalidate, must execute or unknown |
+| [cache.md](cache.md) | The five cache layers, entry metadata, invalidation and break-even economics |
 
 ## Correctness and recovery
 
