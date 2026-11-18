@@ -214,3 +214,38 @@ def test_unknown_tokenizer_warns_once_and_falls_back(sutra, monkeypatch,
 
 def test_max_field_pointer_is_256_utf8_bytes(sutra):
     assert sutra.config.MAX_FIELD_POINTER == 256
+
+
+def test_search_mode_defaults_to_off_and_is_resolved(sutra, monkeypatch):
+    monkeypatch.delenv("SUTRA_SEARCH", raising=False)
+    cfg = sutra.configuration()
+    assert cfg.search_mode == "off"
+    monkeypatch.setenv("SUTRA_SEARCH", "maximum")
+    cfg = sutra.configuration()
+    assert (cfg.search_mode, cfg.search_passes, cfg.search_budget_ms) == (
+        "maximum", 4, 50)
+
+
+def test_search_aliases_and_bounds(sutra, monkeypatch):
+    monkeypatch.setenv("SUTRA_SEARCH", "on")
+    assert sutra.configuration().search_mode == "balanced"
+    monkeypatch.setenv("SUTRA_SEARCH", "0")
+    assert sutra.configuration().search_mode == "off"
+    monkeypatch.setenv("SUTRA_SEARCH", "maximum")
+    monkeypatch.setenv("SUTRA_SEARCH_PASSES", "99")
+    monkeypatch.setenv("SUTRA_SEARCH_BUDGET_MS", "0")
+    cfg = sutra.configuration()
+    assert cfg.search_passes == 4        # above the 16 cap: back to default
+    assert cfg.search_budget_ms == 50    # below the 1 floor: back to default
+
+
+def test_unknown_search_mode_warns_once_and_stays_off(sutra, monkeypatch,
+                                                      caplog):
+    monkeypatch.setenv("SUTRA_SEARCH", "turbo")
+    with caplog.at_level(logging.WARNING, logger="sutra.config"):
+        sutra.configuration()
+        sutra.configuration()
+    messages = [record.getMessage() for record in caplog.records]
+    matched = [m for m in messages if "SUTRA_SEARCH" in m]
+    assert len(matched) == 1, matched
+    assert sutra.configuration().search_mode == "off"

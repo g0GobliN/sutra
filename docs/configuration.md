@@ -22,6 +22,9 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` agent guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
+| `SUTRA_SEARCH` | `off` | `off`, `balanced` or `maximum` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
+| `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
+| `SUTRA_SEARCH_BUDGET_MS` | `50` | time budget for the optimization loop (1-5000 ms) |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
 | `SUTRA_TELEMETRY` | `0` | enable OpenTelemetry export; see [telemetry.md](telemetry.md) |
@@ -64,6 +67,14 @@ host prompt template, and a build without the section API simply gets
 compression and recovery.
 
 ## Exact-duplicate reuse
+
+`SUTRA_SEARCH` enables a bounded, opt-in second stage that tries cheap
+formatting strategies (line endings, unicode spaces, trailing spaces, blank
+runs, deep indentation) on text the engine already compressed. Every candidate
+must pass the protected-span check (paths, URLs, numbers, identifiers,
+commands, negations, error and security terms all survive) and must be
+strictly smaller; at most `SUTRA_SEARCH_PASSES` passes run inside
+`SUTRA_SEARCH_BUDGET_MS`. `off` is the default and changes nothing.
 
 With `SUTRA_REUSE=1` (default), a result that exactly matches an earlier
 compressed result in the same process session is replaced by a marker quoting
