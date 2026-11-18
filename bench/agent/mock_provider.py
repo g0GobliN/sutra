@@ -24,8 +24,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import threading
 import time
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -94,23 +96,17 @@ class ServerState:
                 handle.write(line)
 
 
-def chat_completion(state: ServerState, body: dict[str, Any], base_url: str) -> tuple[dict[str, Any], bool]:
-    """Build the next assistant turn and log what this request carried."""
+def base_record(body: dict[str, Any], sequence: int) -> dict[str, Any]:
+    """One log row describing what a request carried, whatever answers it."""
     messages = body.get("messages") or []
     if not isinstance(messages, list):
         messages = []
-    seen = tool_result_count(messages)
-    commands = state.scenario.get("commands") or []
-    final = str(state.scenario.get("final") or DEFAULT_SCENARIO["final"])
-    sequence = state.next_sequence()
-
-    message_parts = [message_text(message) for message in messages]
-    joined = "\n".join(message_parts)
+    joined = "\n".join(message_text(message) for message in messages)
     prompt_tokens = count_tokens(joined)
     tool_messages = [message for message in messages
                      if isinstance(message, dict) and message.get("role") == "tool"]
     tool_bytes = [len(message_text(message).encode("utf-8")) for message in tool_messages]
-    record = {
+    return {
         "seq": sequence,
         "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "path": "/v1/chat/completions",
@@ -119,12 +115,24 @@ def chat_completion(state: ServerState, body: dict[str, Any], base_url: str) -> 
         "bytes": len(joined.encode("utf-8")),
         "tokens": prompt_tokens["tokens"],
         "tokenizer": prompt_tokens["tokenizer"],
-        "tool_results": seen,
+        "tool_results": tool_result_count(messages),
         "tool_result_bytes": tool_bytes,
         "stream": bool(body.get("stream")),
         "model": body.get("model"),
     }
+
+
+def chat_completion(state: ServerState, body: dict[str, Any], base_url: str) -> tuple[dict[str, Any], bool]:
+    """Build the next assistant turn and log what this request carried."""
+    messages = body.get("messages") or []
+    if not isinstance(messages, list):
+        messages = []
+    seen = tool_result_count(messages)
+    commands = state.scenario.get("commands") or []
+    final = str(state.scenario.get("final") or DEFAULT_SCENARIO["final"])
+    record = base_record(body, state.next_sequence())
     state.append(record)
+    sequence = record["seq"]
 
     if seen < len(commands):
         command = str(commands[seen])
@@ -147,9 +155,9 @@ def chat_completion(state: ServerState, body: dict[str, Any], base_url: str) -> 
         finish_reason = "stop"
 
     usage = {
-        "prompt_tokens": prompt_tokens["tokens"],
+        "prompt_tokens": record["tokens"],
         "completion_tokens": completion_tokens["tokens"],
-        "total_tokens": prompt_tokens["tokens"] + completion_tokens["tokens"],
+        "total_tokens": record["tokens"] + completion_tokens["tokens"],
     }
     payload = {
         "id": f"chatcmpl-mock-{sequence}",
@@ -164,6 +172,32 @@ def chat_completion(state: ServerState, body: dict[str, Any], base_url: str) -> 
         "usage": usage,
     }
     return payload, finish_reason == "tool_calls"
+
+
+def _upstream_request(state: "ServerState", path: str, body: dict[str, Any] | None,
+                      stream: bool) -> Any:
+    """Send one request to the real provider and return the open response.
+
+    The key is read from the environment named in ``state.upstream_key_env`` and
+    never logged. Streaming requests ask for a usage chunk so the record can
+    carry real billed tokens instead of a local estimate.
+    """
+    token = os.environ.get(state.upstream_key_env)
+    if not token:
+        raise RuntimeError(f"{state.upstream_key_env} is not set")
+    data = None
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if body is not None:
+        if stream:
+            options = body.get("stream_options")
+            if not isinstance(options, dict):
+                options = {}
+            options["include_usage"] = True
+            body["stream_options"] = options
+        data = json.dumps(body).encode("utf-8")
+    request = urllib.request.Request(f"{state.upstream.rstrip('/')}{path}", data=data,
+                                     headers=headers, method="POST" if body else "GET")
+    return urllib.request.urlopen(request, timeout=600)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -183,6 +217,13 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler API
         if self.path.rstrip("/") in ("/v1/models", "/models"):
+            if self.state.upstream:
+                try:
+                    with _upstream_request(self.state, "/models", None, False) as response:
+                        self._send_json(json.loads(response.read()))
+                except Exception as exc:  # report, never expose the key
+                    self._send_json({"error": {"message": f"upstream failed: {exc}"}}, status=502)
+                return
             self._send_json({"object": "list", "data": [
                 {"id": "mock-model", "object": "model", "owned_by": "sutra-harness"},
             ]})
@@ -201,6 +242,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if not isinstance(body, dict):
             self._send_json({"error": {"message": "body must be a JSON object"}}, status=400)
+            return
+
+        if self.state.upstream:
+            self._relay(body)
             return
 
         payload, _ = chat_completion(self.state, body, f"http://{self.headers.get('Host', '127.0.0.1')}")
@@ -243,14 +288,66 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.flush()
 
 
-def serve(port: int, scenario_path: Path | None, log_path: Path, host: str = "127.0.0.1") -> ThreadingHTTPServer:
+    def _relay(self, body: dict[str, Any]) -> None:
+        """Forward one request to the real provider and record its usage."""
+        stream = bool(body.get("stream"))
+        record = base_record(body, self.state.next_sequence())
+        record["upstream"] = self.state.upstream
+        try:
+            response = _upstream_request(self.state, "/chat/completions", body, stream)
+        except Exception as exc:
+            self._send_json({"error": {"message": f"upstream failed: {exc}"}}, status=502)
+            record["error"] = str(exc)
+            self.state.append(record)
+            return
+        with response:
+            if not stream:
+                data = response.read()
+                try:
+                    usage = json.loads(data).get("usage") or {}
+                except ValueError:
+                    usage = {}
+                record["usage"] = usage
+                record["tokens"] = usage.get("prompt_tokens") or record["tokens"]
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+                self.state.append(record)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            usage: dict[str, Any] = {}
+            for line in response:
+                self.wfile.write(line)
+                self.wfile.flush()
+                if line.startswith(b"data: ") and b"usage" in line:
+                    try:
+                        chunk = json.loads(line[6:])
+                    except ValueError:
+                        continue
+                    if isinstance(chunk.get("usage"), dict):
+                        usage = chunk["usage"]
+            record["usage"] = usage
+            record["tokens"] = usage.get("prompt_tokens") or record["tokens"]
+            self.state.append(record)
+
+
+def serve(port: int, scenario_path: Path | None, log_path: Path, host: str = "127.0.0.1",
+          upstream: str | None = None) -> ThreadingHTTPServer:
     scenario = dict(DEFAULT_SCENARIO)
     if scenario_path is not None:
         scenario = json.loads(scenario_path.read_text(encoding="utf-8"))
         if not isinstance(scenario, dict):
             raise ValueError("scenario must be a JSON object")
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    handler = type("MockHandler", (Handler,), {"state": ServerState(scenario, log_path)})
+    state = ServerState(scenario, log_path)
+    state.upstream = upstream
+    handler = type("MockHandler", (Handler,), {"state": state})
     server = ThreadingHTTPServer((host, port), handler)
     return server
 
@@ -261,8 +358,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--scenario", type=Path)
     parser.add_argument("--log", type=Path, required=True)
+    parser.add_argument("--upstream", help="real provider base URL, e.g. https://openrouter.ai/api/v1")
+    parser.add_argument("--upstream-key-env", default="OPENROUTER_API_KEY")
     args = parser.parse_args(argv)
-    server = serve(args.port, args.scenario, args.log, args.host)
+    server = serve(args.port, args.scenario, args.log, args.host, args.upstream)
+    if args.upstream:
+        server.RequestHandlerClass.state.upstream_key_env = args.upstream_key_env
     print(f"mock provider on http://{args.host}:{args.port}/v1 (log: {args.log})", flush=True)
     try:
         server.serve_forever()

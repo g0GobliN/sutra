@@ -93,7 +93,8 @@ def stop_gateway(env: dict[str, str]) -> None:
 
 def run_condition(name: str, enabled: str, mode: str, language: str, passes: str, *,
                   home: pathlib.Path, scenario: pathlib.Path, work: pathlib.Path,
-                  timeout: float) -> dict:
+                  timeout: float, model: str = "mock-model",
+                  upstream: str | None = None) -> dict:
     port = free_port()
     log = work / f"{name}-requests.jsonl"
     stats = work / f"{name}-stats.jsonl"
@@ -112,19 +113,23 @@ def run_condition(name: str, enabled: str, mode: str, language: str, passes: str
         "SUTRA_STORE_DIR": str(store),
         "SUTRA_STATS_FILE": str(stats),
     }
+    command = [sys.executable, str(HERE.parent / "mock_provider.py"), "--port", str(port),
+               "--scenario", str(scenario), "--log", str(log)]
+    if upstream:
+        command.extend(["--upstream", upstream])
     server = subprocess.Popen(
-        [sys.executable, str(HERE.parent / "mock_provider.py"), "--port", str(port),
-         "--scenario", str(scenario), "--log", str(log)],
+        command,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         if not wait_for_server(f"http://127.0.0.1:{port}/v1"):
             raise RuntimeError("mock provider did not start")
         # The isolated home's config points at this port for the run.
-        isolated_home.prepare(home, REPO, f"http://127.0.0.1:{port}/v1", force=True)
+        isolated_home.prepare(home, REPO, f"http://127.0.0.1:{port}/v1", force=True,
+                              model=model)
         stop_gateway(env)
         started = time.monotonic()
         run = subprocess.run(
-            ["hermes", "-z", PROMPT, "--provider", "custom", "-m", "mock-model", "--yolo"],
+            ["hermes", "-z", PROMPT, "--provider", "custom", "-m", model, "--yolo"],
             env=env, capture_output=True, text=True, timeout=timeout)
         wall = time.monotonic() - started
         out.write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
@@ -196,7 +201,8 @@ def run_scenario(scenario: pathlib.Path, args, work_root: pathlib.Path) -> dict:
     for name, enabled, mode, language, passes in CONDITIONS:
         conditions.append(run_condition(
             name, enabled, mode, language, passes, home=args.home,
-            scenario=scenario, work=work, timeout=args.timeout))
+            scenario=scenario, work=work, timeout=args.timeout,
+            model=args.model, upstream=args.upstream))
     return {
         "id": data.get("id", scenario.stem),
         "category": data.get("category"),
@@ -215,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=pathlib.Path, required=True)
     parser.add_argument("--work", type=pathlib.Path)
     parser.add_argument("--timeout", type=float, default=600.0)
+    parser.add_argument("--model", default="mock-model")
+    parser.add_argument("--upstream", help="real provider base URL for live runs")
     args = parser.parse_args(argv)
     if not args.scenario and not args.corpus:
         parser.error("one of --scenario or --corpus is required")

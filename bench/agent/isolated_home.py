@@ -21,7 +21,7 @@ MANIFEST = "plugin.yaml"
 CONFIG = """\
 _config_version: 53
 model:
-  default: mock-model
+  default: {model}
   provider: custom
   base_url: {base_url}
   api_key_env: SUTRA_AB_KEY
@@ -45,7 +45,8 @@ def copy_plugin(source: Path, plugin_dir: Path) -> list[str]:
     return copied
 
 
-def prepare(home: Path, source: Path, base_url: str, force: bool = False) -> dict[str, object]:
+def prepare(home: Path, source: Path, base_url: str, force: bool = False,
+            model: str = "mock-model") -> dict[str, object]:
     """Create or refresh an isolated home; returns what was written."""
     home = home.expanduser()
     if home.exists() and any(home.iterdir()):
@@ -57,7 +58,8 @@ def prepare(home: Path, source: Path, base_url: str, force: bool = False) -> dic
         raise SystemExit(f"source does not look like the SUTRA package: {source}")
     home.mkdir(parents=True, exist_ok=True)
     (home / MARKER).write_text("SUTRA agent A/B harness home.\n", encoding="utf-8")
-    (home / "config.yaml").write_text(CONFIG.format(base_url=base_url.rstrip("/")), encoding="utf-8")
+    (home / "config.yaml").write_text(
+        CONFIG.format(base_url=base_url.rstrip("/"), model=model), encoding="utf-8")
     copied = copy_plugin(source, home / "plugins" / "sutra")
     return {
         "home": str(home),
@@ -74,8 +76,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--source", type=Path, default=default_source)
     parser.add_argument("--base-url", default="http://127.0.0.1:8787/v1")
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--model", default="mock-model")
     args = parser.parse_args(argv)
-    result = prepare(args.home, args.source, args.base_url, args.force)
+    result = prepare(args.home, args.source, args.base_url, args.force, args.model)
     print(f"home:    {result['home']}")
     print(f"plugin:  {result['plugin']} ({len(result['files'])} files)")
     print(f"config:  {result['config']}")
