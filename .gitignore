@@ -73,6 +73,7 @@ Thumbs.db
 SOUL.md
 soul.md
 goal.md
+goals.md
 idea.md
 *.local.md
 docs/*.local.md
@@ -98,3 +99,6 @@ SUTRA_V*_RELEASE_REPORT.md
 # Logs and temp files
 *.log
 *.tmp
+
+# Private validation workspace (harness, corpus, recorded runs)
+bench/agent/

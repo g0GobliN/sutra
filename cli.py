@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -49,6 +50,19 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
+  sutra map [--root PATH] [--budget N] [--json]
+  sutra redundancy check --key K [--dependency PATH]... [--command CMD] [--file PATH] [--json]
+  sutra redundancy record --key K [--dependency PATH]... [--result FINGERPRINT] [--file PATH]
+  sutra redundancy forget --key K [--file PATH]
+  sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
+  sutra cache [--json] [--write-cost W --read-cost R --miss-cost M --reuses N]
+  sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
+             [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
+             [--cached-price P] [--json]   (accounting with your own prices)
+  sutra cost --original-input N [--billed-input N] [--cached N] [--output N] [--model-calls N]
+             [--tool-calls N] [--processing-ms MS] [--validation-ms MS] [--provider-ms MS]
+             [--total-ms MS] [--extra-cost C] [--tokenizer NAME] [--useful-tasks N]
+             [--baseline-estimated] [--input-price P --output-price P] [--json]
   sutra update [--apply]   (check the package index; --apply upgrades this environment)
   sutra eval run|compare   (development harness; needs a repository checkout)
   sutra --version
@@ -648,6 +662,416 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     return 1 if failed else 0
 
 
+def _map(argv: list[str]) -> int:
+    from . import repomap
+
+    parser = argparse.ArgumentParser(
+        prog="sutra map",
+        description=("Print a character-budgeted map of the repository's "
+                     "top-level definitions, so reuse is cheaper than a "
+                     "search. Read-only; no model call."))
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument("--budget", type=int, default=repomap.DEFAULT_BUDGET,
+                        help="maximum characters in the map")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output")
+    args = parser.parse_args(argv)
+    try:
+        lines = repomap.build_lines(args.root, budget=args.budget)
+    except (OSError, ValueError) as exc:
+        print_error(f"sutra map: {exc}")
+        return 2
+    if args.json:
+        print(json.dumps({"root": str(args.root), "budget": args.budget,
+                          "lines": lines}, indent=2, sort_keys=True))
+    else:
+        for line in lines:
+            print(line)
+    return 0
+
+
+def _context(argv: list[str]) -> int:
+    from . import context as context_module
+
+    parser = argparse.ArgumentParser(
+        prog="sutra context",
+        description=("Select context items under a token or byte budget with "
+                     "dependency preservation, mandatory items and optional "
+                     "near-duplicate removal. Reads JSON from --file or stdin; "
+                     "writes nothing."))
+    parser.add_argument("--file", default=None,
+                        help="JSON items, or an object with items and budget "
+                             "('-' reads stdin, the default)")
+    parser.add_argument("--budget", type=int, default=None,
+                        help="total budget; required unless the JSON has one")
+    parser.add_argument("--unit", choices=("tokens", "bytes"), default="tokens")
+    parser.add_argument("--near-duplicates", action="store_true",
+                        help="report and drop near-duplicates nothing else needs")
+    parser.add_argument("--near-distance", type=int,
+                        default=context_module.DEFAULT_NEAR_DISTANCE,
+                        help="SimHash distance treated as near-duplicate")
+    parser.add_argument("--weights", default=None,
+                        help="five floats: relevance,importance,dependency,"
+                             "usefulness,recency")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    try:
+        if args.file and args.file != "-":
+            with open(args.file, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        else:
+            payload = json.load(sys.stdin)
+        budget = args.budget
+        if isinstance(payload, dict):
+            raw_items = payload.get("items", [])
+            if budget is None:
+                budget = payload.get("budget")
+        else:
+            raw_items = payload
+        if budget is None:
+            raise ValueError("no budget given (--budget or JSON budget)")
+        if not isinstance(raw_items, list):
+            raise ValueError("items must be a JSON list")
+        items = [context_module.Item.from_dict(entry) for entry in raw_items]
+        weights = None
+        if args.weights:
+            parts = [part.strip() for part in args.weights.split(",")]
+            if len(parts) != 5:
+                raise ValueError("--weights needs five comma-separated numbers")
+            weights = context_module.Weights(
+                relevance=float(parts[0]), importance=float(parts[1]),
+                dependency=float(parts[2]), usefulness=float(parts[3]),
+                recency=float(parts[4]))
+        result = context_module.select(
+            items, budget, unit=args.unit, weights=weights,
+            near_duplicates=args.near_duplicates,
+            near_distance=args.near_distance)
+    except (OSError, ValueError, TypeError, context_module.CycleError) as exc:
+        print_error(f"sutra context: {exc}")
+        return 2
+
+    if args.json:
+        print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+        return 0
+    print(f"selected {len(result.selected)} of {len(result.selected) + len(result.dropped)} "
+          f"items, {result.total_cost}/{result.budget} {result.unit}, "
+          f"value {result.value:.6f}")
+    print(f"algorithm: {result.algorithm}")
+    if result.estimated:
+        print("token costs: estimated from bytes (items without token_cost)")
+    if not result.feasible:
+        print_error(f"budget conflict: {result.conflict}")
+    for item_id in result.selected:
+        print(f"  keep  {item_id}")
+    for item_id, reason in result.dropped:
+        print(f"  drop  {item_id}: {reason}")
+    for dropped, kept in result.duplicates:
+        print(f"  near-duplicate {dropped} ~ {kept}")
+    return 0 if result.feasible else 1
+
+
+def _redundancy(argv: list[str]) -> int:
+    from . import redundancy
+
+    parser = argparse.ArgumentParser(
+        prog="sutra redundancy",
+        description=("Classify whether repeated tool work may be reused "
+                     "(SAFE_TO_REUSE), needs revalidation, or must execute. "
+                     "Verification commands always must execute. Reads and "
+                     "writes a local JSON ledger; runs nothing."))
+    parser.add_argument("action", choices=("check", "record", "forget"))
+    parser.add_argument("--key", default=None,
+                        help="call key from redundancy.call_fingerprint")
+    parser.add_argument("--tool", default="",
+                        help="tool name; with --arguments, computes the key")
+    parser.add_argument("--arguments", default="",
+                        help="canonical call arguments; with --tool, computes the key")
+    parser.add_argument("--dependency", action="append", default=[],
+                        metavar="PATH",
+                        help="file the result depends on (repeatable)")
+    parser.add_argument("--root", default=".",
+                        help="directory dependency paths are relative to")
+    parser.add_argument("--command", default="",
+                        help="the command, so verification shapes are refused")
+    parser.add_argument("--result", default="",
+                        help="fingerprint of the recorded result")
+    parser.add_argument("--ttl", type=int, default=None,
+                        help="seconds until the record expires (default 3600)")
+    parser.add_argument("--file", default=None,
+                        help="ledger path (default SUTRA_REDUNDANCY_FILE or "
+                             "~/.sutra/redundancy.json)")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    key = args.key or (redundancy.call_fingerprint(args.tool, args.arguments)
+                       if args.tool else "")
+    if not key:
+        print_error("sutra redundancy: pass --key or --tool with --arguments")
+        return 2
+    ledger = (redundancy.Ledger(args.file, ttl_seconds=args.ttl)
+              if args.file else redundancy.Ledger.from_env())
+    if args.action == "record":
+        current = redundancy.snapshot(args.dependency, root=args.root)
+        ledger.record(key, dependencies=current,
+                      result_fingerprint=args.result,
+                      ttl_seconds=args.ttl)
+        if args.json:
+            print(json.dumps({"key": key, "recorded": True,
+                              "dependencies": current.as_dict()},
+                             indent=2, sort_keys=True))
+        else:
+            print(f"recorded {key[:12]}… with "
+                  f"{len(current.files)} dependency file(s)")
+        return 0
+    if args.action == "forget":
+        removed = ledger.forget(key)
+        if args.json:
+            print(json.dumps({"key": key, "removed": removed},
+                             indent=2, sort_keys=True))
+        else:
+            print("forgotten" if removed else "no such record")
+        return 0
+    current = redundancy.snapshot(args.dependency, root=args.root)
+    decision = ledger.classify(key, dependencies=current,
+                               command=args.command)
+    if args.json:
+        print(json.dumps(decision.as_dict(), indent=2, sort_keys=True))
+    else:
+        print(f"{decision.classification}: {decision.reason}")
+        if decision.changed:
+            print("changed: " + ", ".join(decision.changed))
+    return 0 if decision.reusable else 1
+
+
+def _cache(argv: list[str]) -> int:
+    from . import cache
+
+    parser = argparse.ArgumentParser(
+        prog="sutra cache",
+        description=("Report which of the five cache layers this project "
+                     "actually owns, and optionally evaluate the break-even "
+                     "arithmetic for one layer. Runs nothing and calls no "
+                     "provider."))
+    parser.add_argument("--write-cost", type=float, default=None,
+        help="cost to write one cache entry, in your billing unit")
+    parser.add_argument("--read-cost", type=float, default=None,
+        help="cost to serve one hit")
+    parser.add_argument("--miss-cost", type=float, default=None,
+        help="cost of the call the cache replaces")
+    parser.add_argument("--reuses", type=int, default=None,
+        help="reuses to evaluate")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    payload = cache.report()
+    costs = (args.write_cost, args.read_cost, args.miss_cost, args.reuses)
+    if any(value is not None for value in costs):
+        if any(value is None for value in costs):
+            print_error("sutra cache: pass all of --write-cost, --read-cost, "
+                        "--miss-cost and --reuses, or none")
+            return 2
+        try:
+            payload["economics"] = cache.parse_costs(
+                args.write_cost, args.read_cost, args.miss_cost, args.reuses)
+        except (TypeError, ValueError) as exc:
+            print_error(f"sutra cache: {exc}")
+            return 2
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    for entry in payload["layers"]:
+        print(f"{entry['layer']:<20} {entry['status']}")
+        print(f"  stores: {entry['stores']}")
+        print(f"  note:   {entry['note']}")
+    economics = payload.get("economics")
+    if economics:
+        print("")
+        print("economics: " + economics["formula"])
+        print(f"  saving per reuse: {economics['saving_per_reuse']}")
+        break_even = economics["break_even_reuses"]
+        print("  break-even reuses: "
+              + ("never (a hit costs at least a miss)" if break_even is None
+                 else f"{break_even}"))
+        print(f"  net at {economics['reuses']} reuses: {economics['net']} "
+              f"(worth it: {economics['worth_it']})")
+    return 0
+
+
+def _cost(argv: list[str]) -> int:
+    from . import cost as cost_module
+
+    parser = argparse.ArgumentParser(
+        prog="sutra cost",
+        description=("Report token and cost savings from explicit measurements and "
+                     "your own prices. SUTRA ships no price table and makes no "
+                     "provider call here."))
+    parser.add_argument("--baseline-input", type=int, default=0)
+    parser.add_argument("--baseline-output", type=int, default=0)
+    parser.add_argument("--baseline-cached", type=int, default=0)
+    parser.add_argument("--optimized-input", type=int, default=0)
+    parser.add_argument("--optimized-output", type=int, default=0)
+    parser.add_argument("--optimized-cached", type=int, default=0)
+    parser.add_argument("--input-price", type=float, default=None,
+                        help="price per million input tokens (optional)")
+    parser.add_argument("--output-price", type=float, default=None,
+                        help="price per million output tokens (optional)")
+    parser.add_argument("--cached-price", type=float, default=None,
+                        help="price per million cached input tokens (optional)")
+    parser.add_argument("--cache-write-price", type=float, default=None,
+                        help="price per million cache-write tokens (optional)")
+    parser.add_argument("--usage-file", default=None,
+                        help="read provider usage metadata from this JSON file")
+    parser.add_argument("--provider", default=None,
+                        choices=["openai", "anthropic", "google", "deepseek"],
+                        help="provider whose usage shape the file holds")
+    parser.add_argument("--original-input", type=int, default=None,
+                        help="full accounting: input tokens before optimization")
+    parser.add_argument("--billed-input", type=int, default=None,
+                        help="full accounting: input tokens the provider billed")
+    parser.add_argument("--cached", type=int, default=None,
+                        help="full accounting: provider-reported cached input tokens")
+    parser.add_argument("--output", type=int, default=None,
+                        help="full accounting: output tokens")
+    parser.add_argument("--model-calls", type=int, default=None)
+    parser.add_argument("--tool-calls", type=int, default=None)
+    parser.add_argument("--processing-ms", type=float, default=None)
+    parser.add_argument("--validation-ms", type=float, default=None)
+    parser.add_argument("--provider-ms", type=float, default=None)
+    parser.add_argument("--total-ms", type=float, default=None)
+    parser.add_argument("--extra-cost", type=float, default=None,
+                        help="SUTRA's own cost, in the same unit as the prices")
+    parser.add_argument("--tokenizer", default="",
+                        help="tokenizer name used for both measurements")
+    parser.add_argument("--useful-tasks", type=int, default=None,
+                        help="completed tasks, for quality-adjusted efficiency")
+    parser.add_argument("--baseline-estimated", action="store_true",
+                        help="mark the baseline as an estimate, not a measurement")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+    reported = None
+    if args.usage_file is not None:
+        from . import providers as providers_module
+        if args.provider is None:
+            print_error("sutra cost: --usage-file needs --provider")
+            return 2
+        try:
+            with open(args.usage_file, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+            reported = providers_module.usage_from(args.provider, payload)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+        if args.original_input is None:
+            print_error("sutra cost: --usage-file needs --original-input, the "
+                        "provider reports the optimized run only")
+            return 2
+    elif args.provider is not None:
+        print_error("sutra cost: --provider needs --usage-file")
+        return 2
+    pricing = None
+    if args.input_price is not None and args.output_price is not None:
+        try:
+            pricing = cost_module.Pricing(
+                input_per_million=args.input_price,
+                output_per_million=args.output_price,
+                cached_input_per_million=args.cached_price,
+                cache_write_per_million=args.cache_write_price)
+        except ValueError as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+    full = args.original_input is not None
+    if full:
+        try:
+            accounting = cost_module.Accounting(
+                original_input_tokens=args.original_input or 0,
+                billed_input_tokens=(
+                    reported.input_tokens if reported is not None
+                    else (args.billed_input
+                          if args.billed_input is not None
+                          else (args.optimized_input
+                                if args.optimized_input else 0))),
+                cached_input_tokens=(
+                    reported.cached_input_tokens if reported is not None
+                    else (args.cached if args.cached is not None
+                          else args.optimized_cached)),
+                cache_write_input_tokens=(
+                    reported.cache_write_tokens if reported is not None else 0),
+                output_tokens=(reported.output_tokens if reported is not None
+                               else (args.output if args.output is not None
+                                     else args.optimized_output)),
+                model_calls=args.model_calls or 0,
+                tool_calls=args.tool_calls or 0,
+                processing_ms=args.processing_ms or 0.0,
+                validation_ms=args.validation_ms or 0.0,
+                provider_latency_ms=args.provider_ms,
+                total_latency_ms=args.total_ms,
+                extra_cost=args.extra_cost or 0.0,
+                tokenizer=args.tokenizer,
+                baseline_estimated=args.baseline_estimated,
+                useful_tasks=args.useful_tasks)
+        except ValueError as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+        report = cost_module.accounting_report(accounting, pricing)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return 0
+        tokens = report["tokens"]
+        print(f"tokens: {tokens['original_total']} -> "
+              f"{tokens['optimized_total']} (saved {tokens['saved']})")
+        if tokens["percent_saved"] is None:
+            print("percent saved: unavailable (no measured input tokens)")
+        else:
+            print(f"percent saved: {tokens['percent_saved']}% "
+                  f"({tokens['reduction_basis']})")
+        calls = report["calls"]
+        print(f"calls: {calls['models']} model, {calls['tools']} tool")
+        latency = report["latency"]
+        print(f"overhead: {latency['overhead_ms']} ms "
+              f"(processing {latency['processing_ms']} + validation "
+              f"{latency['validation_ms']})")
+        cost = report["cost"]
+        print(f"cost: {cost['basis']}")
+        if cost["basis"] == "explicit pricing":
+            print(f"  baseline: {cost['baseline']:.6f}"
+                  f"{' (estimated)' if cost['estimated_baseline'] else ''}")
+            print(f"  actual:   {cost['actual']:.6f} "
+                  f"(includes {cost['extra_cost']} overhead)")
+            print(f"  net saved: {cost['net_savings']:.6f}")
+        quality = report["quality"]
+        if quality["efficiency"] is not None:
+            print(f"efficiency: {quality['efficiency']} useful tasks per unit cost")
+        return 0
+
+    try:
+        baseline = cost_module.Usage(args.baseline_input, args.baseline_output,
+                                     args.baseline_cached)
+        optimized = cost_module.Usage(args.optimized_input, args.optimized_output,
+                                      args.optimized_cached)
+    except ValueError as exc:
+        print_error(f"sutra cost: {exc}")
+        return 2
+    report = cost_module.savings_report(baseline=baseline, optimized=optimized,
+                                        pricing=pricing)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    print(f"tokens: {report['baseline']['tokens']} -> "
+          f"{report['optimized']['tokens']} "
+          f"(saved {report['saved_tokens']})")
+    if report["percent_saved"] is None:
+        print(f"percent saved: unavailable ({report['percent_saved_reason']})")
+    else:
+        print(f"percent saved: {report['percent_saved']}%")
+    cost = report["cost"]
+    print(f"cost: {cost['basis']}")
+    if cost["basis"] == "explicit pricing":
+        print(f"  baseline: ${cost['baseline_usd']:.6f}")
+        print(f"  optimized: ${cost['optimized_usd']:.6f}")
+        print(f"  saved: ${cost['saved_usd']:.6f}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] in (["install"], ["uninstall"]):
@@ -682,6 +1106,16 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _doctor(as_json=args.json, clients=args.client)
+    if argv[:1] == ["cache"]:
+        return _cache(argv[1:])
+    if argv[:1] == ["cost"]:
+        return _cost(argv[1:])
+    if argv[:1] == ["context"]:
+        return _context(argv[1:])
+    if argv[:1] == ["redundancy"]:
+        return _redundancy(argv[1:])
+    if argv[:1] == ["map"]:
+        return _map(argv[1:])
     if argv[:1] == ["eval"]:
         return _eval_main(argv[1:])
     if argv[:1] == ["update"]:
