@@ -39,7 +39,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-from . import preserve
+from . import failure, preserve
 
 logger = logging.getLogger(__name__)
 
@@ -252,11 +252,14 @@ def optimize(
     min_saved_bytes: int = 1,
     strategies: Sequence[Strategy] | None = None,
     validator: Callable[[str, str], tuple[bool, list[str]]] | None = None,
+    ledger: failure.Ledger | None = None,
 ) -> Report:
     """Run the bounded optimization loop over ``text``.
 
     Returns a report whose ``text`` is the original when nothing was accepted.
-    Non-text input and zero budgets return the original text unchanged.
+    Non-text input and zero budgets return the original text unchanged. A
+    ``ledger`` scopes repeated hard failures to one payload shape and skips a
+    strategy that keeps failing there.
     """
     if not isinstance(text, str) or not text:
         return _empty_report()
@@ -267,6 +270,7 @@ def optimize(
         return _empty_report(text)
     check = validator if validator is not None else preserve.preservation_ok
     started = time.monotonic()
+    scope = failure.shape(text) if ledger is not None else ""
     current = text
     evaluations: list[Evaluation] = []
     applied: list[str] = []
@@ -278,6 +282,11 @@ def optimize(
         for strategy in candidates:
             if (time.monotonic() - started) * 1000.0 >= max_ms:
                 break
+            if ledger is not None and ledger.is_disabled(strategy.name, scope):
+                evaluations.append(Evaluation(
+                    strategy.name, 0, 0.0, False,
+                    "skipped: disabled for this payload shape after repeated failures"))
+                continue
             evaluation, candidate = _evaluate(
                 current, strategy, check, min_saved_bytes)
             evaluations.append(evaluation)
@@ -296,6 +305,7 @@ def optimize(
         applied.append(best.name)
 
     elapsed_ms = (time.monotonic() - started) * 1000.0
+    failure.record_attempts(ledger, text, evaluations)
     return Report(
         text=current,
         evaluations=tuple(evaluations),

@@ -287,6 +287,7 @@ class Config:
     search_passes: int = DEFAULT_SEARCH_PASSES
     search_budget_ms: int = DEFAULT_SEARCH_BUDGET_MS
     language: bool = DEFAULT_LANGUAGE
+    ledger_path: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -344,6 +345,9 @@ def resolve() -> Config:
                               DEFAULT_SEARCH_BUDGET_MS, minimum=1,
                               maximum=5000),
         language=_flag("SUTRA_LANGUAGE", DEFAULT_LANGUAGE),
+        ledger_path=os.path.abspath(os.path.expanduser(
+            os.environ.get("SUTRA_LEDGER_FILE") or "")) if
+        os.environ.get("SUTRA_LEDGER_FILE") else "",
         telemetry_sample_rate=_float("SUTRA_TELEMETRY_SAMPLE_RATE",
                                      DEFAULT_TELEMETRY_SAMPLE_RATE,
                                      minimum=0.0, maximum=1.0),

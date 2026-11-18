@@ -25,6 +25,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_SEARCH` | `off` | `off`, `balanced` or `maximum` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
 | `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | time budget for the optimization loop (1-5000 ms) |
+| `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
 | `SUTRA_LANGUAGE` | `0` | opt-in wording compression on prose lines while a search mode is active; never applied to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |

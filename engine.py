@@ -24,7 +24,7 @@ import time
 from dataclasses import asdict, dataclass, fields, replace
 from typing import Any, Iterator
 
-from . import config, language, optimize, utf8
+from . import config, failure, language, optimize, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
 from .telemetry import get_telemetry
 
@@ -769,6 +769,19 @@ def _warn_json_items_retired() -> None:
         "string fields are still compressed and the original is kept for recovery.")
 
 
+_LEDGERS: dict[str, failure.Ledger] = {}
+
+
+def _ledger(cfg: config.Config) -> failure.Ledger:
+    """The process-wide failure ledger, keyed by its durable sink."""
+    path = cfg.ledger_path
+    ledger = _LEDGERS.get(path)
+    if ledger is None:
+        ledger = failure.Ledger(path=path or None)
+        _LEDGERS[path] = ledger
+    return ledger
+
+
 def _search_limits(cfg: config.Config) -> tuple[int, float]:
     """Passes and time budget for the configured search mode.
 
@@ -799,7 +812,7 @@ def _apply_search(out: str, stats: CompressionStats,
             "remove verbosity fillers on prose lines, validated against SPC"))
     try:
         report = optimize.optimize(out, max_passes=passes, max_ms=float(budget_ms),
-                                   strategies=strategies)
+                                   strategies=strategies, ledger=_ledger(cfg))
     except Exception:  # fail open: the deterministic result is still correct
         logger.exception("sutra: search layer failed; keeping the compressed result")
         return out, stats
