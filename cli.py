@@ -59,6 +59,10 @@ usage:
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
              [--cached-price P] [--json]   (accounting with your own prices)
+  sutra cost --original-input N [--billed-input N] [--cached N] [--output N] [--model-calls N]
+             [--tool-calls N] [--processing-ms MS] [--validation-ms MS] [--provider-ms MS]
+             [--total-ms MS] [--extra-cost C] [--tokenizer NAME] [--useful-tasks N]
+             [--baseline-estimated] [--input-price P --output-price P] [--json]
   sutra update [--apply]   (check the package index; --apply upgrades this environment)
   sutra eval run|compare   (development harness; needs a repository checkout)
   sutra --version
@@ -913,6 +917,28 @@ def _cost(argv: list[str]) -> int:
                         help="price per million output tokens (optional)")
     parser.add_argument("--cached-price", type=float, default=None,
                         help="price per million cached input tokens (optional)")
+    parser.add_argument("--original-input", type=int, default=None,
+                        help="full accounting: input tokens before optimization")
+    parser.add_argument("--billed-input", type=int, default=None,
+                        help="full accounting: input tokens the provider billed")
+    parser.add_argument("--cached", type=int, default=None,
+                        help="full accounting: provider-reported cached input tokens")
+    parser.add_argument("--output", type=int, default=None,
+                        help="full accounting: output tokens")
+    parser.add_argument("--model-calls", type=int, default=None)
+    parser.add_argument("--tool-calls", type=int, default=None)
+    parser.add_argument("--processing-ms", type=float, default=None)
+    parser.add_argument("--validation-ms", type=float, default=None)
+    parser.add_argument("--provider-ms", type=float, default=None)
+    parser.add_argument("--total-ms", type=float, default=None)
+    parser.add_argument("--extra-cost", type=float, default=None,
+                        help="SUTRA's own cost, in the same unit as the prices")
+    parser.add_argument("--tokenizer", default="",
+                        help="tokenizer name used for both measurements")
+    parser.add_argument("--useful-tasks", type=int, default=None,
+                        help="completed tasks, for quality-adjusted efficiency")
+    parser.add_argument("--baseline-estimated", action="store_true",
+                        help="mark the baseline as an estimate, not a measurement")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
     pricing = None
@@ -925,6 +951,64 @@ def _cost(argv: list[str]) -> int:
         except ValueError as exc:
             print_error(f"sutra cost: {exc}")
             return 2
+    full = args.original_input is not None
+    if full:
+        try:
+            accounting = cost_module.Accounting(
+                original_input_tokens=args.original_input or 0,
+                billed_input_tokens=(args.billed_input
+                                     if args.billed_input is not None
+                                     else (args.optimized_input
+                                           if args.optimized_input else 0)),
+                cached_input_tokens=(args.cached
+                                     if args.cached is not None
+                                     else args.optimized_cached),
+                output_tokens=(args.output if args.output is not None
+                               else args.optimized_output),
+                model_calls=args.model_calls or 0,
+                tool_calls=args.tool_calls or 0,
+                processing_ms=args.processing_ms or 0.0,
+                validation_ms=args.validation_ms or 0.0,
+                provider_latency_ms=args.provider_ms,
+                total_latency_ms=args.total_ms,
+                extra_cost=args.extra_cost or 0.0,
+                tokenizer=args.tokenizer,
+                baseline_estimated=args.baseline_estimated,
+                useful_tasks=args.useful_tasks)
+        except ValueError as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+        report = cost_module.accounting_report(accounting, pricing)
+        if args.json:
+            print(json.dumps(report, indent=2, sort_keys=True))
+            return 0
+        tokens = report["tokens"]
+        print(f"tokens: {tokens['original_total']} -> "
+              f"{tokens['optimized_total']} (saved {tokens['saved']})")
+        if tokens["percent_saved"] is None:
+            print("percent saved: unavailable (no measured input tokens)")
+        else:
+            print(f"percent saved: {tokens['percent_saved']}% "
+                  f"({tokens['reduction_basis']})")
+        calls = report["calls"]
+        print(f"calls: {calls['models']} model, {calls['tools']} tool")
+        latency = report["latency"]
+        print(f"overhead: {latency['overhead_ms']} ms "
+              f"(processing {latency['processing_ms']} + validation "
+              f"{latency['validation_ms']})")
+        cost = report["cost"]
+        print(f"cost: {cost['basis']}")
+        if cost["basis"] == "explicit pricing":
+            print(f"  baseline: {cost['baseline']:.6f}"
+                  f"{' (estimated)' if cost['estimated_baseline'] else ''}")
+            print(f"  actual:   {cost['actual']:.6f} "
+                  f"(includes {cost['extra_cost']} overhead)")
+            print(f"  net saved: {cost['net_savings']:.6f}")
+        quality = report["quality"]
+        if quality["efficiency"] is not None:
+            print(f"efficiency: {quality['efficiency']} useful tasks per unit cost")
+        return 0
+
     try:
         baseline = cost_module.Usage(args.baseline_input, args.baseline_output,
                                      args.baseline_cached)
