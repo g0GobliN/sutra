@@ -79,13 +79,16 @@ finite at zero overhead and zero risk.
 The search loop ranks accepted candidates with
 
 ```python
-scoring.seof(item.saved_bytes, item.elapsed_ms)
+scoring.seof(item.saved_bytes, optimize.RANKING_OVERHEAD_MS)   # fixed 1.0
 ```
 
-which is exactly the previous `saved_bytes / (1 + elapsed_ms)` heuristic at
-`quality=1`, `risk=0`. The formula therefore changed the code without changing
-the measured selection order; a future strategy that carries a real confidence
-estimate or risk can pass it through the same call.
+The overhead term in ranking is a fixed nominal millisecond, not the measured
+elapsed time. Ranking on real timings made the winner depend on host load: two
+identical runs could pick two strategies of nearly equal size, and the
+determinism test caught exactly that under parallel test load. Measured
+`elapsed_ms` is still recorded on every evaluation and reported; it just does
+not decide which candidate is applied. A future strategy that carries a real
+confidence estimate or risk can pass it through the same `seof` call.
 
 What is not claimed: the four saving terms are not separately observed for a
 provider call. SUTRA cannot see cached tokens, tool-call counts or model calls
@@ -150,7 +153,7 @@ the diagram is a description of the code rather than an aspiration:
 | Observe request and workflow | the host calls `core.process_text` / `process_result`; SUTRA sees one payload, not the workflow |
 | Identify plausible opportunities | `engine._apply_search` runs only for payloads the deterministic pass left alone; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
 | Generate candidates | `optimize.STRATEGIES` (formatting, wording) plus ordered pairs when `combine=True` |
-| Rank candidates | `scoring.seof(saved_bytes, elapsed_ms)` — savings over cost, never a probability cutoff |
+| Rank candidates | `scoring.seof(saved_bytes, RANKING_OVERHEAD_MS)` — savings over a fixed nominal cost, never a probability cutoff and never host-load dependent |
 | Test cheap candidates first | strategies are evaluated in fixed order inside one pass; the cheapest timings surface in `Evaluation.elapsed_ms` |
 | Check preservation constraints | `preserve.preservation_ok` against the start-of-run text, for single candidates and pairs alike |
 | Reject and try next | a rejected candidate returns an `Evaluation(accepted=False, reason=…)` and changes nothing |

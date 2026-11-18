@@ -24,10 +24,11 @@ Rules, in the same priority order as the rest of the project:
    validator and an empty candidate are recorded as rejected evaluations; the
    caller still gets the original text.
 5. **Deterministic.** Strategies run in a fixed order, ranking is
-   ``scoring.seof`` over the measured bytes saved and milliseconds spent with
-   the strategy name as tie-break (``quality=1, risk=0`` makes it
-   ``saved_bytes / (1 + elapsed_ms)``), and the same input always produces the
-   same selection.
+   ``scoring.seof`` over the measured bytes saved with a fixed nominal
+   overhead and the strategy name as tie-break, and the same input always
+   produces the same selection. Measured milliseconds are reported per
+   attempt but never decide the winner: on a loaded host two identical runs
+   otherwise pick different strategies of nearly equal size.
 
 Recovery markers (lines whose stripped form starts with ``[sutra:``) and
 fenced code blocks are never rewritten: the first is the recovery contract and
@@ -48,6 +49,12 @@ logger = logging.getLogger(__name__)
 _FENCES = ("```", "~~~")
 _MARKER_PREFIX = "[sutra:"
 _MAX_REASON_CHARS = 200
+
+# Ranking uses a fixed nominal overhead, not the measured elapsed time: with
+# real timings two identical runs can rank two similarly sized candidates
+# differently, which makes the output depend on host load. Timings are still
+# measured and reported; they just do not decide the winner.
+RANKING_OVERHEAD_MS = 1.0
 
 
 def _size(text: str) -> int:
@@ -377,7 +384,7 @@ def optimize(
                         pairs,
                         key=lambda item: (
                             -scoring.seof(item[0].saved_bytes,
-                                          item[0].elapsed_ms),
+                                          RANKING_OVERHEAD_MS),
                             item[0].name,
                         ),
                     )
@@ -388,7 +395,7 @@ def optimize(
         best, best_text = min(
             accepted,
             key=lambda item: (
-                -scoring.seof(item[0].saved_bytes, item[0].elapsed_ms),
+                -scoring.seof(item[0].saved_bytes, RANKING_OVERHEAD_MS),
                 item[0].name,
             ),
         )
