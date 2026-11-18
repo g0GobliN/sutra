@@ -15,6 +15,10 @@ need the detail behind a claim.
 | [configuration.md](configuration.md) | Every environment variable, default and bound |
 | [custom-parsers.md](custom-parsers.md) | The parser contract and runtime registration with `register_parser()` |
 | [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
+| [redundancy.md](redundancy.md) | Dependency-aware classification of repeated work: reuse, revalidate, must execute or unknown |
+| [cache.md](cache.md) | The five cache layers, entry metadata, invalidation and break-even economics |
+| [provider-matrix.md](provider-matrix.md) | Provider usage fields, tokenizers and why no token count or price is universal |
+| [output-optimization.md](output-optimization.md) | What SUTRA can and cannot save before and after model generation |
 
 ## Correctness and recovery
 
@@ -30,6 +34,9 @@ need the detail behind a claim.
 | Document | Answers |
 |---|---|
 | [benchmark.md](benchmark.md) | Fixtures, method, timings, memory and reproduction |
+| [optimization-model.md](optimization-model.md) | The SPC/SROF/SEOF/SACE/SMESP model, where each formula runs, and what is estimated rather than measured |
+| [context-intelligence.md](context-intelligence.md) | Budgeted context selection: relevance formula, exact and greedy algorithms, measured near-duplicate accuracy |
+| [accounting.md](accounting.md) | The full token and cost accounting set: formulas, fields, worked example and enforced rules |
 | [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md) | Model-free Hermes cost replay: definitions, savings, quality and what is not measured |
 | [effectiveness-pilot.md](effectiveness-pilot.md) | The completed deterministic and host-adapter pilot, with live metrics marked unavailable |
 | [ab-benchmark.md](ab-benchmark.md) | The frozen live-model A/B protocols: v1 (8 tasks, default) and v2 (30 tasks); not yet run |

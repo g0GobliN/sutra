@@ -51,6 +51,18 @@ POLICY_MODES = ("off", "balanced", "aggressive")
 # marker costs about as much context as the repeat it would replace.
 DEFAULT_REUSE_MIN_BYTES = 4096
 
+# Maximum-effort optimization layer: ``off`` keeps the historical single-pass
+# output byte-for-byte. ``balanced`` allows a few cheap formatting passes, and
+# ``maximum`` allows more passes and a larger time budget; both are bounded by
+# an explicit cap so a pathological payload cannot stall a tool result.
+DEFAULT_SEARCH_MODE = "off"
+SEARCH_MODES = ("off", "safe", "balanced", "aggressive")
+DEFAULT_SEARCH_PASSES = 4
+DEFAULT_SEARCH_BUDGET_MS = 50
+# Wording compression is a separate opt-in: it changes prose, not formatting,
+# so it is never enabled merely by choosing a search mode.
+DEFAULT_LANGUAGE = False
+
 # Advisory token ceiling per result. ``None`` means no token budget. The count
 # is an estimate (byte-based unless tiktoken is importable); it sizes the byte
 # budget and never invents exact token counts. An unreadable or negative value
@@ -156,6 +168,31 @@ def _policy_mode() -> str:
     return value
 
 
+_SEARCH_ALIASES = {
+    "0": "off", "false": "off", "no": "off", "disabled": "off", "none": "off",
+    "1": "balanced", "true": "balanced", "on": "balanced",
+    # "safe" is its own conservative mode: formatting only, one pass, and the
+    # language strategy is never appended.
+    # The goals document calls the deepest mode "aggressive"; "maximum" is the
+    # name it had during development and stays accepted.
+    "maximum": "aggressive", "max": "aggressive",
+}
+
+
+def _search_mode() -> str:
+    """Read ``SUTRA_SEARCH``; an unrecognised value warns and uses the default."""
+    raw = os.environ.get("SUTRA_SEARCH")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_SEARCH_MODE
+    value = str(raw).strip().lower()
+    value = _SEARCH_ALIASES.get(value, value)
+    if value not in SEARCH_MODES:
+        _warn_once(f"SUTRA_SEARCH={raw!r} is not one of "
+                   f"{', '.join(SEARCH_MODES)}; using {DEFAULT_SEARCH_MODE}")
+        return DEFAULT_SEARCH_MODE
+    return value
+
+
 def _optional_int(name: str, default: int | None) -> int | None:
     """Read an int from the environment; invalid or negative falls back."""
     raw = os.environ.get(name)
@@ -251,6 +288,11 @@ class Config:
     telemetry_enabled: bool = DEFAULT_TELEMETRY_ENABLED
     telemetry_endpoint: str = DEFAULT_TELEMETRY_ENDPOINT
     telemetry_sample_rate: float = DEFAULT_TELEMETRY_SAMPLE_RATE
+    search_mode: str = DEFAULT_SEARCH_MODE
+    search_passes: int = DEFAULT_SEARCH_PASSES
+    search_budget_ms: int = DEFAULT_SEARCH_BUDGET_MS
+    language: bool = DEFAULT_LANGUAGE
+    ledger_path: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -301,6 +343,16 @@ def resolve() -> Config:
         telemetry_enabled=_flag("SUTRA_TELEMETRY", DEFAULT_TELEMETRY_ENABLED),
         telemetry_endpoint=os.environ.get("SUTRA_TELEMETRY_ENDPOINT")
         or DEFAULT_TELEMETRY_ENDPOINT,
+        search_mode=_search_mode(),
+        search_passes=_int("SUTRA_SEARCH_PASSES", DEFAULT_SEARCH_PASSES,
+                           minimum=1, maximum=16),
+        search_budget_ms=_int("SUTRA_SEARCH_BUDGET_MS",
+                              DEFAULT_SEARCH_BUDGET_MS, minimum=1,
+                              maximum=5000),
+        language=_flag("SUTRA_LANGUAGE", DEFAULT_LANGUAGE),
+        ledger_path=os.path.abspath(os.path.expanduser(
+            os.environ.get("SUTRA_LEDGER_FILE") or "")) if
+        os.environ.get("SUTRA_LEDGER_FILE") else "",
         telemetry_sample_rate=_float("SUTRA_TELEMETRY_SAMPLE_RATE",
                                      DEFAULT_TELEMETRY_SAMPLE_RATE,
                                      minimum=0.0, maximum=1.0),

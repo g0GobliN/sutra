@@ -15,7 +15,7 @@ One core. Multiple agents. Recoverable output. No compression model calls.
 
 > **Eight-fixture benchmark:** payload size reduced by **54.3%**, o200k tokenizer counts by **55.2%**; **8/8** planted clues recovered; **0** diffs touched. The fixtures are generated tool-output shapes and the token figure is not a provider bill — [method](#evidence-and-benchmarks).
 
-[Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Comparison](#how-sutra-compares-with-caveman-and-ponytail) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
+[Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
 
 ## The problem: tool output is re-read all session
 
@@ -116,39 +116,29 @@ original retrieved from the local store when needed
 
 The recovery path is separate from the compression path: compression can run with storage disabled, but then the marker says the original was not retained and the model can only re-run the command narrower. Recovery reads the local store by validated id and bounded mode.
 
-## How SUTRA compares with Caveman and Ponytail
-
-SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context efficiency from different architectural directions. Both address unnecessary context consumption, but SUTRA specialises in deterministic, recoverable tool-output processing at the integration layer. [Ponytail](https://github.com/DietrichGebert/ponytail) pulls a third lever: how much code the agent writes at all.
-
-| Dimension | SUTRA | Caveman | Ponytail |
-|---|---|---|---|
-| Primary focus | Deterministic tool-output processing | Agent brevity plus the inputs it reads | How much code the agent writes |
-| Where it acts | Between a tool result and the model, through host adapters | Skill plus CLI/proxy around the agent | Skill/rules before code is generated |
-| What it transforms | Logs, JSON documents, tracebacks; diffs untouched | Replies, tool-readable files, web pages; routing and blocks in 4.0 | The agent's plan and implementation choices |
-| Original recovery | Local bounded store, id marker, `sutra_restore` | Docs state originals stay on disk and can be pulled back | Not a compression layer; no recovery surface claimed |
-| Model calls for compression | None — deterministic rules | No separate compression model for the voice; file compressors are tooling | None; the effect depends on the host model following its rules |
-| Prompt handling | Does not touch prompts or replies | Docs state prompts are never rewritten | A prompt/rules layer by design |
-| Agent support | Four first-class adapters plus MCP/CLI; automatic only where a result hook exists | 30+ agents via skill/installer | Many agents via skill/plugin |
-
-The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
-
-Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/g0GobliN/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
+The context selector is a separate, opt-in surface: [`context.py`](context.py)
+scores context items, honours dependencies, preserves mandatory material and
+reports a token- or byte-budgeted selection. The model, the measured
+near-duplicate accuracy and the latency are in
+[docs/context-intelligence.md](https://github.com/g0GobliN/sutra/blob/main/docs/context-intelligence.md);
+it is a library and `sutra context` CLI, not part of the automatic hook path,
+because a tool-result hook cannot see the rest of the conversation.
 
 ## Evidence and benchmarks
 
 ![Horizontal bar chart: bytes before and after SUTRA on eight payload shapes. Total 1.63 MB → 742.7 kB, 54.3% saved; the patch and JSON-array rows are unchanged on purpose.](https://raw.githubusercontent.com/g0GobliN/sutra/main/bench/savings.svg)
 
-| Payload | Rule | Bytes before → after | o200k tokens before → after | Saved |
-|---|---|---:|---:|---:|
-| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 35,000 → 10,149 | 71.0% |
-| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 26,012 → 5,670 | 78.2% |
-| Test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 29,998 → 5,529 | 81.6% |
-| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 126,015 → 3,680 | 97.1% |
-| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 120,039 → 120,039 | 0.0% |
-| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 18,906 → 7,543 | 60.1% |
-| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 127,005 → 6,905 | 94.6% |
-| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 103,002 → 103,002 | 0.0% |
-| **Total** | | **1.63 MB → 742.7 kB (54.3%)** | **585,977 → 262,517 (55.2%)** | |
+| Payload | Rule | Bytes before → after | Bytes saved | o200k tokens before → after | Tokens saved |
+|---|---|---:|---:|---:|---:|
+| 12,000-line command output | `head-tail` | 60.9 kB → 18.6 kB | 69.5% | 35,000 → 10,149 | 71.0% |
+| JSON tool envelope | `json-fields` | 85.9 kB → 19.2 kB | 77.7% | 26,012 → 5,670 | 78.2% |
+| Test run, 2,000 cases | `head-tail` | 99.8 kB → 18.6 kB | 81.4% | 29,998 → 5,529 | 81.6% |
+| 3,000-frame traceback | `traceback` | 359.4 kB → 10.3 kB | 97.1% | 126,015 → 3,680 | 97.1% |
+| 432 kB patch | `diff-kept` | 432.1 kB → 432.1 kB | 0.0% | 120,039 → 120,039 | 0.0% |
+| 900-row SQL result | `head-tail` | 46.6 kB → 18.5 kB | 60.2% | 18,906 → 7,543 | 60.1% |
+| 8,000-line build log | `head-tail` | 334.9 kB → 18.6 kB | 94.5% | 127,005 → 6,905 | 94.6% |
+| 8,000-item JSON array | `json-kept` | 206.9 kB → 206.9 kB | 0.0% | 103,002 → 103,002 | 0.0% |
+| **Total** | | **1.63 MB → 742.7 kB** | **54.3%** | **585,977 → 262,517** | **55.2%** |
 
 The patch row saves nothing on purpose: a compressor that shrinks diffs can hide a code change. The JSON-array row saves nothing because keeping the array an array leaves nothing safe to remove. Five buried clues needed one `sutra_restore` call (about 700 B each; the single-line JSON envelope cost 8.9 kB); three were already visible.
 
@@ -359,6 +349,8 @@ Common settings, read on every call:
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` session guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
+| `SUTRA_SEARCH` | `off` | opt-in, experimental bounded search layer after compression: `safe`/`balanced` or `aggressive` |
+| `SUTRA_LANGUAGE` | `0` | opt-in wording pass (fixed phrase table, prose lines only) while a search mode is active |
 
 The complete table, including store quotas, stats-log rotation and retrieval bounds, is in [docs/configuration.md](https://github.com/g0GobliN/sutra/blob/main/docs/configuration.md).
 
@@ -371,6 +363,12 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
 - **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made. The policy's prompt cost is measured by the offline replay; its behavioural effect is not.
+- **The search layer is opt-in and experimental.** `SUTRA_SEARCH` adds a
+  bounded loop that may only accept smaller candidates which still pass the
+  protected-span check. On the measured fixtures its formatting strategies find
+  nothing in logs, JSON, diffs and tracebacks; the gain is concentrated in prose
+  (19.2% of one prose fixture) and the loop costs about 15 ms on an
+  already-compressed payload. `off` remains the default.
 - **Reuse is exact-duplicate only, per process session.** A single changed byte, a pruned store entry or a restart means normal compression instead.
 - **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all five adapter dry runs, and verifies OpenCode and OpenClaw install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
 
