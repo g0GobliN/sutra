@@ -199,3 +199,18 @@ estimated flag, dropped reasons and near-duplicate pairs.
   bounded greedy path runs and the report says so.
 - The benchmark corpus is synthetic and small. Real corpus accuracy is
   unmeasured.
+
+## Considered and not adopted
+
+goals.md PART 9 asks not only for the structures used but for the alternatives a
+reasonable engineer would consider. These were evaluated and left out, with the
+reason:
+
+| Alternative | Why it is not here |
+|---|---|
+| Bloom filter as a duplicate/seen pre-filter | It answers "definitely not seen" only, so it can never be the validator `goals.md` forbids it from being. Membership here is exact (`Item.hash`), and a false positive would silently drop context. |
+| Trie over item content | Selection never asks for a prefix or an ordered range on content; a hash map plus SimHash covers identity and similarity. A trie would add memory per byte for no query. |
+| LFU eviction for `Context` | `Context` is caller-owned and short-lived; the module holds no cache to evict. The bounded store already uses TTL plus size limits, and LFU state would add writes on every read for no measured win. |
+| Priority queue inside `select` | The exact path is a DP over the budget; the greedy path evaluates two orderings and takes the better. A heap would only re-implement the sort that already happens once per run. |
+| Sliding window / ring buffer | Payloads arrive whole and are selected whole; there is no stream. The existing exact line collapse in `engine.py` handles adjacent repetition without a window. |
+| HNSW / embeddings for near-duplicates | An embedding model is a new dependency, a new failure mode and a cost per item; the requirement is lexical redundancy with a measured false-positive rate, and SimHash/MinHash meet it at zero model cost (tables above). |
