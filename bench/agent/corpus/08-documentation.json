@@ -1,0 +1,9 @@
+{
+  "id": "08-documentation",
+  "category": "documentation",
+  "expect": "helpful",
+  "commands": [
+    "cat /home/goblin01/github_projects/tooltrim-goals/README.md /home/goblin01/github_projects/tooltrim-goals/docs/accounting.md"
+  ],
+  "final": "Inspected documentation."
+}

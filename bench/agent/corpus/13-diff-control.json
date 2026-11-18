@@ -1,0 +1,9 @@
+{
+  "id": "13-diff-control",
+  "category": "diff must stay byte-identical",
+  "expect": "no-benefit",
+  "commands": [
+    "git -C /home/goblin01/github_projects/tooltrim-goals log -p -2"
+  ],
+  "final": "Inspected diff must stay byte-identical."
+}

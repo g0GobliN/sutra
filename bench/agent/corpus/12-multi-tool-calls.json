@@ -1,0 +1,12 @@
+{
+  "id": "12-multi-tool-calls",
+  "category": "multiple tool calls",
+  "expect": "neutral",
+  "commands": [
+    "git -C /home/goblin01/github_projects/tooltrim-goals log --stat -30",
+    "git -C /home/goblin01/github_projects/tooltrim-goals status --short",
+    "ls -la /home/goblin01/github_projects/tooltrim-goals | head -20",
+    "python3 --version"
+  ],
+  "final": "Inspected multiple tool calls."
+}

@@ -1,0 +1,9 @@
+{
+  "id": "02-code-modification",
+  "category": "code modification",
+  "expect": "helpful",
+  "commands": [
+    "python3 -c \"import pathlib;p=pathlib.Path('/tmp/sutra-corpus/big.py');p.parent.mkdir(exist_ok=True);lines=[f'def f{i}(x):' + chr(10) + f'    return x + {i}' for i in range(900)];p.write_text(chr(10).join(lines));print(p.read_text())\""
+  ],
+  "final": "Inspected code modification."
+}

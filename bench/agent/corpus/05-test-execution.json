@@ -1,0 +1,9 @@
+{
+  "id": "05-test-execution",
+  "category": "test execution and repair",
+  "expect": "helpful",
+  "commands": [
+    "/home/goblin01/github_projects/tooltrim/.venv/bin/python -m pytest /home/goblin01/github_projects/tooltrim-goals/tests --collect-only -q"
+  ],
+  "final": "Inspected test execution and repair."
+}

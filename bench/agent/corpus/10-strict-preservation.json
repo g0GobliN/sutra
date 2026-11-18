@@ -1,0 +1,9 @@
+{
+  "id": "10-strict-preservation",
+  "category": "strict preservation requirements",
+  "expect": "neutral",
+  "commands": [
+    "python3 -c \"[print('keep /etc/passwd, https://example.com/x and 3 tests; do not delete 42 rows') for _ in range(600)]\""
+  ],
+  "final": "Inspected strict preservation requirements."
+}

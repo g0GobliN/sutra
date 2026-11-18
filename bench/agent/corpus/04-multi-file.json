@@ -1,0 +1,9 @@
+{
+  "id": "04-multi-file",
+  "category": "multi-file implementation",
+  "expect": "helpful",
+  "commands": [
+    "python3 -c \"import pathlib;d=pathlib.Path('/tmp/sutra-corpus/pkg');d.mkdir(parents=True,exist_ok=True);[(d/f'part{i}.py').write_text(chr(10).join(f'def f{j}(x):' + chr(10) + f'    return x * {j}' for j in range(400))) for i in range(3)];print(chr(10).join(str(p)+':'+p.read_text() for p in sorted(d.glob('*.py'))))\""
+  ],
+  "final": "Inspected multi-file implementation."
+}

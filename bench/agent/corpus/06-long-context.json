@@ -1,0 +1,9 @@
+{
+  "id": "06-long-context",
+  "category": "long-context reasoning",
+  "expect": "helpful",
+  "commands": [
+    "seq 1 12000"
+  ],
+  "final": "Inspected long-context reasoning."
+}

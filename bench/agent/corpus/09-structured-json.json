@@ -1,0 +1,9 @@
+{
+  "id": "09-structured-json",
+  "category": "structured JSON output",
+  "expect": "helpful",
+  "commands": [
+    "python3 -c \"import json;print(json.dumps([{'id':i,'path':'src/file_%d.py'%i,'ok':True,'note':'unchanged'} for i in range(300)],indent=1))\""
+  ],
+  "final": "Inspected structured JSON output."
+}

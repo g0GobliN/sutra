@@ -1,0 +1,9 @@
+{
+  "id": "15-build-log",
+  "category": "build and lint output",
+  "expect": "helpful",
+  "commands": [
+    "python3 -c \"[print('[%3d%%] Building CXX object src/very/long/path/file_%d.cpp.o' % (i%100,i)) for i in range(600)]\""
+  ],
+  "final": "Inspected build and lint output."
+}
