@@ -153,3 +153,40 @@ def test_no_dollar_number_survives_without_pricing():
     assert cost_part["saved_usd"] is None
     for key in ("baseline_usd", "optimized_usd", "saved_usd"):
         assert not isinstance(cost_part[key], (int, float))
+
+
+# --------------------------------------------------------------- CLI surface
+
+def test_cost_command_reports_tokens_without_pricing(capsys):
+    cli = plugin_module("cli")
+    code = cli.main([
+        "cost",
+        "--baseline-input", "100000", "--baseline-output", "5000",
+        "--optimized-input", "45000", "--optimized-output", "5000",
+    ])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "105000 -> 50000" in out
+    assert "55000" in out
+    assert "cost: unavailable: no pricing supplied" in out
+
+
+def test_cost_command_uses_only_prices_the_caller_supplied(capsys):
+    cli = plugin_module("cli")
+    code = cli.main([
+        "cost", "--baseline-input", "1000000", "--optimized-input", "400000",
+        "--input-price", "3.0", "--output-price", "15.0", "--json",
+    ])
+    report = json.loads(capsys.readouterr().out)
+    assert code == 0
+    assert report["cost"]["basis"] == "explicit pricing"
+    assert report["cost"]["baseline_usd"] == 3.0
+    assert report["cost"]["optimized_usd"] == 1.2
+    assert report["cost"]["saved_usd"] == 1.8
+
+
+def test_cost_command_rejects_negative_usage(capsys):
+    cli = plugin_module("cli")
+    code = cli.main(["cost", "--baseline-input", "-1"])
+    assert code == 2
+    assert "negative" in capsys.readouterr().err

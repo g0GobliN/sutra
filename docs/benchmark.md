@@ -354,6 +354,31 @@ What this does **not** measure: provider cost. There is no provider call and no
 authoritative usage or price, so the artifact reports `"cost": "unavailable"`.
 A tokenizer count is not a bill.
 
+## Reporting cost from explicit measurements
+
+`cost.py` converts two explicit `Usage` records (input, output, cached input
+tokens) into a savings report. It ships **no price table**: without prices the
+report still states token savings and returns `"cost": "unavailable: no pricing
+supplied"`. With caller-supplied prices it reports the basis as `"explicit
+pricing"` and the three dollar figures.
+
+`sutra cost` exposes the same calculation without a network call:
+
+```console
+$ sutra cost --baseline-input 100000 --baseline-output 5000 \
+             --optimized-input 45000 --optimized-output 5000
+tokens: 105000 -> 50000 (saved 55000)
+percent saved: 52.380952%
+cost: unavailable: no pricing supplied
+
+$ sutra cost --baseline-input 1000000 --optimized-input 400000 \
+             --input-price 3 --output-price 15 --json
+```
+
+The second form reports `baseline_usd 3.0`, `optimized_usd 1.2` and
+`saved_usd 1.8` under an explicit pricing block. Token counts must come from
+the provider's usage record; the command never estimates them.
+
 ## Limitations
 
 - Fixtures are synthetic. They are representative in shape, not in distribution

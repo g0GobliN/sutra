@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -49,6 +50,9 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
+  sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
+             [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
+             [--cached-price P] [--json]   (accounting with your own prices)
   sutra update [--apply]   (check the package index; --apply upgrades this environment)
   sutra eval run|compare   (development harness; needs a repository checkout)
   sutra --version
@@ -648,6 +652,67 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     return 1 if failed else 0
 
 
+def _cost(argv: list[str]) -> int:
+    from . import cost as cost_module
+
+    parser = argparse.ArgumentParser(
+        prog="sutra cost",
+        description=("Report token and cost savings from explicit measurements and "
+                     "your own prices. SUTRA ships no price table and makes no "
+                     "provider call here."))
+    parser.add_argument("--baseline-input", type=int, default=0)
+    parser.add_argument("--baseline-output", type=int, default=0)
+    parser.add_argument("--baseline-cached", type=int, default=0)
+    parser.add_argument("--optimized-input", type=int, default=0)
+    parser.add_argument("--optimized-output", type=int, default=0)
+    parser.add_argument("--optimized-cached", type=int, default=0)
+    parser.add_argument("--input-price", type=float, default=None,
+                        help="price per million input tokens (optional)")
+    parser.add_argument("--output-price", type=float, default=None,
+                        help="price per million output tokens (optional)")
+    parser.add_argument("--cached-price", type=float, default=None,
+                        help="price per million cached input tokens (optional)")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+    pricing = None
+    if args.input_price is not None and args.output_price is not None:
+        try:
+            pricing = cost_module.Pricing(
+                input_per_million=args.input_price,
+                output_per_million=args.output_price,
+                cached_input_per_million=args.cached_price)
+        except ValueError as exc:
+            print_error(f"sutra cost: {exc}")
+            return 2
+    try:
+        baseline = cost_module.Usage(args.baseline_input, args.baseline_output,
+                                     args.baseline_cached)
+        optimized = cost_module.Usage(args.optimized_input, args.optimized_output,
+                                      args.optimized_cached)
+    except ValueError as exc:
+        print_error(f"sutra cost: {exc}")
+        return 2
+    report = cost_module.savings_report(baseline=baseline, optimized=optimized,
+                                        pricing=pricing)
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    print(f"tokens: {report['baseline']['tokens']} -> "
+          f"{report['optimized']['tokens']} "
+          f"(saved {report['saved_tokens']})")
+    if report["percent_saved"] is None:
+        print(f"percent saved: unavailable ({report['percent_saved_reason']})")
+    else:
+        print(f"percent saved: {report['percent_saved']}%")
+    cost = report["cost"]
+    print(f"cost: {cost['basis']}")
+    if cost["basis"] == "explicit pricing":
+        print(f"  baseline: ${cost['baseline_usd']:.6f}")
+        print(f"  optimized: ${cost['optimized_usd']:.6f}")
+        print(f"  saved: ${cost['saved_usd']:.6f}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] in (["install"], ["uninstall"]):
@@ -682,6 +747,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _doctor(as_json=args.json, clients=args.client)
+    if argv[:1] == ["cost"]:
+        return _cost(argv[1:])
     if argv[:1] == ["eval"]:
         return _eval_main(argv[1:])
     if argv[:1] == ["update"]:
