@@ -25,6 +25,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_SEARCH` | `off` | `off`, `balanced` or `maximum` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
 | `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | time budget for the optimization loop (1-5000 ms) |
+| `SUTRA_LANGUAGE` | `0` | opt-in wording compression on prose lines while a search mode is active; never applied to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
 | `SUTRA_TELEMETRY` | `0` | enable OpenTelemetry export; see [telemetry.md](telemetry.md) |
@@ -75,6 +76,13 @@ must pass the protected-span check (paths, URLs, numbers, identifiers,
 commands, negations, error and security terms all survive) and must be
 strictly smaller; at most `SUTRA_SEARCH_PASSES` passes run inside
 `SUTRA_SEARCH_BUDGET_MS`. `off` is the default and changes nothing.
+
+`SUTRA_LANGUAGE=1` adds one more strategy, only while a search mode is active:
+a fixed table of verbose phrases and politeness fillers is removed from prose
+lines outside fenced blocks, quoted strings and marker lines. It is
+deterministic, never paraphrases, and every candidate still passes the same
+protected-span check, so negations, numbers, identifiers, commands, paths,
+URLs, error and security terms survive or the candidate is rejected.
 
 With `SUTRA_REUSE=1` (default), a result that exactly matches an earlier
 compressed result in the same process session is replaced by a marker quoting

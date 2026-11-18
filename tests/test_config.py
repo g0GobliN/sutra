@@ -239,6 +239,15 @@ def test_search_aliases_and_bounds(sutra, monkeypatch):
     assert cfg.search_budget_ms == 50    # below the 1 floor: back to default
 
 
+def test_language_is_a_separate_opt_in(sutra, monkeypatch):
+    monkeypatch.delenv("SUTRA_LANGUAGE", raising=False)
+    assert sutra.configuration().language is False
+    monkeypatch.setenv("SUTRA_LANGUAGE", "1")
+    assert sutra.configuration().language is True
+    monkeypatch.setenv("SUTRA_LANGUAGE", "0")
+    assert sutra.configuration().language is False
+
+
 def test_unknown_search_mode_warns_once_and_stays_off(sutra, monkeypatch,
                                                       caplog):
     monkeypatch.setenv("SUTRA_SEARCH", "turbo")

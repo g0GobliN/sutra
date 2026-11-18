@@ -56,12 +56,18 @@ def test_maximum_saves_at_least_balanced(monkeypatch):
     assert maximum.search_saved_bytes >= balanced.search_saved_bytes
 
 
-def test_search_does_not_run_when_nothing_changed(monkeypatch):
+def test_search_runs_even_when_the_engine_changed_nothing(monkeypatch):
+    """A search mode owns the final result, not only results the engine touched."""
+    off_text, off_stats = engine.compress("short   \n", cfg=_cfg(monkeypatch))
+    assert off_text == "short   \n"
+    assert off_stats.changed is False and off_stats.rule == "none"
     text, stats = engine.compress(
         "short   \n", cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum"))
-    assert text == "short   \n"
-    assert stats.changed is False
-    assert stats.search_applied == ""
+    assert text == "short\n"
+    assert stats.changed is True
+    assert stats.rule == "search"
+    assert stats.search_applied == "trailing-space"
+    assert stats.search_saved_bytes == 3
 
 
 def test_search_keeps_recovery_marker_lines(monkeypatch):
@@ -94,6 +100,37 @@ def test_search_keeps_json_parseable(monkeypatch):
     text, stats = engine.compress(payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum"))
     assert json.loads(text) is not None
     assert len(text) <= len(payload)
+
+
+def test_language_is_off_unless_requested(monkeypatch):
+    text, stats = engine.compress(PAYLOAD, cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum"))
+    assert "language" not in stats.search_applied
+
+
+def test_language_shortens_prose_inside_a_compressed_result(monkeypatch):
+    prose = ("Please carefully inspect the repository in order to find the "
+             "failing test. ") * 20
+    payload = PAYLOAD + prose
+    base, _ = engine.compress(payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum"))
+    text, stats = engine.compress(
+        payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum", SUTRA_LANGUAGE="1"))
+    assert "language" in stats.search_applied
+    assert len(text) < len(base)
+    assert "Please" not in text
+    assert "in order to" not in text
+
+
+def test_language_never_breaks_protected_spans(monkeypatch):
+    prose = ("Please keep /etc/hosts and https://example.com/x in order to run "
+             "3 tests; do not delete 42 rows. ")
+    payload = PAYLOAD + prose * 30
+    text, _ = engine.compress(
+        payload, cfg=_cfg(monkeypatch, SUTRA_SEARCH="maximum", SUTRA_LANGUAGE="1"))
+    assert "/etc/hosts" in text
+    assert "https://example.com/x" in text
+    assert "3 tests" in text
+    assert "not" in text
+    assert "42" in text
 
 
 def test_search_report_is_deterministic(monkeypatch):

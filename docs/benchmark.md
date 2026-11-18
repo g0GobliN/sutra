@@ -325,6 +325,35 @@ phase; peak heap and RSS delta. Any future numeric target (for example, "at leas
 40% saved and no more than one extra call per task") must be set from a measured
 baseline on real trajectories, not chosen to make the table look good.
 
+## Maximum-effort search layer
+
+`bench/maximum.py` measures the opt-in layer in ``SUTRA_SEARCH`` on the same
+eight fixtures plus one prose fixture (a verbose tool description repeated to
+about 33 kB), because formatting strategies cannot help prose and wording
+strategies cannot help logs. Each mode reports o200k tokens for the text the
+model would read and wall-clock milliseconds for the whole call.
+
+Measured on the development host on 2026-11-18 (Python 3.13.5, `tiktoken
+0.14.0`, `o200k_base`; the archived artifact records the load and git SHA):
+
+| Mode | Tokens in | Tokens out | Saved | Median call | Max call |
+|---|---|---|---|---|---|
+| `off` (default) | 588,058 | 264,598 | 55.0% | 61.9 ms | 437.1 ms |
+| `balanced` | 588,058 | 264,597 | 55.0% | 95.0 ms | 445.6 ms |
+| `maximum` (+ `SUTRA_LANGUAGE=1`) | 588,058 | 264,198 | 55.1% | 82.8 ms | 398.2 ms |
+
+The layer's own contribution is visible on the prose fixture, where the
+deterministic pass changes nothing: `maximum` with wording enabled takes it
+from 2,081 to 1,681 tokens (400 tokens, 19.2% of that fixture). On the log, JSON,
+diff and traceback fixtures the formatting strategies find nothing to remove,
+so the measured gain is zero — that is the expected result, not a failure, and
+the mode costs at most about 15 ms there because it runs on the already-reduced
+text.
+
+What this does **not** measure: provider cost. There is no provider call and no
+authoritative usage or price, so the artifact reports `"cost": "unavailable"`.
+A tokenizer count is not a bill.
+
 ## Limitations
 
 - Fixtures are synthetic. They are representative in shape, not in distribution

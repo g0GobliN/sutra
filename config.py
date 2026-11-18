@@ -59,6 +59,9 @@ DEFAULT_SEARCH_MODE = "off"
 SEARCH_MODES = ("off", "balanced", "maximum")
 DEFAULT_SEARCH_PASSES = 4
 DEFAULT_SEARCH_BUDGET_MS = 50
+# Wording compression is a separate opt-in: it changes prose, not formatting,
+# so it is never enabled merely by choosing a search mode.
+DEFAULT_LANGUAGE = False
 
 # Advisory token ceiling per result. ``None`` means no token budget. The count
 # is an estimate (byte-based unless tiktoken is importable); it sizes the byte
@@ -283,6 +286,7 @@ class Config:
     search_mode: str = DEFAULT_SEARCH_MODE
     search_passes: int = DEFAULT_SEARCH_PASSES
     search_budget_ms: int = DEFAULT_SEARCH_BUDGET_MS
+    language: bool = DEFAULT_LANGUAGE
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -339,6 +343,7 @@ def resolve() -> Config:
         search_budget_ms=_int("SUTRA_SEARCH_BUDGET_MS",
                               DEFAULT_SEARCH_BUDGET_MS, minimum=1,
                               maximum=5000),
+        language=_flag("SUTRA_LANGUAGE", DEFAULT_LANGUAGE),
         telemetry_sample_rate=_float("SUTRA_TELEMETRY_SAMPLE_RATE",
                                      DEFAULT_TELEMETRY_SAMPLE_RATE,
                                      minimum=0.0, maximum=1.0),

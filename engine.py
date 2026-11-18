@@ -24,7 +24,7 @@ import time
 from dataclasses import asdict, dataclass, fields, replace
 from typing import Any, Iterator
 
-from . import config, optimize, utf8
+from . import config, language, optimize, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
 from .telemetry import get_telemetry
 
@@ -792,8 +792,14 @@ def _apply_search(out: str, stats: CompressionStats,
     the store exactly as before.
     """
     passes, budget_ms = _search_limits(cfg)
+    strategies = list(optimize.default_strategies())
+    if cfg.language:
+        strategies.append(optimize.Strategy(
+            "language", language.compress_text,
+            "remove verbosity fillers on prose lines, validated against SPC"))
     try:
-        report = optimize.optimize(out, max_passes=passes, max_ms=float(budget_ms))
+        report = optimize.optimize(out, max_passes=passes, max_ms=float(budget_ms),
+                                   strategies=strategies)
     except Exception:  # fail open: the deterministic result is still correct
         logger.exception("sutra: search layer failed; keeping the compressed result")
         return out, stats
@@ -802,6 +808,8 @@ def _apply_search(out: str, stats: CompressionStats,
     stats = replace(
         stats,
         compressed_bytes=len(report.text.encode("utf-8")),
+        changed=stats.changed or bool(report.applied),
+        rule=stats.rule if stats.rule != "none" else "search",
         search_applied="+".join(report.applied),
         search_saved_bytes=report.saved_bytes,
     )
@@ -848,7 +856,7 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             budget_exceeded=stats.budget_exceeded,
         )
 
-    if stats.changed and cfg.search_mode != "off":
+    if cfg.search_mode != "off":
         before = out
         out, stats = _apply_search(out, stats, cfg)
         if (out is not before and not _parses_as_json(out)
