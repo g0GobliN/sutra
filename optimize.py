@@ -50,6 +50,16 @@ _MARKER_PREFIX = "[sutra:"
 _MAX_REASON_CHARS = 200
 
 
+def _size(text: str) -> int:
+    """UTF-8 byte length, the unit the savings fields are named in.
+
+    ``len()`` counts code points, so a payload with non-ASCII text reported a
+    saving larger than the bytes a provider would see. Every acceptance
+    decision and every recorded saving uses this function.
+    """
+    return len(text.encode("utf-8", "surrogatepass"))
+
+
 @dataclass(frozen=True)
 class Strategy:
     """One deterministic, content-preserving transformation."""
@@ -223,7 +233,7 @@ def _evaluate(
     if not candidate:
         return Evaluation(strategy.name, 0, elapsed, False,
                           "candidate is empty"), None
-    saved = len(text) - len(candidate)
+    saved = _size(text) - _size(candidate)
     try:
         ok, reasons = validator(text, candidate)
     except Exception as exc:  # a broken validator rejects, never crashes
@@ -273,7 +283,7 @@ def _evaluate_pair(
     if not isinstance(candidate, str) or not candidate:
         return Evaluation(name, 0, elapsed, False,
                           "candidate is not text"), None
-    saved = len(base) - len(candidate)
+    saved = _size(base) - _size(candidate)
     try:
         ok, reasons = validator(original, candidate)
     except Exception as exc:
@@ -392,5 +402,5 @@ def optimize(
         evaluations=tuple(evaluations),
         applied=tuple(applied),
         elapsed_ms=elapsed_ms,
-        saved_bytes=max(0, len(text) - len(current)),
+        saved_bytes=max(0, _size(text) - _size(current)),
     )

@@ -281,3 +281,16 @@ def test_combination_search_is_off_by_default_and_never_grows_text():
     combined = optimize.optimize(base, strategies=strategies, combine=True,
                                  max_passes=1)
     assert len(combined.text) <= len(base)
+
+
+def test_savings_are_measured_in_utf8_bytes_not_code_points():
+    """A multi-byte space replaced by an ASCII one saves a byte, not zero.
+
+    ``len()`` sees ``hello\\u00a0world`` and ``hello world`` as the same size, so
+    a code-point measurement rejected the only saving the strategy produced.
+    """
+    payload = "hello\u00a0world"
+    assert len(payload) == len("hello world")
+    report = optimize.optimize(payload, max_passes=1)
+    assert report.text == "hello world"
+    assert report.saved_bytes == 1

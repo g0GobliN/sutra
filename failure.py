@@ -63,7 +63,15 @@ def fingerprint(text: str) -> str:
 
 @dataclass(frozen=True)
 class Record:
-    """One strategy attempt, with the fields PART 15 asks to record."""
+    """One strategy attempt, with the fields PART 15 asks to record.
+
+    ``size_before``/``size_after`` are UTF-8 byte counts, so a record says what
+    the transformation did to the payload rather than only whether it was
+    accepted. ``validation`` is the preservation outcome: ``"passed"`` when the
+    candidate survived the validator, ``"rejected: <reason>"`` otherwise. The
+    original text is not copied into the ledger — it stays recoverable through
+    the existing store, and a ledger is not a content archive.
+    """
 
     at: float
     strategy: str
@@ -74,6 +82,9 @@ class Record:
     saved_bytes: int
     elapsed_ms: float
     reason: str = ""
+    size_before: int = 0
+    size_after: int = 0
+    validation: str = ""
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -105,7 +116,11 @@ class Ledger:
     # -- recording ---------------------------------------------------------
     def record(self, *, strategy: str, scope: str, text_fingerprint: str,
                accepted: bool, saved_bytes: int, elapsed_ms: float,
-               reason: str = "") -> Record:
+               reason: str = "", size_before: int = 0,
+               size_after: int = 0, validation: str = "") -> Record:
+        if not validation:
+            validation = "passed" if accepted else (
+                f"rejected: {reason}" if reason else "rejected")
         record = Record(
             at=time.time(), strategy=strategy, scope=scope,
             fingerprint=text_fingerprint,
@@ -113,6 +128,8 @@ class Ledger:
                      "failed" if is_hard_failure(reason) else "rejected"),
             accepted=accepted, saved_bytes=saved_bytes,
             elapsed_ms=round(elapsed_ms, 6), reason=reason[:200],
+            size_before=int(size_before), size_after=int(size_after),
+            validation=validation[:200],
         )
         with self._lock:
             key = (strategy, scope)
@@ -196,12 +213,19 @@ def record_attempts(ledger: Ledger | None, text: str,
         return
     scope = shape(text)
     digest = fingerprint(text)
+    size_before = len(text.encode("utf-8", "surrogatepass"))
     for evaluation in evaluations:
+        saved = int(getattr(evaluation, "saved_bytes", 0))
+        accepted = bool(getattr(evaluation, "accepted", False))
+        reason = str(getattr(evaluation, "reason", ""))
         ledger.record(
             strategy=getattr(evaluation, "name", "unknown"),
             scope=scope, text_fingerprint=digest,
-            accepted=bool(getattr(evaluation, "accepted", False)),
-            saved_bytes=int(getattr(evaluation, "saved_bytes", 0)),
+            accepted=accepted,
+            saved_bytes=saved,
             elapsed_ms=float(getattr(evaluation, "elapsed_ms", 0.0)),
-            reason=str(getattr(evaluation, "reason", "")),
+            reason=reason,
+            size_before=size_before,
+            size_after=size_before - saved,
+            validation="passed" if accepted else f"rejected: {reason}"[:200],
         )

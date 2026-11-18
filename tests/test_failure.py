@@ -135,3 +135,15 @@ def test_record_attempts_feeds_a_run_report():
     failure.record_attempts(ledger, "line1  \nline2   \n", report.evaluations)
     assert ledger.stats()["records"] == len(report.evaluations)
     assert ledger.recent(1)[0]["strategy"] in {s.name for s in optimize.default_strategies()}
+
+
+def test_records_carry_sizes_and_the_validation_outcome():
+    text = "line1  \nline2   \n"
+    report = optimize.optimize(text)
+    ledger = failure.Ledger()
+    failure.record_attempts(ledger, text, report.evaluations)
+    record = ledger.recent(1)[0]
+    assert record["size_before"] == len(text.encode("utf-8"))
+    assert record["size_after"] == record["size_before"] - record["saved_bytes"]
+    assert record["validation"] == "passed" or record["validation"].startswith("rejected:")
+    assert record["fingerprint"] == failure.fingerprint(text)
