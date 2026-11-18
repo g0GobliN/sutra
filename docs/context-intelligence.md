@@ -81,6 +81,15 @@ differing bits. Two items are grouped when the distance is at most
 kept; a duplicate is dropped only when it is not mandatory and nothing depends
 on it, and every drop is reported in `duplicates` as `(dropped, kept)`.
 
+A second guard, taken from Caveman's engine
+(`compressors/redundancy.go`, `redundantUnitContainment = 0.9` — see
+[docs/ponytail-caveman.md](ponytail-caveman.md)), requires the representative
+to carry at least 90% of the duplicate's vocabulary before anything is dropped.
+A near-duplicate that happens to contain a distinct error, identifier or rare
+token is therefore kept and still competes for the budget. The test
+`test_near_duplicate_with_distinct_vocabulary_is_kept` forces one SimHash group
+so the guard, not the bit distance, is what decides.
+
 `minhash()` and `jaccard()` are provided for comparison and for callers that
 want an overlap estimate. They are not used by the default grouping, and are
 measured alongside SimHash in the benchmark.

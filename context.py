@@ -456,6 +456,35 @@ def jaccard(left: Sequence[int], right: Sequence[int]) -> float:
     return sum(1 for a, b in zip(left, right) if a == b) / len(left)
 
 
+# A near-duplicate is only dropped when the representative carries at least this
+# share of the duplicate's vocabulary. Caveman's engine uses the same 0.9
+# containment guard so a "duplicate" that happens to carry a distinct error or
+# identifier is kept instead of silently elided (see compressors/redundancy.go
+# in github.com/JuliusBrussee/caveman, `redundantUnitContainment`).
+NEAR_DUPLICATE_CONTAINMENT = 0.9
+_VOCABULARY_LIMIT = 512
+
+
+def _vocabulary(text: str) -> set[str]:
+    """Lower-cased word tokens, capped so one huge item cannot dominate."""
+    words: set[str] = set()
+    for word in text.split():
+        cleaned = word.strip(".,;:!?()[]{}\"'`").lower()
+        if cleaned:
+            words.add(cleaned)
+        if len(words) >= _VOCABULARY_LIMIT:
+            break
+    return words
+
+
+def _containment(duplicate: str, representative: str) -> float:
+    """Share of ``duplicate``'s vocabulary that ``representative`` carries."""
+    duplicate_words = _vocabulary(duplicate)
+    if not duplicate_words:
+        return 1.0
+    return len(duplicate_words & _vocabulary(representative)) / len(duplicate_words)
+
+
 def _duplicate_groups(items: Sequence[Item], distance: int,
                       ) -> list[tuple[str, ...]]:
     """Group ids whose SimHash is within ``distance`` of the group's first id."""
@@ -581,6 +610,8 @@ def select(items: Iterable[Item], budget: int, *,
                     continue
                 if dependents.get(item.id):
                     continue  # something needs it; keep the copy
+                if _containment(item.content, representative.content) < NEAR_DUPLICATE_CONTAINMENT:
+                    continue  # carries vocabulary the representative lacks
                 duplicates.append((item.id, representative.id))
                 dropped[item.id] = (
                     f"near-duplicate of {representative.id!r} "

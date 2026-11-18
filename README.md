@@ -132,6 +132,11 @@ SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context e
 
 The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
 
+`sutra map` prints a character-budgeted map of the repository's top-level
+definitions, so "reuse what exists" costs one read instead of a search. The
+technique, its origins and what SUTRA took from Ponytail and Caveman are in
+[docs/ponytail-caveman.md](https://github.com/g0GobliN/sutra/blob/main/docs/ponytail-caveman.md).
+
 The context selector is a separate, opt-in surface: [`context.py`](context.py)
 scores context items, honours dependencies, preserves mandatory material and
 reports a token- or byte-budgeted selection. The model, the measured

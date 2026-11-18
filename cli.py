@@ -50,6 +50,7 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
+  sutra map [--root PATH] [--budget N] [--json]
   sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
@@ -653,6 +654,34 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     return 1 if failed else 0
 
 
+def _map(argv: list[str]) -> int:
+    from . import repomap
+
+    parser = argparse.ArgumentParser(
+        prog="sutra map",
+        description=("Print a character-budgeted map of the repository's "
+                     "top-level definitions, so reuse is cheaper than a "
+                     "search. Read-only; no model call."))
+    parser.add_argument("--root", default=".", help="repository root")
+    parser.add_argument("--budget", type=int, default=repomap.DEFAULT_BUDGET,
+                        help="maximum characters in the map")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output")
+    args = parser.parse_args(argv)
+    try:
+        lines = repomap.build_lines(args.root, budget=args.budget)
+    except (OSError, ValueError) as exc:
+        print_error(f"sutra map: {exc}")
+        return 2
+    if args.json:
+        print(json.dumps({"root": str(args.root), "budget": args.budget,
+                          "lines": lines}, indent=2, sort_keys=True))
+    else:
+        for line in lines:
+            print(line)
+    return 0
+
+
 def _context(argv: list[str]) -> int:
     from . import context as context_module
 
@@ -834,6 +863,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cost(argv[1:])
     if argv[:1] == ["context"]:
         return _context(argv[1:])
+    if argv[:1] == ["map"]:
+        return _map(argv[1:])
     if argv[:1] == ["eval"]:
         return _eval_main(argv[1:])
     if argv[:1] == ["update"]:

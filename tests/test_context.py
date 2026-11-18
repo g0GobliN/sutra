@@ -308,3 +308,20 @@ def test_cli_context_rejects_malformed_input(capsys, monkeypatch):
     code = cli.main(["context", "--budget", "1"])
     assert code == 2
     assert "sutra context" in capsys.readouterr().err
+
+
+def test_near_duplicate_with_distinct_vocabulary_is_kept():
+    base = " ".join(f"token{i}" for i in range(40))
+    kept = context.Item(id="kept", content=base, token_cost=1, relevance=0.9)
+    twin = context.Item(id="twin", content=base + " extra", token_cost=1,
+                        relevance=0.1)
+    distinct = context.Item(id="distinct", content=base + " " + " ".join(
+        f"rare{i}" for i in range(20)), token_cost=1, relevance=0.2)
+    # Force all three into one SimHash group so the vocabulary guard, not the
+    # bit distance, decides what may be dropped.
+    selection = context.select([kept, twin, distinct], 10, unit="tokens",
+                              near_duplicates=True, near_distance=64)
+    dropped = dict(selection.dropped)
+    assert "twin" in dropped and "distinct" not in dropped
+    assert ("twin", "kept") in selection.duplicates
+    assert "distinct" in selection.selected
