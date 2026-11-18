@@ -51,6 +51,9 @@ usage:
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
   sutra map [--root PATH] [--budget N] [--json]
+  sutra redundancy check --key K [--dependency PATH]... [--command CMD] [--file PATH] [--json]
+  sutra redundancy record --key K [--dependency PATH]... [--result FINGERPRINT] [--file PATH]
+  sutra redundancy forget --key K [--file PATH]
   sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
@@ -764,6 +767,78 @@ def _context(argv: list[str]) -> int:
     return 0 if result.feasible else 1
 
 
+def _redundancy(argv: list[str]) -> int:
+    from . import redundancy
+
+    parser = argparse.ArgumentParser(
+        prog="sutra redundancy",
+        description=("Classify whether repeated tool work may be reused "
+                     "(SAFE_TO_REUSE), needs revalidation, or must execute. "
+                     "Verification commands always must execute. Reads and "
+                     "writes a local JSON ledger; runs nothing."))
+    parser.add_argument("action", choices=("check", "record", "forget"))
+    parser.add_argument("--key", default=None,
+                        help="call key from redundancy.call_fingerprint")
+    parser.add_argument("--tool", default="",
+                        help="tool name; with --arguments, computes the key")
+    parser.add_argument("--arguments", default="",
+                        help="canonical call arguments; with --tool, computes the key")
+    parser.add_argument("--dependency", action="append", default=[],
+                        metavar="PATH",
+                        help="file the result depends on (repeatable)")
+    parser.add_argument("--root", default=".",
+                        help="directory dependency paths are relative to")
+    parser.add_argument("--command", default="",
+                        help="the command, so verification shapes are refused")
+    parser.add_argument("--result", default="",
+                        help="fingerprint of the recorded result")
+    parser.add_argument("--ttl", type=int, default=None,
+                        help="seconds until the record expires (default 3600)")
+    parser.add_argument("--file", default=None,
+                        help="ledger path (default SUTRA_REDUNDANCY_FILE or "
+                             "~/.sutra/redundancy.json)")
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args(argv)
+    key = args.key or (redundancy.call_fingerprint(args.tool, args.arguments)
+                       if args.tool else "")
+    if not key:
+        print_error("sutra redundancy: pass --key or --tool with --arguments")
+        return 2
+    ledger = (redundancy.Ledger(args.file, ttl_seconds=args.ttl)
+              if args.file else redundancy.Ledger.from_env())
+    if args.action == "record":
+        current = redundancy.snapshot(args.dependency, root=args.root)
+        ledger.record(key, dependencies=current,
+                      result_fingerprint=args.result,
+                      ttl_seconds=args.ttl)
+        if args.json:
+            print(json.dumps({"key": key, "recorded": True,
+                              "dependencies": current.as_dict()},
+                             indent=2, sort_keys=True))
+        else:
+            print(f"recorded {key[:12]}… with "
+                  f"{len(current.files)} dependency file(s)")
+        return 0
+    if args.action == "forget":
+        removed = ledger.forget(key)
+        if args.json:
+            print(json.dumps({"key": key, "removed": removed},
+                             indent=2, sort_keys=True))
+        else:
+            print("forgotten" if removed else "no such record")
+        return 0
+    current = redundancy.snapshot(args.dependency, root=args.root)
+    decision = ledger.classify(key, dependencies=current,
+                               command=args.command)
+    if args.json:
+        print(json.dumps(decision.as_dict(), indent=2, sort_keys=True))
+    else:
+        print(f"{decision.classification}: {decision.reason}")
+        if decision.changed:
+            print("changed: " + ", ".join(decision.changed))
+    return 0 if decision.reusable else 1
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -863,6 +938,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cost(argv[1:])
     if argv[:1] == ["context"]:
         return _context(argv[1:])
+    if argv[:1] == ["redundancy"]:
+        return _redundancy(argv[1:])
     if argv[:1] == ["map"]:
         return _map(argv[1:])
     if argv[:1] == ["eval"]:
