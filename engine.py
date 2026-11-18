@@ -21,10 +21,10 @@ import json
 import logging
 import re
 import time
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
 from typing import Any, Iterator
 
-from . import config, utf8
+from . import config, optimize, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
 from .telemetry import get_telemetry
 
@@ -115,6 +115,8 @@ class CompressionStats:
     fail_open: bool = False
     token_estimate: int | None = None
     budget_exceeded: bool = False
+    search_applied: str = ""
+    search_saved_bytes: int = 0
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -767,6 +769,45 @@ def _warn_json_items_retired() -> None:
         "string fields are still compressed and the original is kept for recovery.")
 
 
+def _search_limits(cfg: config.Config) -> tuple[int, float]:
+    """Passes and time budget for the configured search mode.
+
+    ``balanced`` is one bounded pass over the formatting strategies;
+    ``maximum`` spends the configured pass count and budget. ``off`` never
+    reaches this function.
+    """
+    if cfg.search_mode == "balanced":
+        return 1, cfg.search_budget_ms
+    return cfg.search_passes, cfg.search_budget_ms
+
+
+def _apply_search(out: str, stats: CompressionStats,
+                  cfg: config.Config) -> tuple[str, CompressionStats]:
+    """Run the bounded optimizer over an already-changed result.
+
+    The optimizer never removes content and never rewrites recovery markers or
+    fenced blocks; it only normalises formatting. Its output replaces the
+    compressed text only when it is strictly smaller and the protected-span
+    validator accepted every step, so the original stays recoverable through
+    the store exactly as before.
+    """
+    passes, budget_ms = _search_limits(cfg)
+    try:
+        report = optimize.optimize(out, max_passes=passes, max_ms=float(budget_ms))
+    except Exception:  # fail open: the deterministic result is still correct
+        logger.exception("sutra: search layer failed; keeping the compressed result")
+        return out, stats
+    if not report.applied or report.saved_bytes <= 0:
+        return out, stats
+    stats = replace(
+        stats,
+        compressed_bytes=len(report.text.encode("utf-8")),
+        search_applied="+".join(report.applied),
+        search_saved_bytes=report.saved_bytes,
+    )
+    return report.text, stats
+
+
 def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None = None,
              tail_bytes: int | None = None, json_items: int | None = None,
              ref: Ref | None = None, marker_reserve: int | None = None,
@@ -806,6 +847,16 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             token_estimate=stats.token_estimate,
             budget_exceeded=stats.budget_exceeded,
         )
+
+    if stats.changed and cfg.search_mode != "off":
+        before = out
+        out, stats = _apply_search(out, stats, cfg)
+        if (out is not before and not _parses_as_json(out)
+                and _parse_json_document(text) is not None):
+            # The optimizer must not turn a valid document into a broken one.
+            out = before
+            stats = replace(stats, compressed_bytes=len(before.encode("utf-8")),
+                            search_applied="", search_saved_bytes=0)
 
     # Record telemetry
     latency_ms = (time.perf_counter() - start_time) * 1000
