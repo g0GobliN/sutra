@@ -26,6 +26,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.request
 
 HERE = pathlib.Path(__file__).resolve()
@@ -55,11 +56,34 @@ def wait_for_server(url: str, timeout: float = 15.0) -> bool:
     while time.monotonic() < deadline:
         try:
             with urllib.request.urlopen(url + "/models", timeout=1) as response:
-                if response.status == 200:
+                if response.status:
                     return True
+        except urllib.error.HTTPError:
+            # Any HTTP answer means the socket is up; an upstream error is not a
+            # startup failure.
+            return True
         except Exception:
             time.sleep(0.15)
     return False
+
+
+def hermes_env_file(path: pathlib.Path | None = None) -> dict[str, str]:
+    """Read simple KEY=VALUE lines from ~/.hermes/.env, without printing values."""
+    env_path = path or pathlib.Path.home() / ".hermes" / ".env"
+    values: dict[str, str] = {}
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        if key and key.replace("_", "").isalnum():
+            values.setdefault(key, value.strip().strip('"').strip("'"))
+    return values
 
 
 def git_revision(path: pathlib.Path) -> tuple[str, bool]:
@@ -89,12 +113,21 @@ def read_jsonl(path: pathlib.Path) -> list[dict]:
 
 def stop_gateway(env: dict[str, str]) -> None:
     subprocess.run(["hermes", "gateway", "stop"], env=env, capture_output=True, timeout=90)
+    # `stop` returns while the process is still draining; a fresh `hermes -z` in that
+    # window fails with "Gateway draining: not_ready".
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        status = subprocess.run(["hermes", "gateway", "status"], env=env,
+                                capture_output=True, text=True, timeout=30)
+        if "not running" in status.stdout.lower():
+            return
+        time.sleep(0.5)
 
 
 def run_condition(name: str, enabled: str, mode: str, language: str, passes: str, *,
                   home: pathlib.Path, scenario: pathlib.Path, work: pathlib.Path,
                   timeout: float, model: str = "mock-model",
-                  upstream: str | None = None) -> dict:
+                  upstream: str | None = None, prompt: str = PROMPT) -> dict:
     port = free_port()
     log = work / f"{name}-requests.jsonl"
     stats = work / f"{name}-stats.jsonl"
@@ -113,12 +146,17 @@ def run_condition(name: str, enabled: str, mode: str, language: str, passes: str
         "SUTRA_STORE_DIR": str(store),
         "SUTRA_STATS_FILE": str(stats),
     }
+    if upstream:
+        # Only the key the upstream proxy needs; importing the whole .env would
+        # switch on chat platforms in the isolated gateway (a telegram token in
+        # the environment is a startup conflict).
+        env.setdefault("OPENROUTER_API_KEY", hermes_env_file().get("OPENROUTER_API_KEY", ""))
     command = [sys.executable, str(HERE.parent / "mock_provider.py"), "--port", str(port),
                "--scenario", str(scenario), "--log", str(log)]
     if upstream:
         command.extend(["--upstream", upstream])
     server = subprocess.Popen(
-        command,
+        command, env=env,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
     try:
         if not wait_for_server(f"http://127.0.0.1:{port}/v1"):
@@ -128,9 +166,13 @@ def run_condition(name: str, enabled: str, mode: str, language: str, passes: str
                               model=model)
         stop_gateway(env)
         started = time.monotonic()
-        run = subprocess.run(
-            ["hermes", "-z", PROMPT, "--provider", "custom", "-m", model, "--yolo"],
-            env=env, capture_output=True, text=True, timeout=timeout)
+        for attempt in range(4):
+            run = subprocess.run(
+                ["hermes", "-z", prompt, "--provider", "custom", "-m", model, "--yolo"],
+                env=env, capture_output=True, text=True, timeout=timeout)
+            if "not_ready" not in (run.stdout + run.stderr):
+                break
+            time.sleep(5)
         wall = time.monotonic() - started
         out.write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
     finally:
@@ -197,19 +239,27 @@ def summarize(conditions: list[dict]) -> dict:
 
 
 def run_scenario(scenario: pathlib.Path, args, work_root: pathlib.Path) -> dict:
+    if args.conditions:
+        wanted = {c.strip() for c in args.conditions.split(",") if c.strip()}
+        selected = tuple(c for c in CONDITIONS if c[0] in wanted)
+        if not selected:
+            raise SystemExit(f"no known condition in {args.conditions!r}")
+    else:
+        selected = CONDITIONS
     data = json.loads(scenario.read_text(encoding="utf-8"))
     work = work_root / scenario.stem
     work.mkdir(parents=True, exist_ok=True)
-    print(f"  {data.get('id', scenario.stem)} -> {len(CONDITIONS)} conditions", flush=True)
+    print(f"  {data.get('id', scenario.stem)} -> {len(selected)} conditions", flush=True)
     conditions = []
-    for name, enabled, mode, language, passes in CONDITIONS:
+    for name, enabled, mode, language, passes in selected:
         attempts = 0
         while True:
             attempts += 1
             condition = run_condition(
                 name, enabled, mode, language, passes, home=args.home,
                 scenario=scenario, work=work, timeout=args.timeout,
-                model=args.model, upstream=args.upstream)
+                model=args.model, upstream=args.upstream,
+                prompt=args.prompt or PROMPT)
             condition["attempts"] = attempts
             transport_failure = (condition["exit_code"] != 0
                                  and not condition["sutra"]
@@ -274,6 +324,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="retries for a condition that failed before producing a result")
     parser.add_argument("--report", type=pathlib.Path,
                         help="print an existing report instead of running anything")
+    parser.add_argument("--prompt", help="prompt sent to the agent (default: run the shell command)")
+    parser.add_argument("--conditions", help="comma-separated subset of conditions to run")
     args = parser.parse_args(argv)
     if args.report:
         print_report(json.loads(args.report.read_text(encoding="utf-8")))
@@ -300,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
         "hermes": hermes_version,
         "plugin_commit": revision,
         "plugin_dirty": dirty,
-        "prompt": PROMPT,
+        "prompt": args.prompt or PROMPT,
         "scenarios": results,
         "aggregates": aggregates(results),
         "notes": [
