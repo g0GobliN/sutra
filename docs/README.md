@@ -30,6 +30,7 @@ need the detail behind a claim.
 | Document | Answers |
 |---|---|
 | [benchmark.md](benchmark.md) | Fixtures, method, timings, memory and reproduction |
+| [optimization-model.md](optimization-model.md) | The SPC/SROF/SEOF/SACE/SMESP model, where each formula runs, and what is estimated rather than measured |
 | [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md) | Model-free Hermes cost replay: definitions, savings, quality and what is not measured |
 | [effectiveness-pilot.md](effectiveness-pilot.md) | The completed deterministic and host-adapter pilot, with live metrics marked unavailable |
 | [ab-benchmark.md](ab-benchmark.md) | The frozen live-model A/B protocols: v1 (8 tasks, default) and v2 (30 tasks); not yet run |

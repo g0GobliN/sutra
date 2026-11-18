@@ -95,13 +95,14 @@ if tool_name in ["sutra_restore", "sutra_compress"]:
 - **Bounded index**: 64 sessions × 128 digests per process
 - **Exclusion rules**: Diffs, JSON, tracebacks never replaced
 
-### 6. Optimization Search Layer (`optimize.py`, `preserve.py`, `language.py`, `failure.py`)
+### 6. Optimization Search Layer (`optimize.py`, `preserve.py`, `language.py`, `failure.py`, `scoring.py`)
 
 **Purpose**: opt-in second stage that may only accept smaller, validated text
 
 #### Key Features:
 - **Bounded loop**: at most `SUTRA_SEARCH_PASSES` passes inside
-  `SUTRA_SEARCH_BUDGET_MS`; ranking is marginal bytes saved per millisecond, so a
+  `SUTRA_SEARCH_BUDGET_MS`; candidates are ranked with `scoring.seof`, which at
+  unit confidence and zero risk is marginal bytes saved per millisecond, so a
   cheap strategy that saves a lot wins
 - **Protected spans**: every candidate must still contain the same code fences,
   inline code, URLs, paths, commands, negations, security and error terms,
@@ -115,6 +116,11 @@ if tool_name in ["sutra_restore", "sutra_compress"]:
   resets the count. The original text is never mutated by a rejected candidate
 - **Fail-open**: an exception inside a strategy or the validator is recorded and
   the loop keeps the last accepted text
+- **Decision model**: `scoring.py` holds SROF (`net_benefit`), SEOF (`seof`),
+  SACE (`sace_select`) and SMESP (`priority`) plus Pareto comparison; the loop
+  uses SEOF for ranking and `bench/maximum.py` uses the Pareto front. See
+  [optimization-model.md](optimization-model.md) for the formulas and their
+  limits
 
 ### 7. Configuration (`config.py`)
 

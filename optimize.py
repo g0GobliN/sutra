@@ -24,8 +24,10 @@ Rules, in the same priority order as the rest of the project:
    validator and an empty candidate are recorded as rejected evaluations; the
    caller still gets the original text.
 5. **Deterministic.** Strategies run in a fixed order, ranking is
-   ``saved_bytes / (1 + elapsed_ms)`` with the strategy name as tie-break, and
-   the same input always produces the same selection.
+   ``scoring.seof`` over the measured bytes saved and milliseconds spent with
+   the strategy name as tie-break (``quality=1, risk=0`` makes it
+   ``saved_bytes / (1 + elapsed_ms)``), and the same input always produces the
+   same selection.
 
 Recovery markers (lines whose stripped form starts with ``[sutra:``) and
 fenced code blocks are never rewritten: the first is the recovery contract and
@@ -39,7 +41,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-from . import failure, preserve
+from . import failure, preserve, scoring
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +299,7 @@ def optimize(
         best, best_text = min(
             accepted,
             key=lambda item: (
-                -(item[0].saved_bytes / (1.0 + item[0].elapsed_ms)),
+                -scoring.seof(item[0].saved_bytes, item[0].elapsed_ms),
                 item[0].name,
             ),
         )

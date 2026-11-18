@@ -58,13 +58,14 @@ def _load(name: str, path: pathlib.Path):
 
 bench = _load("bench_benchmark", ROOT / "bench" / "benchmark.py")
 _pkg = bench.sutra
-for _name in ("config", "engine", "language", "preserve", "optimize"):
+for _name in ("config", "engine", "language", "preserve", "optimize", "scoring"):
     importlib.import_module(f"{_pkg.__name__}.{_name}")
 config = getattr(_pkg, "config")
 engine = getattr(_pkg, "engine")
 preserve = getattr(_pkg, "preserve")
 optimize = getattr(_pkg, "optimize")
 language = getattr(_pkg, "language")
+scoring = getattr(_pkg, "scoring")
 
 
 _SEARCH_KEYS = ("SUTRA_SEARCH", "SUTRA_SEARCH_PASSES", "SUTRA_SEARCH_BUDGET_MS",
@@ -169,6 +170,11 @@ def main() -> int:
             "search_only_saved_bytes": sum(row["search_saved_bytes"] for row in mode_rows),
         })
 
+    front = scoring.pareto_front([
+        scoring.Candidate(row["mode"], cost=float(row["after_tokens"]),
+                          latency_ms=float(row["median_ms"]))
+        for row in summary
+    ])
     payload = {
         "environment": bench.environment(),
         "tiktoken": tiktoken.__version__,
@@ -188,6 +194,7 @@ def main() -> int:
         "cases": rows,
         "search_only": search_only,
         "summary": summary,
+        "pareto": [row.name for row in front],
         "cost": "unavailable: tokenizer and wall-clock measurement only, "
                 "no provider call and no authoritative usage or price",
     }
@@ -211,6 +218,8 @@ def main() -> int:
     for row in search_only:
         print(f"{row['case']:<22}{row['saved_bytes']:>6} bytes "
               f"({row['saved_pct']:>5}%) {row['elapsed_ms']:>6.2f}ms {row['applied']}")
+    print(f"\nnon-dominated modes (tokens, median ms): "
+          f"{', '.join(row.name for row in front)}")
     print(f"\nwrote {out_path.relative_to(ROOT)}")
     return 0
 
