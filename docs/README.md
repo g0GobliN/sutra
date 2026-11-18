@@ -17,6 +17,8 @@ need the detail behind a claim.
 | [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
 | [redundancy.md](redundancy.md) | Dependency-aware classification of repeated work: reuse, revalidate, must execute or unknown |
 | [cache.md](cache.md) | The five cache layers, entry metadata, invalidation and break-even economics |
+| [provider-matrix.md](provider-matrix.md) | Provider usage fields, tokenizers and why no token count or price is universal |
+| [output-optimization.md](output-optimization.md) | What SUTRA can and cannot save before and after model generation |
 
 ## Correctness and recovery
 
