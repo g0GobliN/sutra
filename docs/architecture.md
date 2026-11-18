@@ -95,7 +95,28 @@ if tool_name in ["sutra_restore", "sutra_compress"]:
 - **Bounded index**: 64 sessions × 128 digests per process
 - **Exclusion rules**: Diffs, JSON, tracebacks never replaced
 
-### 6. Configuration (`config.py`)
+### 6. Optimization Search Layer (`optimize.py`, `preserve.py`, `language.py`, `failure.py`)
+
+**Purpose**: opt-in second stage that may only accept smaller, validated text
+
+#### Key Features:
+- **Bounded loop**: at most `SUTRA_SEARCH_PASSES` passes inside
+  `SUTRA_SEARCH_BUDGET_MS`; ranking is marginal bytes saved per millisecond, so a
+  cheap strategy that saves a lot wins
+- **Protected spans**: every candidate must still contain the same code fences,
+  inline code, URLs, paths, commands, negations, security and error terms,
+  numbers and identifiers (`preserve.preservation_ok`); a candidate that loses
+  one is rejected, never trimmed
+- **Candidates**: line endings, unicode spaces, trailing spaces, blank runs, deep
+  indentation, and optionally the wording pass in `language.py` (fixed phrase
+  table, prose lines only, skipped above 64 KiB)
+- **Scoped failure ledger**: hard failures are recorded per payload shape; after
+  three in a row the strategy is skipped for that shape only, and a success
+  resets the count. The original text is never mutated by a rejected candidate
+- **Fail-open**: an exception inside a strategy or the validator is recorded and
+  the loop keeps the last accepted text
+
+### 7. Configuration (`config.py`)
 
 **Purpose**: Single-source configuration resolution with per-call defaults
 
@@ -111,7 +132,7 @@ if tool_name in ["sutra_restore", "sutra_compress"]:
 3. Merge with system defaults
 4. Return validated `Config` object
 
-### 6. Client Adapters
+### 8. Client Adapters
 
 **Purpose**: Translate host-specific tool execution to SUTRA core
 
