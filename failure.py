@@ -63,7 +63,7 @@ def fingerprint(text: str) -> str:
 
 @dataclass(frozen=True)
 class Record:
-    """One strategy attempt, with the fields PART 15 asks to record.
+    """One strategy attempt, with every field worth recording.
 
     ``size_before``/``size_after`` are UTF-8 byte counts, so a record says what
     the transformation did to the payload rather than only whether it was

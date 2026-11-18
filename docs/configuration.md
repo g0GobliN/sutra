@@ -124,11 +124,10 @@ frozen, inspectable object, including `policy_mode`, `reuse` and
 
 ## Conceptual configuration, and the one resolver
 
-goals.md PART 18 sketches a configuration grouped by concern. SUTRA does not
-read that YAML and does not add a second configuration system: `config.py` is
-the single resolver, and environment variables are its only input. The sketch
-maps onto it like this, so the intent is readable without pretending a file
-exists:
+Configuration is grouped by concern. SUTRA does not read a configuration file
+and has no second configuration system: `config.py` is the single resolver, and
+environment variables are its only input. The grouping below shows how the
+settings relate, without implying a file exists:
 
 ```yaml
 mode: balanced            # SUTRA_SEARCH=off|safe|balanced|aggressive

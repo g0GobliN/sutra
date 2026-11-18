@@ -1,9 +1,0 @@
-{
-  "id": "11-repeated-context",
-  "category": "repeated context",
-  "expect": "helpful",
-  "commands": [
-    "python3 -c \"[print('It is important to note that worker %d needs to check the queue again.   ' % i) for i in range(3000)]\""
-  ],
-  "final": "Inspected repeated context."
-}

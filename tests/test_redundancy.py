@@ -1,4 +1,4 @@
-"""Tests for the dependency-aware redundancy classifier (goals.md PART 7)."""
+"""Tests for the dependency-aware redundancy classifier."""
 
 import json
 

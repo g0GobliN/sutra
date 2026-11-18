@@ -3,7 +3,7 @@
 SUTRA normally sees one tool result at a time, so this module is the seam for
 hosts that *do* hold a set of context items (a conversation window, a set of
 documents, several tool outputs) and want a defensible choice about what to
-keep. It implements PART 8 of the directive and the relevant parts of PART 9:
+keep. The selection model is:
 
 * value scoring ``V = w_r R + w_i I + w_d D + w_u U + w_t T`` over normalized
   inputs (``Item``, ``Weights``, ``_values``);
@@ -100,7 +100,7 @@ def fingerprint(content: str) -> str:
 
 @dataclass(frozen=True)
 class Item:
-    """One context item, with the fields PART 8 names and no hidden state."""
+    """One context item, with the documented fields and no hidden state."""
 
     id: str
     content: str
@@ -457,10 +457,8 @@ def jaccard(left: Sequence[int], right: Sequence[int]) -> float:
 
 
 # A near-duplicate is only dropped when the representative carries at least this
-# share of the duplicate's vocabulary. Caveman's engine uses the same 0.9
-# containment guard so a "duplicate" that happens to carry a distinct error or
-# identifier is kept instead of silently elided (see compressors/redundancy.go
-# in github.com/JuliusBrussee/caveman, `redundantUnitContainment`).
+# share of the duplicate's vocabulary, so a "duplicate" that happens to carry a
+# distinct error or identifier is kept instead of silently elided.
 NEAR_DUPLICATE_CONTAINMENT = 0.9
 _VOCABULARY_LIMIT = 512
 

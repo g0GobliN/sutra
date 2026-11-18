@@ -1,9 +1,0 @@
-{
-  "id": "03-debugging",
-  "category": "debugging",
-  "expect": "helpful",
-  "commands": [
-    "python3 /home/goblin01/github_projects/tooltrim-goals/bench/agent/payloads/fake_traceback.py"
-  ],
-  "final": "Inspected debugging."
-}

@@ -1,8 +1,8 @@
 """Deterministic, opt-in wording compression for prose lines.
 
-This is the conservative form of the "Caveman-inspired" idea: remove words
-that carry no technical meaning, never rewrite code, and let the protected-span
-validator decide whether the result is acceptable. It is deterministic — a
+The rule is narrow: remove words that carry no technical meaning, never
+rewrite code, and let the protected-span validator decide whether the result is
+acceptable. It is deterministic — a
 fixed table of verbose phrases and politeness fillers — and it refuses to touch
 a line that looks like code, contains a quote or a template placeholder, or is
 inside a fenced block.

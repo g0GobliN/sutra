@@ -19,8 +19,6 @@ need the detail behind a claim.
 | [cache.md](cache.md) | The five cache layers, entry metadata, invalidation and break-even economics |
 | [provider-matrix.md](provider-matrix.md) | Provider usage fields, tokenizers and why no token count or price is universal |
 | [output-optimization.md](output-optimization.md) | What SUTRA can and cannot save before and after model generation |
-| [live-run-notes.md](live-run-notes.md) | Three runs against a real provider: actual usage objects, prompt-cache fields, and the two answers compared by hand |
-| [hermes-validation.md](hermes-validation.md) | Running this branch inside an isolated Hermes home: plugin path, why the gateway holds its environment, and how each mode was proved |
 
 ## Correctness and recovery
 
@@ -38,13 +36,10 @@ need the detail behind a claim.
 | [benchmark.md](benchmark.md) | Fixtures, method, timings, memory and reproduction |
 | [optimization-model.md](optimization-model.md) | The SPC/SROF/SEOF/SACE/SMESP model, where each formula runs, and what is estimated rather than measured |
 | [context-intelligence.md](context-intelligence.md) | Budgeted context selection: relevance formula, exact and greedy algorithms, measured near-duplicate accuracy |
-| [ponytail-caveman.md](ponytail-caveman.md) | What Ponytail and Caveman actually do, read from source, and which parts SUTRA adopted |
 | [accounting.md](accounting.md) | The full token and cost accounting set: formulas, fields, worked example and enforced rules |
 | [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md) | Model-free Hermes cost replay: definitions, savings, quality and what is not measured |
 | [effectiveness-pilot.md](effectiveness-pilot.md) | The completed deterministic and host-adapter pilot, with live metrics marked unavailable |
 | [ab-benchmark.md](ab-benchmark.md) | The frozen live-model A/B protocols: v1 (8 tasks, default) and v2 (30 tasks); not yet run |
-| [verification-matrix.md](verification-matrix.md) | Every claimed capability mapped to code, test and measurement, including the ones that are not observable |
-| [next-architecture.md](next-architecture.md) | Surfaces beyond the post-tool-result hook: pre-call request middleware, prompt-cache visibility, output controls, proxies — with the access each would need |
 
 ## Operations and contribution
 

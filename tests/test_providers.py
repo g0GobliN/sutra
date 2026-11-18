@@ -1,4 +1,4 @@
-"""Provider usage metadata parsing (goals.md PART 13/14)."""
+"""Provider usage metadata parsing."""
 
 from __future__ import annotations
 

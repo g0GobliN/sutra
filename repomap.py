@@ -1,16 +1,14 @@
 """A bounded, deterministic map of what already exists in a repository.
 
-Ponytail's "reuse first" rule is only cheap when finding the existing helper does
-not cost a search. Its codebase map does that with no model: list tracked source
-files, pull the top-level definitions out with a regex per language, and print
-one line per folder inside a character budget, listing shared code first when
-the budget is tight.
+Reusing an existing helper is only cheap when finding it does not cost a search.
+A repository map does that with no model: list tracked source files, pull the
+top-level definitions out with a regex per language, and print one line per
+folder inside a character budget, listing shared code first when the budget is
+tight.
 
-``sutra map`` is that technique, rewritten for this package: stdlib only, no
-network, no model, and honest about its limits (a regex is not a parser, so
-nested and dynamic definitions are missed). Nothing here is copied from
-Ponytail's source; the idea and its published defaults are credited in
-``docs/ponytail-caveman.md``.
+``sutra map`` is that technique, kept dependency-free: stdlib only, no network,
+no model, and honest about its limits (a regex is not a parser, so
+nested and dynamic definitions are missed).
 
 The map is advisory. It is never used to decide what SUTRA may drop, and it
 does not read file contents into the model by itself: the caller prints it or

@@ -1,4 +1,4 @@
-"""Tests for full per-session accounting (goals.md PART 14)."""
+"""Tests for full per-session accounting."""
 
 import json
 

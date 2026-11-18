@@ -1,4 +1,4 @@
-"""Dependency-aware classification of repeated tool work (goals.md PART 7).
+"""Dependency-aware classification of repeated tool work.
 
 Exact-output reuse (``reuse.py``) answers "is this the same bytes I already
 saw?". This module answers the harder question a host asks before it runs a

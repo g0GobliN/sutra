@@ -22,7 +22,7 @@ def test_map_lists_top_level_definitions_by_folder(tmp_path):
     _write(tmp_path, "web/app.ts",
            "export function render(x) {}\nexport const make = () => {}\n")
     built = repomap.build(tmp_path)
-    # The regex follows Ponytail's map and lists public top-level names only.
+    # Underscore-prefixed names stay out; public top-level names are listed.
     assert "pkg/: load, Cache" in built
     assert "web/: render, make" in built
 
@@ -41,7 +41,7 @@ def test_map_reads_every_supported_language(tmp_path):
     assert "parse" in built and "Node" in built
     assert "Model" in built
     assert "Tool" in built
-    # Lowercase Go/Rust names are unexported and stay out, like Ponytail's map.
+    # Lowercase Go/Rust names are unexported and stay out.
     assert "serve" not in built
 
 

@@ -1,6 +1,6 @@
 # Context intelligence
 
-`goals.md` PART 8 asks for token-budgeted context selection: score what is worth
+SUTRA can select context under a token or byte budget: score what is worth
 keeping, honour dependencies, never drop mandatory material silently, detect
 near-duplicates, and report the choice. `context.py` implements that as a
 self-contained library and `sutra context` exposes it. It reads JSON and writes
@@ -27,7 +27,7 @@ only be selected when everything it depends on is selected too. This is the
 precedence-constrained knapsack problem: weakly NP-hard, and not solved exactly
 here when dependencies are present.
 
-The value is the weighted sum from `goals.md`:
+The value of an item is a weighted sum of five normalised inputs:
 
 \[
 V_i = w_r R_i + w_i I_i + w_d D_i + w_u U_i + w_t T_i
@@ -81,10 +81,8 @@ differing bits. Two items are grouped when the distance is at most
 kept; a duplicate is dropped only when it is not mandatory and nothing depends
 on it, and every drop is reported in `duplicates` as `(dropped, kept)`.
 
-A second guard, taken from Caveman's engine
-(`compressors/redundancy.go`, `redundantUnitContainment = 0.9` — see
-[docs/ponytail-caveman.md](ponytail-caveman.md)), requires the representative
-to carry at least 90% of the duplicate's vocabulary before anything is dropped.
+A second guard requires the representative to carry at least 90% of the
+duplicate's vocabulary before anything is dropped.
 A near-duplicate that happens to contain a distinct error, identifier or rare
 token is therefore kept and still competes for the budget. The test
 `test_near_duplicate_with_distinct_vocabulary_is_kept` forces one SimHash group
@@ -187,8 +185,8 @@ estimated flag, dropped reasons and near-duplicate pairs.
 
 ## Limits
 
-- Values come from the caller. There is no learned relevance model; `goals.md`
-  requires data before any ML addition, and none exists.
+- Values come from the caller. There is no learned relevance model, and this
+  version does not add one.
 - The precedence-constrained case is greedy, with the measured small-instance
   gap above. Tight budgets over deep dependency graphs can lose value.
 - Near-duplicate detection is lexical. Two outputs that differ only in a number
@@ -202,13 +200,12 @@ estimated flag, dropped reasons and near-duplicate pairs.
 
 ## Considered and not adopted
 
-goals.md PART 9 asks not only for the structures used but for the alternatives a
-reasonable engineer would consider. These were evaluated and left out, with the
-reason:
+Each structure here had a cheaper alternative. These were evaluated and left
+out, with the reason:
 
 | Alternative | Why it is not here |
 |---|---|
-| Bloom filter as a duplicate/seen pre-filter | It answers "definitely not seen" only, so it can never be the validator `goals.md` forbids it from being. Membership here is exact (`Item.hash`), and a false positive would silently drop context. |
+| Bloom filter as a duplicate/seen pre-filter | It answers "definitely not seen" only, so it cannot be the validator. Membership here is exact (`Item.hash`), and a false positive would silently drop context. |
 | Trie over item content | Selection never asks for a prefix or an ordered range on content; a hash map plus SimHash covers identity and similarity. A trie would add memory per byte for no query. |
 | LFU eviction for `Context` | `Context` is caller-owned and short-lived; the module holds no cache to evict. The bounded store already uses TTL plus size limits, and LFU state would add writes on every read for no measured win. |
 | Priority queue inside `select` | The exact path is a DP over the budget; the greedy path evaluates two orderings and takes the better. A heap would only re-implement the sort that already happens once per run. |

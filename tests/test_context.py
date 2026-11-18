@@ -1,4 +1,4 @@
-"""Tests for the PART 8 context intelligence engine."""
+"""Tests for the token-budgeted context selector."""
 
 from __future__ import annotations
 

@@ -1,9 +1,0 @@
-{
-  "id": "14-json-array-control",
-  "category": "large numeric array",
-  "expect": "no-benefit",
-  "commands": [
-    "python3 -c \"import json;print(json.dumps(list(range(20000))))\""
-  ],
-  "final": "Inspected large numeric array."
-}

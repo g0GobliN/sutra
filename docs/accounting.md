@@ -1,7 +1,6 @@
 # Token and cost accounting
 
-`cost.py` produces the accounting set goals.md PART 14 asks for. It never
-invents a bill: prices come from the caller, usage comes from the provider or
+`cost.py` produces the full accounting set. It never invents a bill: prices come from the caller, usage comes from the provider or
 from a named tokenizer, and anything unavailable is `null` with a reason.
 
 ## The formula

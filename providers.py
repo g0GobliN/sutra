@@ -1,9 +1,9 @@
 """Read provider usage metadata into :class:`cost.Usage`.
 
-goals.md PART 13 asks for provider-independent accounting that understands the
-usage metadata each provider actually returns, including cached input and
-cache-write tokens, and PART 14 forbids double counting. This module is the
-adapter between a raw response body and the explicit accounting model:
+Provider-independent accounting has to understand the usage metadata each
+provider actually returns, including cached input and cache-write tokens,
+without counting any token twice. This module is the adapter between a raw
+response body and the explicit accounting model:
 
 ``openai``     ``usage.prompt_tokens`` / ``completion_tokens`` plus
                ``prompt_tokens_details.cached_tokens``

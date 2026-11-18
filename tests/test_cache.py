@@ -1,4 +1,4 @@
-"""Tests for cache metadata, layer status and economics (goals.md PART 10)."""
+"""Tests for cache metadata, layer status and economics."""
 
 import json
 

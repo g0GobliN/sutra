@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Measure what each additional optimization pass buys, and whether reruns help.
 
-goals.md PART 16 asks two questions a mode table cannot answer:
+Two questions a mode table cannot answer:
 
 1. Does maximum-effort search find more useful savings than one pass?
 2. Does compressing again find anything the first run left behind?

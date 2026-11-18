@@ -1,8 +1,8 @@
 # Cache layers, metadata and economics
 
-goals.md PART 10 names five cache layers. This page states which of them this
-project owns, what it keys them on, what invalidates them, and the arithmetic a
-caller can use before trusting one. The distinction that matters most: a
+A cache can sit in five places between a tool result and a reader. This page
+states which of them SUTRA owns, what each keys on, what invalidates it, and the
+arithmetic a caller can use before trusting one. The distinction that matters most: a
 **provider prompt cache** is not the **local result cache**, and money is only
 saved by the first when the provider reports cached input tokens.
 

@@ -5,8 +5,7 @@ representation is still correct. This document states the decision model that
 enforces that rule, maps every formula to the code that implements it, and
 separates what is measured from what is estimated.
 
-The model has five parts, named in `goals.md` (PART 4): SPC, SROF, SEOF, SACE
-and SMESP. `preserve.py` implements the constraint, `scoring.py` implements the
+The model has five parts: SPC, SROF, SEOF, SACE and SMESP. `preserve.py` implements the constraint, `scoring.py` implements the
 four functions, and `optimize.py` calls them in the search loop. Nothing here
 invents a price, a token count or a probability: callers supply those, or the
 answer is reported as unavailable.
@@ -146,12 +145,11 @@ label the measured modes that are genuine trade-offs rather than dominated:
 with o200k tokens on one axis and median milliseconds on the other, all three
 modes can be non-dominated because each additional token saved costs time.
 
-## The PART 5 loop, step by step
+## The optimization loop, step by step
 
-goals.md PART 5 draws the loop as a diagram. This is where each step lives, so
-the diagram is a description of the code rather than an aspiration:
+The loop below is what the code runs, in the order it runs it:
 
-| PART 5 step | Where it happens |
+| Step | Where it happens |
 |---|---|
 | Observe request and workflow | the host calls `core.process_text` / `process_result`; SUTRA sees one payload, not the workflow |
 | Identify plausible opportunities | `engine._apply_search` runs only for payloads the deterministic pass left alone; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
@@ -196,5 +194,5 @@ candidate, never the caller's text.
   the exact protected-span check plus keeping the original recoverable.
 - Deterministic adaptation exists: the scoped failure ledger and the mode
   switch. Learned adaptation (bandits, estimated probabilities) is still
-  deferred — `goals.md` says not to add machine learning until enough
-  reliable data exists, and that data does not exist yet.
+  deferred until enough reliable data exists to justify them, and that data
+  does not exist yet.

@@ -231,7 +231,7 @@ def _number(value: float | int | None, name: str, *, integer: bool = False) -> N
 
 @dataclass(frozen=True)
 class Accounting:
-    """The full per-session accounting set required by goals.md PART 14.
+    """The full per-session accounting set.
 
     Every field is either measured or explicitly marked estimated; nothing is
     derived from an assumed price. ``billed_input_tokens`` is what the provider
@@ -339,7 +339,7 @@ class Accounting:
 
 def accounting_report(accounting: Accounting,
                       pricing: Pricing | None = None) -> dict[str, object]:
-    """One JSON-ready report with every PART 14 field and its basis."""
+    """One JSON-ready report with every accounting field and its basis."""
     baseline_cost = accounting.baseline_cost(pricing)
     actual_cost = accounting.actual_cost(pricing)
     net = accounting.net_savings(pricing)

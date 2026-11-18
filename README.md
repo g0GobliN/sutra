@@ -15,7 +15,7 @@ One core. Multiple agents. Recoverable output. No compression model calls.
 
 > **Eight-fixture benchmark:** payload size reduced by **54.3%**, o200k tokenizer counts by **55.2%**; **8/8** planted clues recovered; **0** diffs touched. The fixtures are generated tool-output shapes and the token figure is not a provider bill — [method](#evidence-and-benchmarks).
 
-[Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Comparison](#how-sutra-compares-with-caveman-and-ponytail) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
+[Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
 
 ## The problem: tool output is re-read all session
 
@@ -116,27 +116,6 @@ original retrieved from the local store when needed
 
 The recovery path is separate from the compression path: compression can run with storage disabled, but then the marker says the original was not retained and the model can only re-run the command narrower. Recovery reads the local store by validated id and bounded mode.
 
-## How SUTRA compares with Caveman and Ponytail
-
-SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context efficiency from different architectural directions. Both address unnecessary context consumption, but SUTRA specialises in deterministic, recoverable tool-output processing at the integration layer. [Ponytail](https://github.com/DietrichGebert/ponytail) pulls a third lever: how much code the agent writes at all.
-
-| Dimension | SUTRA | Caveman | Ponytail |
-|---|---|---|---|
-| Primary focus | Deterministic tool-output processing | Agent brevity plus the inputs it reads | How much code the agent writes |
-| Where it acts | Between a tool result and the model, through host adapters | Skill plus CLI/proxy around the agent | Skill/rules before code is generated |
-| What it transforms | Logs, JSON documents, tracebacks; diffs untouched | Replies, tool-readable files, web pages; routing and blocks in 4.0 | The agent's plan and implementation choices |
-| Original recovery | Local bounded store, id marker, `sutra_restore` | Docs state originals stay on disk and can be pulled back | Not a compression layer; no recovery surface claimed |
-| Model calls for compression | None — deterministic rules | No separate compression model for the voice; file compressors are tooling | None; the effect depends on the host model following its rules |
-| Prompt handling | Does not touch prompts or replies | Docs state prompts are never rewritten | A prompt/rules layer by design |
-| Agent support | Four first-class adapters plus MCP/CLI; automatic only where a result hook exists | 30+ agents via skill/installer | Many agents via skill/plugin |
-
-The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
-
-`sutra map` prints a character-budgeted map of the repository's top-level
-definitions, so "reuse what exists" costs one read instead of a search. The
-technique, its origins and what SUTRA took from Ponytail and Caveman are in
-[docs/ponytail-caveman.md](https://github.com/g0GobliN/sutra/blob/main/docs/ponytail-caveman.md).
-
 The context selector is a separate, opt-in surface: [`context.py`](context.py)
 scores context items, honours dependencies, preserves mandatory material and
 reports a token- or byte-budgeted selection. The model, the measured
@@ -144,8 +123,6 @@ near-duplicate accuracy and the latency are in
 [docs/context-intelligence.md](https://github.com/g0GobliN/sutra/blob/main/docs/context-intelligence.md);
 it is a library and `sutra context` CLI, not part of the automatic hook path,
 because a tool-result hook cannot see the rest of the conversation.
-
-Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/g0GobliN/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
 
 ## Evidence and benchmarks
 

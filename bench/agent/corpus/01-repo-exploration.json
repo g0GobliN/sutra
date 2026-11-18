@@ -1,9 +1,0 @@
-{
-  "id": "01-repo-exploration",
-  "category": "repository exploration",
-  "expect": "helpful",
-  "commands": [
-    "find /home/goblin01/github_projects/tooltrim-goals -type f -not -path '*/.git/*' -printf '%10s %p\\n' | sort -n | tail -600"
-  ],
-  "final": "Inspected repository exploration."
-}

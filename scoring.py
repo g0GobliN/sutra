@@ -2,25 +2,25 @@
 
 The engine makes one deterministic pass and the search layer in ``optimize.py``
 tries bounded candidates. This module supplies the decision functions those
-functions stand on, in the form goals.md specifies, and it is deliberately
+passes depend on, and it is deliberately
 pure: no I/O, no configuration, no global state, so the loop can call it per
 candidate and a test can call it directly.
 
 The four functions and what they mean here:
 
 * **SROF** — ``net_benefit(savings, overhead)`` is the expected resource
-  benefit of an action minus the cost of finding and validating it
-  (goals.md 4.2). A candidate with no demonstrated benefit is not applied.
+  benefit of an action minus the cost of finding and validating it. A
+  candidate with no demonstrated benefit is not applied.
 * **SEOF** — ``seof`` is the quality-weighted savings over optimization
-  overhead and reliability risk (goals.md 4.3). In the search loop the inputs
+  overhead and reliability risk. In the search loop the inputs
   are the candidate's measured byte saving and its measured elapsed time, so
   the score is evidence, not an estimate.
 * **SACE** — ``sace_select`` chooses the lowest expected total cost among the
-  candidates that satisfy the quality floor, risk ceiling and latency limit
-  (goals.md 4.4). No admissible candidate returns ``None``; callers fall back
+  candidates that satisfy the quality floor, risk ceiling and latency limit.
+  No admissible candidate returns ``None``; callers fall back
   to the original text.
 * **SMESP** — ``priority`` ranks candidates by applicability times expected
-  savings times reuse value over search overhead (goals.md 4.5). It is a
+  savings times reuse value over search overhead. It is a
   ranking signal, not a cutoff: a candidate with a tiny probability still gets
   evaluated when the caller can afford to evaluate it.
 
@@ -171,7 +171,7 @@ def sace_select(
     max_risk: float = 1.0,
     max_latency_ms: float | None = None,
 ) -> Selection | None:
-    """SACE: cheapest admissible candidate (goals.md 4.4).
+    """SACE: cheapest admissible candidate.
 
     Admissibility requires ``quality >= min_quality``, ``risk <= max_risk``
     and, when given, ``latency_ms <= max_latency_ms``. Ties break on name so
@@ -207,7 +207,7 @@ def dominates(left: Candidate, right: Candidate) -> bool:
     """True when ``left`` is at least as good on every axis and better on one.
 
     Lower is better for cost, latency, overhead and risk; higher is better for
-    quality, savings, reuse and applicability (goals.md 4.6).
+    quality, savings, reuse and applicability.
     """
     no_worse = all(getattr(left, axis) <= getattr(right, axis) for axis in _MIN_AXES)
     no_worse = no_worse and all(
@@ -221,7 +221,7 @@ def dominates(left: Candidate, right: Candidate) -> bool:
 
 def pareto_front(candidates: tuple[Candidate, ...] | list[Candidate]
                  ) -> tuple[Candidate, ...]:
-    """Non-dominated candidates, in input order (goals.md 4.6)."""
+    """Non-dominated candidates, in input order."""
     items = list(candidates)
     return tuple(
         item for item in items

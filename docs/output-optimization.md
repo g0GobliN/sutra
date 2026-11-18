@@ -1,9 +1,9 @@
 # Output optimization: before and after generation
 
-goals.md PART 11 asks for two different things that are easy to conflate:
-reducing what a model *reads* (pre-generation) and reducing what a model
-*writes* (post-generation). SUTRA is a tool-result path, so it can only do the
-second, and only for the text it is given.
+Two different levers are easy to conflate: reducing what a model *reads*
+(pre-generation) and reducing what a model *writes* (post-generation). SUTRA is
+a tool-result path, so it can only do the second, and only for the text it is
+given.
 
 ## What SUTRA controls
 

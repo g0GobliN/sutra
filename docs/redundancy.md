@@ -18,7 +18,7 @@ of four classifications with a reason, and the caller stays responsible.
 | `UNKNOWN` | No record, or nothing to compare. | Run it, or record it for next time. |
 
 `MUST_EXECUTE` wins over a perfectly fresh record. Mandatory verification is
-not an optimization target, matching PART 7 and PART 21 of the goals document.
+never skipped by an optimization.
 
 ## Mandatory commands
 
@@ -111,8 +111,7 @@ opt-in.
 
 - A PostToolUse-style hook sees results, not tool calls, so SUTRA cannot wire
   this automatically. The classification is available to a host that chooses
-  to ask, through the CLI or the library. This is the same limitation recorded
-  for Ponytail in [ponytail-caveman.md](ponytail-caveman.md).
+  to ask, through the CLI or the library.
 - File dependencies are compared by content hash up to 1 MiB, and by size plus
   mtime above that. A same-size edit inside the same nanosecond on a file over
   1 MiB would be missed; that is stated instead of claimed away.

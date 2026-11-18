@@ -1,8 +1,8 @@
-"""Cache metadata, layer status and economics (goals.md PART 10).
+"""Cache metadata, layer status and economics.
 
-Five cache layers are named by the goals document. This module is explicit
-about which of them SUTRA can actually own, because conflating them would
-inflate every savings claim:
+A cache can sit in five places between a tool result and a reader. This module
+is explicit about which of them SUTRA can actually own, because conflating them
+would inflate every savings claim:
 
 ===== ====================== ==================================================
 Layer What it is             Status in SUTRA
@@ -52,7 +52,7 @@ VERSION = 1
 
 VALIDATION_STATES = ("valid", "expired", "invalidated", "unverified")
 
-#: Machine-readable status of each of the five layers in goals.md PART 10.
+#: Machine-readable status of each cache layer SUTRA tracks.
 LAYERS: tuple[dict[str, str], ...] = (
     {
         "layer": "local-result",
@@ -211,7 +211,7 @@ def cache_key(input_fingerprint: str, *, provider: str = "", model: str = "",
               dependencies: Mapping[str, str] | None = None) -> str:
     """A key that changes when anything that can invalidate an entry changes.
 
-    The rules from goals.md PART 10 are encoded here: provider, model, tool
+    The identity rules are encoded here: provider, model, tool
     version, config version and dependencies are part of the identity, so a
     cached answer can never leak across a provider or a version change.
     """
@@ -269,7 +269,7 @@ class Economics:
         return reuses * self.saving_per_reuse - self.write_cost
 
     def worth_it(self, reuses: int) -> bool:
-        """The goals.md inequality: C_write + N*C_read < N*C_miss."""
+        """The break-even inequality: C_write + N*C_read < N*C_miss."""
         return self.net(reuses) > 0
 
     def as_dict(self) -> dict[str, object]:

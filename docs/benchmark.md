@@ -356,9 +356,9 @@ A tokenizer count is not a bill.
 
 ## Marginal passes and rerun idempotence
 
-`bench/passes.py` answers the two PART 16 questions a mode table cannot: whether
-more passes buy anything, and whether compressing the result again finds
-something the first run left behind. It runs the optimizer with 1–4 passes on
+`bench/passes.py` answers two questions a mode table cannot: whether more
+passes buy anything, and whether compressing the result again finds something
+the first run left behind. It runs the optimizer with 1–4 passes on
 the same fixtures, then feeds each result back through the optimizer.
 
 Measured 2026-11-18 on the development host:
