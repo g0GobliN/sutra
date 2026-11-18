@@ -50,6 +50,7 @@ usage:
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
+  sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
              [--cached-price P] [--json]   (accounting with your own prices)
@@ -652,6 +653,88 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
     return 1 if failed else 0
 
 
+def _context(argv: list[str]) -> int:
+    from . import context as context_module
+
+    parser = argparse.ArgumentParser(
+        prog="sutra context",
+        description=("Select context items under a token or byte budget with "
+                     "dependency preservation, mandatory items and optional "
+                     "near-duplicate removal. Reads JSON from --file or stdin; "
+                     "writes nothing."))
+    parser.add_argument("--file", default=None,
+                        help="JSON items, or an object with items and budget "
+                             "('-' reads stdin, the default)")
+    parser.add_argument("--budget", type=int, default=None,
+                        help="total budget; required unless the JSON has one")
+    parser.add_argument("--unit", choices=("tokens", "bytes"), default="tokens")
+    parser.add_argument("--near-duplicates", action="store_true",
+                        help="report and drop near-duplicates nothing else needs")
+    parser.add_argument("--near-distance", type=int,
+                        default=context_module.DEFAULT_NEAR_DISTANCE,
+                        help="SimHash distance treated as near-duplicate")
+    parser.add_argument("--weights", default=None,
+                        help="five floats: relevance,importance,dependency,"
+                             "usefulness,recency")
+    parser.add_argument("--json", action="store_true",
+                        help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    try:
+        if args.file and args.file != "-":
+            with open(args.file, "r", encoding="utf-8") as handle:
+                payload = json.load(handle)
+        else:
+            payload = json.load(sys.stdin)
+        budget = args.budget
+        if isinstance(payload, dict):
+            raw_items = payload.get("items", [])
+            if budget is None:
+                budget = payload.get("budget")
+        else:
+            raw_items = payload
+        if budget is None:
+            raise ValueError("no budget given (--budget or JSON budget)")
+        if not isinstance(raw_items, list):
+            raise ValueError("items must be a JSON list")
+        items = [context_module.Item.from_dict(entry) for entry in raw_items]
+        weights = None
+        if args.weights:
+            parts = [part.strip() for part in args.weights.split(",")]
+            if len(parts) != 5:
+                raise ValueError("--weights needs five comma-separated numbers")
+            weights = context_module.Weights(
+                relevance=float(parts[0]), importance=float(parts[1]),
+                dependency=float(parts[2]), usefulness=float(parts[3]),
+                recency=float(parts[4]))
+        result = context_module.select(
+            items, budget, unit=args.unit, weights=weights,
+            near_duplicates=args.near_duplicates,
+            near_distance=args.near_distance)
+    except (OSError, ValueError, TypeError, context_module.CycleError) as exc:
+        print_error(f"sutra context: {exc}")
+        return 2
+
+    if args.json:
+        print(json.dumps(result.as_dict(), indent=2, sort_keys=True))
+        return 0
+    print(f"selected {len(result.selected)} of {len(result.selected) + len(result.dropped)} "
+          f"items, {result.total_cost}/{result.budget} {result.unit}, "
+          f"value {result.value:.6f}")
+    print(f"algorithm: {result.algorithm}")
+    if result.estimated:
+        print("token costs: estimated from bytes (items without token_cost)")
+    if not result.feasible:
+        print_error(f"budget conflict: {result.conflict}")
+    for item_id in result.selected:
+        print(f"  keep  {item_id}")
+    for item_id, reason in result.dropped:
+        print(f"  drop  {item_id}: {reason}")
+    for dropped, kept in result.duplicates:
+        print(f"  near-duplicate {dropped} ~ {kept}")
+    return 0 if result.feasible else 1
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -749,6 +832,8 @@ def main(argv: list[str] | None = None) -> int:
         return _doctor(as_json=args.json, clients=args.client)
     if argv[:1] == ["cost"]:
         return _cost(argv[1:])
+    if argv[:1] == ["context"]:
+        return _context(argv[1:])
     if argv[:1] == ["eval"]:
         return _eval_main(argv[1:])
     if argv[:1] == ["update"]:

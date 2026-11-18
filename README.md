@@ -132,6 +132,14 @@ SUTRA and [Caveman](https://github.com/JuliusBrussee/caveman) approach context e
 
 The closest overlap is Caveman's "read less" path, which also shrinks what the model reads and keeps originals retrievable. SUTRA's difference is scope and guarantee: one deterministic, byte-level transform on the tool-result path, one local recovery protocol, and no automatic claim on a host that lacks a result hook.
 
+The context selector is a separate, opt-in surface: [`context.py`](context.py)
+scores context items, honours dependencies, preserves mandatory material and
+reports a token- or byte-budgeted selection. The model, the measured
+near-duplicate accuracy and the latency are in
+[docs/context-intelligence.md](https://github.com/g0GobliN/sutra/blob/main/docs/context-intelligence.md);
+it is a library and `sutra context` CLI, not part of the automatic hook path,
+because a tool-result hook cannot see the rest of the conversation.
+
 Caveman's README reports 33.2% fewer input tokens across whole sessions (older engine), 8.5% fewer output tokens in a JetBrains paired test, and one HTML case 9.9% worse; Ponytail reports 45% fewer tokens and 53% less code on its 39-task benchmark. Those are their own measurements on their own workloads. Sources: [Caveman README](https://github.com/g0GobliN/caveman), [Caveman product page](https://caveman.so/products/caveman), [Ponytail README](https://github.com/DietrichGebert/ponytail). Details may change.
 
 ## Evidence and benchmarks
