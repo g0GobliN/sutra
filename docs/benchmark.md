@@ -354,6 +354,31 @@ What this does **not** measure: provider cost. There is no provider call and no
 authoritative usage or price, so the artifact reports `"cost": "unavailable"`.
 A tokenizer count is not a bill.
 
+## Marginal passes and rerun idempotence
+
+`bench/passes.py` answers the two PART 16 questions a mode table cannot: whether
+more passes buy anything, and whether compressing the result again finds
+something the first run left behind. It runs the optimizer with 1–4 passes on
+the same fixtures, then feeds each result back through the optimizer.
+
+Measured 2026-11-18 on the development host:
+
+| Passes | Saved bytes | Marginal bytes | Saved tokens | Second run | Median call |
+|---|---|---|---|---|---|
+| 1 | 2,081 | 2,081 | 400 | 0 B | 21.6 ms |
+| 2 | 2,081 | 0 | 400 | 0 B | 22.9 ms |
+| 3 | 2,081 | 0 | 400 | 0 B | 26.2 ms |
+| 4 | 2,081 | 0 | 400 | 0 B | 26.1 ms |
+
+The honest reading: on these fixtures one pass finds everything the current
+strategies can find, and a second compression is a no-op. Extra passes cost
+milliseconds and produce no additional saving. That is a property of this
+strategy set, not a proof about every payload — the loop still re-evaluates
+because a combination can unlock a saving a single strategy cannot, which the
+optimize tests cover with a synthetic pair — but no measured fixture rewards
+passes beyond the first. The gain here is entirely the prose fixture; the log,
+JSON, diff and traceback fixtures measure zero in every column.
+
 ## Reporting cost from explicit measurements
 
 `cost.py` converts two explicit `Usage` records (input, output, cached input
