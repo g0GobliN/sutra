@@ -30,10 +30,12 @@ NAME = "sutra-agent"
 IMPORT_NAME = "sutra"
 
 RUNTIME_MODULES = frozenset({
-    "__init__", "claude_code", "cli", "codex", "config", "core", "discovery",
-    "engine", "hermes", "hook", "installer", "jsonc", "mcp", "metrics",
-    "opencode", "openclaw", "parsers", "policy", "recovery", "reuse", "runner",
-    "store", "telemetry", "ui", "update", "utf8",
+    "__init__", "cache", "claude_code", "cli", "codex", "config", "context",
+    "core", "cost", "discovery", "engine", "failure", "hermes", "hook",
+    "installer", "jsonc", "language", "mcp", "metrics", "opencode", "openclaw",
+    "optimize", "parsers", "policy", "preserve", "providers", "recovery",
+    "redundancy", "repomap", "reuse", "runner", "scoring", "store", "telemetry",
+    "ui", "update", "utf8",
 })
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",
