@@ -171,8 +171,10 @@ def summarize(conditions: list[dict]) -> dict:
     rows = []
     for condition in conditions:
         final = condition["final_request"]
+        valid = condition.get("exit_code") == 0 and bool(final.get("tool_result_bytes"))
         row = {
             "name": condition["name"],
+            "valid": valid,
             "mode": condition["mode"],
             "final_request_bytes": final.get("bytes"),
             "final_request_tokens": final.get("tokens"),
@@ -183,7 +185,9 @@ def summarize(conditions: list[dict]) -> dict:
             "original_bytes": sum(int(r.get("original_bytes") or 0) for r in condition["sutra"]),
             "compressed_bytes": sum(int(r.get("compressed_bytes") or 0) for r in condition["sutra"]),
         }
-        if base and base["final_request"].get("tokens") and row["final_request_tokens"]:
+        if not valid:
+            row["tokens_vs_baseline_percent"] = None
+        elif base and base["final_request"].get("tokens") and row["final_request_tokens"]:
             row["tokens_vs_baseline_percent"] = round(
                 100 * (1 - row["final_request_tokens"] / base["final_request"]["tokens"]), 2)
         else:
@@ -199,10 +203,21 @@ def run_scenario(scenario: pathlib.Path, args, work_root: pathlib.Path) -> dict:
     print(f"  {data.get('id', scenario.stem)} -> {len(CONDITIONS)} conditions", flush=True)
     conditions = []
     for name, enabled, mode, language, passes in CONDITIONS:
-        conditions.append(run_condition(
-            name, enabled, mode, language, passes, home=args.home,
-            scenario=scenario, work=work, timeout=args.timeout,
-            model=args.model, upstream=args.upstream))
+        attempts = 0
+        while True:
+            attempts += 1
+            condition = run_condition(
+                name, enabled, mode, language, passes, home=args.home,
+                scenario=scenario, work=work, timeout=args.timeout,
+                model=args.model, upstream=args.upstream)
+            condition["attempts"] = attempts
+            transport_failure = (condition["exit_code"] != 0
+                                 and not condition["sutra"]
+                                 and condition["requests"] > 1)
+            if not transport_failure or attempts > args.retries:
+                break
+            print(f"    retrying {name} after a failed attempt", flush=True)
+        conditions.append(condition)
     return {
         "id": data.get("id", scenario.stem),
         "category": data.get("category"),
@@ -213,17 +228,58 @@ def run_scenario(scenario: pathlib.Path, args, work_root: pathlib.Path) -> dict:
     }
 
 
+def aggregates(results: list[dict]) -> dict:
+    """Mean token change per condition over the scenarios where every run was valid."""
+    names = [c[0] for c in CONDITIONS]
+    complete = [r for r in results if all(row["valid"] for row in r["summary"]["rows"])]
+    means: dict[str, float | None] = {}
+    counts: dict[str, int] = {}
+    for name in names:
+        values = [row["tokens_vs_baseline_percent"] for r in complete
+                  for row in r["summary"]["rows"] if row["name"] == name
+                  and row["tokens_vs_baseline_percent"] is not None]
+        means[name] = round(sum(values) / len(values), 2) if values else None
+        counts[name] = len(values)
+    return {"scenarios_complete": len(complete), "scenarios_total": len(results),
+            "mean_percent_vs_baseline": means, "mean_over": counts}
+
+
+def print_report(report: dict) -> None:
+    for result in report["scenarios"]:
+        print(f"\n{result['id']} ({result.get('category')}, expect {result.get('expect')})")
+        for row in result["summary"]["rows"]:
+            pct = row["tokens_vs_baseline_percent"]
+            note = "" if row["valid"] else "  INVALID (run failed; excluded)"
+            print("  {name:16s} tokens {tokens!s:>7s}  vs baseline {pct!s:>7s}%  wall {wall}s  search {applied}{note}".format(
+                name=row["name"], tokens=row["final_request_tokens"],
+                pct=pct, wall=row["wall_seconds"],
+                applied=",".join(row["search_applied"]) or "-", note=note))
+    agg = report.get("aggregates") or aggregates(report["scenarios"])
+    print(f"\nvalid scenarios: {agg['scenarios_complete']}/{agg['scenarios_total']}")
+    for name, mean in agg["mean_percent_vs_baseline"].items():
+        print(f"  {name:16s} mean {mean}% over {agg['mean_over'][name]} scenarios")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--home", type=pathlib.Path, default=pathlib.Path.home() / ".hermes-sutra-ab")
     parser.add_argument("--scenario", type=pathlib.Path)
     parser.add_argument("--corpus", type=pathlib.Path)
-    parser.add_argument("--out", type=pathlib.Path, required=True)
+    parser.add_argument("--out", type=pathlib.Path)
     parser.add_argument("--work", type=pathlib.Path)
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--model", default="mock-model")
     parser.add_argument("--upstream", help="real provider base URL for live runs")
+    parser.add_argument("--retries", type=int, default=1,
+                        help="retries for a condition that failed before producing a result")
+    parser.add_argument("--report", type=pathlib.Path,
+                        help="print an existing report instead of running anything")
     args = parser.parse_args(argv)
+    if args.report:
+        print_report(json.loads(args.report.read_text(encoding="utf-8")))
+        return 0
+    if not args.out:
+        parser.error("--out is required unless --report is used")
     if not args.scenario and not args.corpus:
         parser.error("one of --scenario or --corpus is required")
     scenarios = ([args.scenario] if args.scenario else
@@ -246,6 +302,7 @@ def main(argv: list[str] | None = None) -> int:
         "plugin_dirty": dirty,
         "prompt": PROMPT,
         "scenarios": results,
+        "aggregates": aggregates(results),
         "notes": [
             "Token counts are an o200k_base measurement of the serialized request "
             "when tiktoken is importable, not billed provider usage.",
@@ -257,13 +314,7 @@ def main(argv: list[str] | None = None) -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
-    for result in results:
-        print(f"\n{result['id']} ({result.get('category')}, expect {result.get('expect')})")
-        for row in result["summary"]["rows"]:
-            print("  {name:16s} tokens {tokens!s:>7s}  vs baseline {pct!s:>7s}%  wall {wall}s  search {applied}".format(
-                name=row["name"], tokens=row["final_request_tokens"],
-                pct=row["tokens_vs_baseline_percent"], wall=row["wall_seconds"],
-                applied=",".join(row["search_applied"]) or "-"))
+    print_report(report)
     print(f"\nreport: {args.out}")
     return 0
 
