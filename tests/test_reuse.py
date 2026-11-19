@@ -110,13 +110,14 @@ def test_disabled_reuse_keeps_compression_working(reusable):
     assert "[sutra: repeated output" not in second.output
 
 
-def test_disabled_store_cannot_offer_reuse(reusable):
+def test_disabled_store_keeps_the_original(reusable):
     reusable.setenv("SUTRA_STORE", "0")
     text = _payload()
     first = _first(text, session="session-nostore")
     second = _first(text, session="session-nostore")
-    assert first.changed and first.id is None
-    assert second.changed and not second.output.startswith("[sutra: repeated output")
+    assert not first.changed and first.output == text and first.id is None
+    assert not second.changed and second.output == text
+    assert "[sutra: repeated output" not in second.output
 
 
 def test_a_pruned_entry_falls_back_to_normal_compression():

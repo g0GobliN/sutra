@@ -13,6 +13,7 @@ need the detail behind a claim.
 | [automatic-install.md](automatic-install.md) | What `sutra install` changes for each client, with backups and rollback |
 | [universal-integration.md](universal-integration.md) | Host-API evidence: which hook each agent documents, including Codex's PostToolUse feedback contract |
 | [configuration.md](configuration.md) | Every environment variable, default and bound |
+| [modes.md](modes.md) | `off`/`balanced`/`aggressive`/`beast`: what each enables, how the winner is chosen, migration and limits |
 | [custom-parsers.md](custom-parsers.md) | The parser contract and runtime registration with `register_parser()` |
 | [agent-policy.md](agent-policy.md) | Cost-aware session guidance: modes, Hermes API, safeguards and limits |
 | [redundancy.md](redundancy.md) | Dependency-aware classification of repeated work: reuse, revalidate, must execute or unknown |

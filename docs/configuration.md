@@ -22,7 +22,9 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` agent guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
-| `SUTRA_SEARCH` | `off` | `off`, `safe`, `balanced` or `aggressive` bounded post-compression optimization; `off` keeps the single-pass output byte-for-byte |
+| `SUTRA_MODE` | `off` | `off`, `balanced`, `aggressive` or `beast` optimization policy; see [modes.md](modes.md) |
+| `SUTRA_MODE_FILE` | `~/.sutra/mode` | file written by `sutra mode`; read when `SUTRA_MODE` is unset |
+| `SUTRA_SEARCH` | `off` | legacy effort switch, still honored when `SUTRA_MODE` is unset: `off`, `safe`, `balanced` or `aggressive` |
 | `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | retained for compatibility and validated (1-5000 ms), but no longer a stop condition: the pass cap is the deterministic bound (see below) |
 | `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
@@ -33,6 +35,38 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_TELEMETRY_ENDPOINT` | `http://localhost:4318/v1/metrics` | OTLP HTTP metrics endpoint |
 | `SUTRA_TELEMETRY_SAMPLE_RATE` | `1.0` | trace sampling ratio from `0.0` to `1.0`; metrics are not downsampled, and `0.0` disables both metric recording and spans |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
+
+## Optimization modes
+
+`SUTRA_MODE` is the normal switch: `off` (default), `balanced`, `aggressive` or
+`beast`. It selects which deterministic plans run, how many passes they get and
+which repeated calls Ponytail may reuse. The base head/tail compression and its
+recovery path run in every mode, including `off`.
+
+Set it in the environment for one process:
+
+```bash
+SUTRA_MODE=balanced sutra compress --file result.log
+```
+
+or persistently, without editing a shell profile:
+
+```bash
+sutra mode balanced
+sutra mode            # show the resolved mode and policy
+sutra mode off --clear
+```
+
+`sutra mode` writes `~/.sutra/mode`, or `SUTRA_MODE_FILE` when set. The file is
+re-read on every call and an unknown stored value falls through to the next
+source with a warning. Precedence is `SUTRA_MODE`, then the mode file, then
+legacy `SUTRA_SEARCH`, then `off`.
+
+`SUTRA_SEARCH` remains supported for existing installations and maps to the
+legacy one-plan policies described in [modes.md](modes.md#migration-from-sutra_search).
+Setting `SUTRA_MODE` does not delete the legacy variable; remove it if you want
+the mode alone to define behavior. `SUTRA_LANGUAGE` still gates Caveman in the
+legacy `balanced`/`aggressive` paths but not in the four-mode policies.
 
 ## Store behaviour
 
@@ -70,7 +104,7 @@ compression and recovery.
 
 ## Exact-duplicate reuse
 
-`SUTRA_SEARCH` enables a bounded, opt-in second stage that tries cheap
+A legacy `SUTRA_SEARCH` value enables a bounded second stage that tries cheap
 formatting strategies (line endings, unicode spaces, trailing spaces, blank
 runs, deep indentation) on text the engine already compressed. Every candidate
 must pass the protected-span check (paths, URLs, numbers, identifiers,
@@ -130,15 +164,15 @@ environment variables are its only input. The grouping below shows how the
 settings relate, without implying a file exists:
 
 ```yaml
-mode: balanced            # SUTRA_SEARCH=off|safe|balanced|aggressive
+mode: balanced            # SUTRA_MODE=off|balanced|aggressive|beast
 optimization:
   compression: true       # SUTRA_ENABLED
   reuse: true             # SUTRA_REUSE, SUTRA_REUSE_MIN_BYTES
-  language: false         # SUTRA_LANGUAGE
+  language: false         # SUTRA_LANGUAGE (legacy paths only)
   search:
-    maximum_effort: true  # SUTRA_SEARCH=aggressive
-    passes: 4             # SUTRA_SEARCH_PASSES
-    budget_ms: 250        # SUTRA_SEARCH_BUDGET_MS
+    maximum_effort: true  # legacy SUTRA_SEARCH=aggressive
+    passes: 4             # SUTRA_SEARCH_PASSES (legacy paths only)
+    budget_ms: 250        # SUTRA_SEARCH_BUDGET_MS (recorded, not a stop)
 safety:
   protected_spans: true   # always on; preserve.py has no off switch
   mandatory_context: true # context items marked mandatory are never dropped

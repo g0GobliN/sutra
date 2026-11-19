@@ -1,0 +1,338 @@
+"""The four unified modes: policy, engine gating and P0 invariants."""
+
+from __future__ import annotations
+
+import json
+
+from conftest import load_plugin, plugin_module
+
+load_plugin()
+config = plugin_module("config")
+core = plugin_module("core")
+engine = plugin_module("engine")
+orchestrator = plugin_module("orchestrator")
+redundancy = plugin_module("redundancy")
+cache = plugin_module("cache")
+
+_BUDGET = {"SUTRA_ENABLED": "1", "SUTRA_MAX_BYTES": "2000",
+           "SUTRA_HEAD_BYTES": "1200", "SUTRA_TAIL_BYTES": "600"}
+
+
+def _cfg(monkeypatch, **env):
+    for key, value in {**_BUDGET, **env}.items():
+        monkeypatch.setenv(key, value)
+    return config.resolve()
+
+
+def test_modes_are_off_by_default(monkeypatch):
+    cfg = _cfg(monkeypatch)
+    assert cfg.mode == "off"
+    assert cfg.mode_source == "default"
+    assert orchestrator.policy_for(cfg).passes == 0
+
+
+def test_balanced_turns_caveman_on_without_a_second_switch(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_MODE="balanced")
+    assert cfg.mode == "balanced"
+    assert cfg.mode_source == "explicit"
+    policy = orchestrator.policy_for(cfg)
+    assert policy.language is True
+    assert policy.passes == 2
+    assert policy.combine is False
+
+
+def test_aggressive_and_beast_grant_more_search(monkeypatch):
+    aggressive = orchestrator.policy_for(
+        _cfg(monkeypatch, SUTRA_MODE="aggressive"))
+    beast = orchestrator.policy_for(_cfg(monkeypatch, SUTRA_MODE="beast"))
+    assert aggressive.combine is True
+    assert beast.triple is True
+    assert beast.passes > aggressive.passes
+
+
+def test_explicit_mode_wins_over_legacy_search(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_MODE="beast", SUTRA_SEARCH="safe")
+    assert cfg.mode == "beast"
+    assert orchestrator.policy_for(cfg).combine is True
+
+
+def test_legacy_safe_keeps_its_conservative_policy(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_SEARCH="safe")
+    policy = orchestrator.policy_for(cfg)
+    assert cfg.mode == "balanced"
+    assert cfg.mode_source == "legacy"
+    assert policy.passes == 1
+    assert policy.language is False
+    assert policy.plans == ("format",)
+
+
+def test_legacy_language_still_requires_its_own_switch(monkeypatch):
+    without = orchestrator.policy_for(_cfg(monkeypatch, SUTRA_SEARCH="balanced"))
+    with_language = orchestrator.policy_for(
+        _cfg(monkeypatch, SUTRA_SEARCH="balanced", SUTRA_LANGUAGE="1"))
+    assert without.language is False
+    assert with_language.language is True
+
+
+def test_explicit_off_disables_exact_duplicate_reuse(monkeypatch):
+    legacy = _cfg(monkeypatch, SUTRA_REUSE="1")
+    assert legacy.reuse_active is True
+    monkeypatch.setenv("SUTRA_MODE", "off")
+    cfg = config.resolve()
+    assert cfg.reuse_active is False
+
+
+def test_mode_file_is_read_and_env_wins(monkeypatch, tmp_path):
+    path = tmp_path / "mode"
+    monkeypatch.setenv("SUTRA_MODE_FILE", str(path))
+    config.write_mode("aggressive")
+    assert config.resolve().mode == "aggressive"
+    monkeypatch.setenv("SUTRA_MODE", "balanced")
+    assert config.resolve().mode == "balanced"
+
+
+def test_unknown_mode_does_not_write_a_file(tmp_path):
+    target = tmp_path / "mode"
+    try:
+        config.write_mode("turbo", str(target))
+    except ValueError as exc:
+        assert "turbo" in str(exc)
+    else:  # pragma: no cover - the call must raise
+        raise AssertionError("write_mode accepted an unknown mode")
+    assert not target.exists()
+
+
+def test_balanced_applies_caveman_to_prose(monkeypatch):
+    fillers = ("Please note that this line is able to use the cache in order "
+               "to reduce latency.\n")
+    text = fillers * 60
+    cfg = _cfg(monkeypatch, SUTRA_MODE="balanced")
+    out, stats = engine.compress(text, cfg=cfg)
+    assert stats.changed
+    assert "language" in stats.search_applied
+    assert "in order to" not in out
+
+
+def test_off_never_invokes_an_engine(monkeypatch):
+    fillers = ("Please note that this line is able to use the cache in order "
+               "to reduce latency.\n")
+    text = fillers * 60
+    cfg = _cfg(monkeypatch, SUTRA_MODE="off")
+    out, stats = engine.compress(text, cfg=cfg)
+    assert stats.search_applied == ""
+    assert "in order to" in out  # no Caveman rewrite in off mode
+    assert "language" not in stats.search_applied
+
+
+def test_patch_is_byte_identical_in_beast_mode(monkeypatch):
+    patch = ("diff --git a/a.py b/a.py\nindex 111..222 100644\n"
+             "--- a/a.py\n+++ b/a.py\n@@ -1,3 +1,3 @@\n")
+    patch += "".join(f"-old line {i}   \n+new line {i}\n" for i in range(100))
+    cfg = _cfg(monkeypatch, SUTRA_MODE="beast", SUTRA_MAX_BYTES="500")
+    out, stats = engine.compress(patch, cfg=cfg)
+    assert out == patch
+    assert stats.search_applied == ""
+    assert stats.rule == "diff-kept"
+
+
+def test_structured_payload_is_never_searched():
+    text = '{"note": "please   use the cache in order to reduce latency  "}'
+    report = orchestrator.optimize_text(text, structured=True,
+                                        cfg=config.Config(
+                                            enabled=True, max_bytes=2000,
+                                            head_bytes=1200, tail_bytes=600,
+                                            json_items=0, stats_path="",
+                                            stats_max_bytes=0, store_dir="",
+                                            store_enabled=True,
+                                            store_ttl_hours=1,
+                                            store_max_bytes=1024,
+                                            store_max_entry_bytes=1024,
+                                            store_max_entries=1,
+                                            recovery_max_bytes=512,
+                                            recovery_max_matches=1,
+                                            mode="beast",
+                                            mode_source="explicit"))
+    assert report.text == text
+    assert report.chosen == ""
+    assert "structured" in str(report.decision["reason"])
+
+
+def test_search_plan_choice_is_explained(monkeypatch):
+    prose = ("Please note that the worker is able to use the queue in order "
+             "to reduce latency.\n") * 30
+    report = orchestrator.optimize_text(
+        prose, cfg=_cfg(monkeypatch, SUTRA_MODE="aggressive"))
+    assert report.chosen == "caveman"
+    assert report.saved_bytes > 0
+    sace = report.decision["sace"]
+    assert sace["chosen"] == "caveman"
+    assert any(item["plan"] == "format" and not item["admitted"]
+               for item in report.decision["trace"])
+
+
+def test_core_keeps_the_original_when_the_store_is_disabled(monkeypatch):
+    text = "".join(f"line {i:03d}   \n" for i in range(400))
+    cfg = _cfg(monkeypatch, SUTRA_STORE="0")
+    outcome = core.process_text(text, cfg=cfg)
+    assert outcome.changed is False
+    assert outcome.output == text
+
+
+def test_core_keeps_the_original_when_it_cannot_store_it(monkeypatch):
+    text = "".join(f"line {i:03d}   \n" for i in range(400))
+    cfg = _cfg(monkeypatch, SUTRA_STORE_MAX_ENTRY_BYTES="1024")
+    outcome = core.process_text(text, cfg=cfg)
+    assert outcome.changed is False
+    assert outcome.output == text
+
+
+def test_ponytail_is_gated_by_mode(monkeypatch, tmp_path):
+    ledger = redundancy.Ledger(tmp_path / "redundancy.json")
+    fingerprint = redundancy.call_fingerprint("read_file", '{"path":"a.py"}')
+    snapshot = redundancy.Snapshot(files={"a.py": "sha256:abc"})
+    ledger.record(fingerprint, dependencies=snapshot,
+                  result_fingerprint="result")
+    balanced = orchestrator.decide_execution(
+        fingerprint, ledger=ledger, dependencies=snapshot,
+        cfg=_cfg(monkeypatch, SUTRA_MODE="balanced"))
+    off = orchestrator.decide_execution(
+        fingerprint, ledger=ledger, dependencies=snapshot,
+        cfg=_cfg(monkeypatch, SUTRA_MODE="off"))
+    assert balanced["action"] == "reuse"
+    assert off["action"] == "execute"
+
+
+def test_ponytail_never_skips_a_verification_command(monkeypatch, tmp_path):
+    ledger = redundancy.Ledger(tmp_path / "redundancy.json")
+    fingerprint = redundancy.call_fingerprint("bash", "pytest -q")
+    snapshot = redundancy.Snapshot()
+    ledger.record(fingerprint, dependencies=snapshot,
+                  result_fingerprint="result")
+    decision = orchestrator.decide_execution(
+        fingerprint, ledger=ledger, dependencies=snapshot,
+        command="pytest -q", cfg=_cfg(monkeypatch, SUTRA_MODE="beast"))
+    assert decision["action"] == "execute"
+    assert decision["classification"] == redundancy.MUST_EXECUTE
+
+
+def test_context_selection_is_off_in_off_mode(monkeypatch):
+    context = plugin_module("context")
+    items = [context.Item("a", "x", token_cost=1, relevance=1.0)]
+    assert orchestrator.optimize_context(
+        items, 10, cfg=_cfg(monkeypatch, SUTRA_MODE="off")) is None
+    selection = orchestrator.optimize_context(
+        items, 10, cfg=_cfg(monkeypatch, SUTRA_MODE="balanced"))
+    assert selection is not None
+    assert selection.selected == ("a",)
+
+
+def test_accounting_reports_a_positive_net_saving(monkeypatch):
+    prose = "Please note that the worker is able to use the queue.\n" * 20
+    report = orchestrator.optimize_text(
+        prose, cfg=_cfg(monkeypatch, SUTRA_MODE="balanced"))
+    accounted = orchestrator.accounting(report)
+    assert accounted.billed_input_tokens <= accounted.original_input_tokens
+    pricing = plugin_module("cost").Pricing(input_per_million=1.0,
+                                            output_per_million=1.0)
+    assert accounted.net_savings(pricing) >= 0
+    assert accounted.baseline_estimated is True
+
+
+def test_json_document_still_parses_after_beast_compression(monkeypatch):
+    prose = "".join(
+        f"It is important to note that worker {i} needs to check the queue.   \n"
+        for i in range(200))
+    payload = json.dumps({"stdout": prose, "exit_code": 0})
+    cfg = _cfg(monkeypatch, SUTRA_MODE="beast")
+    out, stats = engine.compress(payload, cfg=cfg)
+    decoded = json.loads(out)
+    assert decoded["exit_code"] == 0
+    assert "stdout" in decoded
+    assert stats.search_mode == "beast"
+
+
+def test_mode_command_persists_and_clears(monkeypatch, tmp_path, capsys):
+    cli = plugin_module("cli")
+    path = tmp_path / "mode"
+    monkeypatch.setenv("SUTRA_MODE_FILE", str(path))
+    monkeypatch.delenv("SUTRA_MODE", raising=False)
+    assert cli.main(["mode", "balanced"]) == 0
+    assert "balanced" in path.read_text(encoding="utf-8")
+    assert config.resolve().mode == "balanced"
+    capsys.readouterr()
+    assert cli.main(["mode", "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["mode"] == "balanced"
+    assert payload["source"] == "file"
+    assert payload["policy"]["passes"] == 2
+    assert any(engine["name"] == "ponytail" for engine in payload["engines"])
+    assert cli.main(["mode", "--clear"]) == 0
+    assert not path.exists()
+    assert config.resolve().mode == "off"
+
+
+def test_unknown_mode_file_falls_through_to_legacy(monkeypatch, tmp_path):
+    path = tmp_path / "mode"
+    path.write_text("turbo\n", encoding="utf-8")
+    monkeypatch.setenv("SUTRA_MODE_FILE", str(path))
+    monkeypatch.delenv("SUTRA_MODE", raising=False)
+    monkeypatch.setenv("SUTRA_SEARCH", "aggressive")
+    cfg = _cfg(monkeypatch)
+    assert cfg.mode == "aggressive"
+    assert cfg.mode_source == "legacy"
+    assert orchestrator.policy_for(cfg).mode == "legacy:aggressive"
+
+
+def test_cache_advice_is_mode_gated_and_uses_break_even(monkeypatch):
+    economics = cache.Economics(write_cost=3.0, read_cost=1.0, miss_cost=5.0)
+    off = _cfg(monkeypatch)
+    assert orchestrator.cache_advice(economics, 10, cfg=off) is None
+    active = _cfg(monkeypatch, SUTRA_MODE="balanced")
+    advice = orchestrator.cache_advice(economics, 1, cfg=active)
+    assert advice["mode"] == "balanced"
+    assert advice["break_even_reuses"] == 0.75
+    assert advice["worth_reusing"] is True
+    assert orchestrator.cache_advice(economics, 0, cfg=active)["worth_reusing"] is False
+
+
+def test_no_saving_plan_is_selected(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_MODE="beast")
+    report = orchestrator.optimize_text("plain identifiers and numbers 42\n",
+                                        cfg=cfg)
+    assert report.chosen == ""
+    assert report.saved_bytes == 0
+    assert report.decision["trace"]
+    assert all(not item["admitted"] for item in report.decision["trace"])
+
+
+def test_caveman_wins_alone_and_combination_adds_savings(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_MODE="aggressive")
+    prose = ("In order to make use of the system, it is important to note "
+             "that a number of checks are performed on a regular basis.\n")
+    alone = orchestrator.optimize_text(prose, cfg=cfg)
+    assert alone.chosen == "caveman"
+    assert alone.saved_bytes > 0
+
+    mixed = ("    In order to make use of the system, it is important to note "
+             "that a number of checks\u00a0are performed on a regular basis.   \r\n"
+             "        Due to the fact that the process is slow, in the event "
+             "that a failure occurs, it is able to retry.   \r\n")
+    combined = orchestrator.optimize_text(mixed, cfg=cfg)
+    assert combined.chosen == "format+caveman"
+    savings = {item["plan"]: item["saved_bytes"]
+               for item in combined.decision["trace"] if item["admitted"]}
+    assert savings["caveman"] > 0
+    assert savings["format"] > 0
+    assert savings["format+caveman"] > savings["caveman"]
+    assert savings["format+caveman"] > savings["format"]
+
+
+def test_active_mode_delivers_a_lossless_rewrite_without_a_marker(monkeypatch):
+    text = ("In order to make use of the queue, it is important to note that "
+            "the worker is able to retry.\n")
+    cfg = _cfg(monkeypatch, SUTRA_MODE="balanced", SUTRA_STORE="0")
+    outcome = core.process_text(text, cfg=cfg)
+    assert outcome.changed is True
+    assert outcome.output != text
+    assert "[sutra:" not in outcome.output
+    assert "in order to" not in outcome.output.lower()

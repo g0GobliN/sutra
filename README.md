@@ -349,8 +349,10 @@ Common settings, read on every call:
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` session guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
-| `SUTRA_SEARCH` | `off` | opt-in, experimental bounded search layer after compression: `safe`/`balanced` or `aggressive` |
-| `SUTRA_LANGUAGE` | `0` | opt-in wording pass (fixed phrase table, prose lines only) while a search mode is active |
+| `SUTRA_MODE` | `off` | optimization policy: `off`, `balanced`, `aggressive` or `beast` (see [docs/modes.md](docs/modes.md)) |
+| `SUTRA_MODE_FILE` | `~/.sutra/mode` | persistent mode file written by `sutra mode` |
+| `SUTRA_SEARCH` | `off` | legacy effort switch, honored when `SUTRA_MODE` is unset |
+| `SUTRA_LANGUAGE` | `0` | legacy Caveman gate for the `SUTRA_SEARCH` paths |
 
 The complete table, including store quotas, stats-log rotation and retrieval bounds, is in [docs/configuration.md](https://github.com/g0GobliN/sutra/blob/main/docs/configuration.md).
 
@@ -363,12 +365,16 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
 - **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made. The policy's prompt cost is measured by the offline replay; its behavioural effect is not.
-- **The search layer is opt-in and experimental.** `SUTRA_SEARCH` adds a
-  bounded loop that may only accept smaller candidates which still pass the
-  protected-span check. On the measured fixtures its formatting strategies find
-  nothing in logs, JSON, diffs and tracebacks; the gain is concentrated in prose
-  (19.2% of one prose fixture) and the loop costs about 15 ms on an
-  already-compressed payload. `off` remains the default.
+- **The optimization layer is opt-in.** `SUTRA_MODE` defaults to `off`, which
+  keeps the base head/tail compression and recovery but runs no optimization
+  plan. Active modes only accept smaller candidates that still pass the
+  protected-span check, and JSON documents and patches bypass the layer
+  entirely. On the measured fixtures the lossless wording pass improves
+  repeated test output by 1.79% and compiler errors by 4.53%; the larger
+  reduction on generated prose and logs comes mainly from base head/tail
+  elision. The four modes differ in plans evaluated and effort bounds, not in a
+  quality guarantee; the local benchmark does not show a materially larger
+  saving from the larger modes.
 - **Reuse is exact-duplicate only, per process session.** A single changed byte, a pruned store entry or a restart means normal compression instead.
 - **Windows coverage is functional, not live-host.** CI runs the full core/CLI suite, installs the wheel, exercises detection and all five adapter dry runs, and verifies OpenCode and OpenClaw install/reinstall/uninstall. The live Claude, Codex and Hermes host probes remain Linux-only; Windows host binaries were not authenticated or exercised.
 

@@ -18,6 +18,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -423,7 +424,8 @@ def _optimization_line() -> str:
 
     cfg = configuration()
     return (f"sutra: optimization={'on' if cfg.enabled else 'off'} "
-            f"policy={policy.mode(cfg)} reuse={'on' if cfg.reuse else 'off'} "
+            f"mode={cfg.mode} policy={policy.mode(cfg)} "
+            f"reuse={'on' if cfg.reuse_active else 'off'} "
             f"recovery={'on' if cfg.store_enabled else 'off'} "
             f"max_bytes={cfg.max_bytes}")
 
@@ -1106,6 +1108,8 @@ def main(argv: list[str] | None = None) -> int:
         parser.add_argument("--json", action="store_true", help="machine-readable output")
         args = parser.parse_args(argv[1:])
         return _doctor(as_json=args.json, clients=args.client)
+    if argv[:1] == ["mode"]:
+        return _mode(argv[1:])
     if argv[:1] == ["cache"]:
         return _cache(argv[1:])
     if argv[:1] == ["cost"]:
@@ -1132,6 +1136,67 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     print_error(f"unknown command {argv[0]!r}; run `sutra --help`")
     return 2
+
+
+def _mode(argv: list[str]) -> int:
+    """Show or persist the unified optimization mode (off/balanced/aggressive/beast)."""
+    import json as _json
+
+    from . import config as _config
+    from . import orchestrator
+
+    parser = argparse.ArgumentParser(
+        prog="sutra mode",
+        description="Show or set SUTRA's optimization mode. The choice is "
+                    "persisted for future processes; running hosts resolve it "
+                    "on their next tool result.")
+    parser.add_argument("name", nargs="?", default=None,
+                        choices=list(_config.MODES),
+                        help="mode to persist")
+    parser.add_argument("--clear", action="store_true",
+                        help="remove the persisted mode file")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+    if args.clear:
+        path = _config.mode_file_path()
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            pass
+        except OSError as exc:
+            print_error(f"sutra mode: could not remove {path}: {exc}")
+            return 1
+        print(f"sutra mode: cleared {path}")
+        return 0
+    if args.name is not None:
+        try:
+            path = _config.write_mode(args.name)
+        except (OSError, ValueError) as exc:
+            print_error(f"sutra mode: {exc}")
+            return 1
+        print(f"sutra mode: {args.name} persisted to {path}")
+        return 0
+    cfg = _config.resolve()
+    policy = orchestrator.policy_for(cfg)
+    payload = {
+        "mode": cfg.mode,
+        "source": cfg.mode_source,
+        "mode_file": _config.mode_file_path(),
+        "policy": policy.as_dict(),
+        "engines": [engine.as_dict() for engine in orchestrator.engines()],
+    }
+    if args.json:
+        print(_json.dumps(payload, indent=2))
+        return 0
+    print(f"mode: {cfg.mode} (source: {cfg.mode_source})")
+    print(f"policy: passes={policy.passes} combine={policy.combine} "
+          f"triple={policy.triple} caveman={policy.language} "
+          f"reuse={policy.reuse} budget_ms={policy.budget_ms:g}")
+    print(f"persisted: {_config.mode_file_path()}")
+    for engine in orchestrator.engines():
+        state = "automatic" if engine.automatic else "on request"
+        print(f"  {engine.name:9s} {engine.plane:9s} {state}: {engine.note}")
+    return 0
 
 
 def _update(argv: list[str]) -> int:

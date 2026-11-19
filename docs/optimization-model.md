@@ -111,9 +111,12 @@ When reliable probabilities are unavailable the caller uses the conservative
 defaults (`min_quality=0`, `max_risk=1`), which is the same behaviour as
 "apply only what the exact validator accepted".
 
-The search loop currently evaluates one candidate per strategy, so SACE is the
-selection rule for callers that hold several strategies at once; it is tested
-directly in `tests/test_scoring.py`. It is not a hidden second optimizer.
+`orchestrator.py` is the production caller. It runs each mode plan as a
+separate candidate (formatting, Caveman, or formatting followed by Caveman),
+collects the admissible results, and calls `sace_select` to choose the final
+one. `score=1.0` means the exact protected-span validator accepted the
+candidate and `risk=0.0` means there is no semantic model, so the call is
+`min_quality=1.0, max_risk=0.0`, not a probability cutoff.
 
 ## SMESP — the maximum-effort search policy
 
@@ -129,12 +132,14 @@ probability of `0.000001` still has a positive priority, and the loop's
 stopping rule is the configured pass/time budget or the absence of an accepted
 candidate — never a minimum probability or a minimum compression percentage.
 
-Bound the effort, not the discovery: `SUTRA_SEARCH_PASSES` caps what one call
-may spend, so the loop cannot cost more than the output it is optimizing, and
-the pass cap is deterministic. `SUTRA_SEARCH_BUDGET_MS` is retained for
-compatibility and validated, but it no longer stops the loop: a wall-clock stop
+Bound the effort, not the discovery: the mode policy caps what one call may
+spend through its pass count and payload size, and `orchestrator` orders plans
+with `scoring.priority` before evaluating them, so a larger mode explores more
+plans instead of discarding low-probability ones. `SUTRA_SEARCH_BUDGET_MS` and
+the policy budget are recorded, but neither stops the loop: a wall-clock stop
 made the same input produce different output under host load, which the
-determinism invariant caught. `off` remains the default.
+determinism invariant caught. `SUTRA_MODE` selects the policy; `off` remains the
+default.
 
 ## Pareto comparison
 
@@ -152,23 +157,24 @@ The loop below is what the code runs, in the order it runs it:
 | Step | Where it happens |
 |---|---|
 | Observe request and workflow | the host calls `core.process_text` / `process_result`; SUTRA sees one payload, not the workflow |
-| Identify plausible opportunities | `engine._apply_search` runs only for payloads the deterministic pass left alone; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
-| Generate candidates | `optimize.STRATEGIES` (formatting, wording) plus ordered pairs when `combine=True` |
-| Rank candidates | `scoring.seof(saved_bytes, RANKING_OVERHEAD_MS)` — savings over a fixed nominal cost, never a probability cutoff and never host-load dependent |
+| Select the mode policy | `orchestrator.policy_for(cfg)` maps `SUTRA_MODE` (or the legacy `SUTRA_SEARCH`) to plans, passes and reuse policy |
+| Identify plausible opportunities | `engine._apply_search` runs after the deterministic head/tail pass and never for JSON or patches; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
+| Generate candidates | `orchestrator` runs the mode's plans; `optimize.optimize` applies formatting passes, ordered pairs when `combine=True`, and triples when `triple=True` and no single or pair was accepted |
+| Rank candidates | `scoring.priority` orders plans before evaluation; `scoring.seof(saved_bytes, RANKING_OVERHEAD_MS)` ranks candidates — never a probability cutoff and never host-load dependent |
 | Test cheap candidates first | strategies are evaluated in fixed order inside one pass; the cheapest timings surface in `Evaluation.elapsed_ms` |
-| Check preservation constraints | `preserve.preservation_ok` against the start-of-run text, for single candidates and pairs alike |
+| Check preservation constraints | `preserve.preservation_ok` against the start-of-run text, for single candidates, pairs and triples alike |
 | Reject and try next | a rejected candidate returns an `Evaluation(accepted=False, reason=…)` and changes nothing |
 | Estimate net benefit | `scoring.net_benefit(saved, overhead)`; below `min_saved_bytes` is rejected |
 | Apply validated optimization | `Report.applied` records the winning name; the text is replaced only after acceptance |
 | Measure actual result | `Report.saved_bytes`, `Report.elapsed_ms`, per-candidate evaluations |
-| Search again for remaining opportunities | the next pass re-evaluates every strategy against the new text (and, in aggressive mode, pairs) |
+| Search again for remaining opportunities | the next pass re-evaluates every strategy against the new text; `aggressive` also tries ordered pairs and `beast` tries triples when nothing shorter was accepted |
 | Final validation | the loop re-runs `preservation_ok` on the final text and `engine.compress` re-checks the JSON invariant before returning |
-| Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_SEARCH` selects the effort level. Learned policies are still deferred — see the limits below |
+| Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_MODE` selects the effort level. Learned policies are still deferred — see the limits below |
 | Stop conditions | `max_passes` or no accepted candidate; no clock in the decision, so identical input gives identical output |
 
-The loop is opt-in and fail-open: with `SUTRA_SEARCH=off` the diagram above does
-not execute at all, and a broken strategy or validator can only lose its own
-candidate, never the caller's text.
+The loop is opt-in and fail-open: with `SUTRA_MODE=off` (the default) the
+diagram above does not execute at all, and a broken strategy or validator can
+only lose its own candidate, never the caller's text.
 
 ## Implementation map
 
@@ -176,11 +182,11 @@ candidate, never the caller's text.
 |---|---|---|
 | SPC (exact part) | `preserve.preservation_ok` | every accepted search candidate |
 | SPC (confidence) | `scoring.seof(quality=…)`, `scoring.sace_select(min_quality=…)` | caller-supplied |
-| SROF | `scoring.net_benefit` | tested; available to callers |
-| SEOF | `scoring.seof` | `optimize.optimize` candidate ranking |
-| SACE | `scoring.sace_select` | tested selection rule for multi-candidate callers |
-| SMESP | `scoring.priority` | tested ranking signal; budget, not probability, stops the loop |
-| Pareto | `scoring.pareto_front` | `bench/maximum.py` trade-off summary |
+| SROF | `scoring.net_benefit` | `orchestrator` rejects a plan with no net saving; `optimize.optimize` rejects a non-positive candidate |
+| SEOF | `scoring.seof` | `optimize.optimize` candidate ranking and the orchestrator's recorded score |
+| SACE | `scoring.sace_select` | `orchestrator` final plan selection across admissible plans |
+| SMESP | `scoring.priority` | `orchestrator` orders plans before evaluation; budget, not probability, stops the loop |
+| Pareto | `scoring.pareto_front` | `orchestrator` reports the plan front; `bench/maximum.py` trade-off summary |
 
 ## Assumptions and limits
 

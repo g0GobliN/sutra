@@ -19,6 +19,11 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip(
+    "opentelemetry.sdk",
+    reason="the telemetry extra is required for the real exporter path",
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 PAYLOAD = "".join(f"line {index:04d}\n" for index in range(5000))
 

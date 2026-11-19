@@ -63,6 +63,14 @@ DEFAULT_SEARCH_BUDGET_MS = 50
 # so it is never enabled merely by choosing a search mode.
 DEFAULT_LANGUAGE = False
 
+# Unified optimization modes. ``SUTRA_MODE`` is the canonical switch; the
+# legacy ``SUTRA_SEARCH`` names above remain accepted and keep their old
+# semantics when no mode is set. ``off`` is the default until the benchmark
+# evidence in docs/modes.md justifies changing it.
+DEFAULT_MODE = "off"
+MODES = ("off", "balanced", "aggressive", "beast")
+MODE_FILE = os.path.join("~", ".sutra", "mode")
+
 # Advisory token ceiling per result. ``None`` means no token budget. The count
 # is an estimate (byte-based unless tiktoken is importable); it sizes the byte
 # budget and never invents exact token counts. An unreadable or negative value
@@ -193,6 +201,92 @@ def _search_mode() -> str:
     return value
 
 
+_MODE_ALIASES = {
+    "0": "off", "false": "off", "no": "off", "disabled": "off", "none": "off",
+    "1": "balanced", "true": "balanced", "on": "balanced",
+    "safe": "balanced", "maximum": "aggressive", "max": "aggressive",
+}
+
+
+def mode_file_path() -> str:
+    """Where `sutra mode <name>` persists the choice."""
+    return os.path.abspath(os.path.expanduser(
+        os.environ.get("SUTRA_MODE_FILE") or MODE_FILE))
+
+
+def _read_mode_file() -> str:
+    path = mode_file_path()
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            raw = handle.readline().strip().lower()
+    except OSError:
+        return ""
+    return _MODE_ALIASES.get(raw, raw)
+
+
+def _resolve_mode() -> tuple[str, str]:
+    """Resolve the unified mode and where it came from.
+
+    Precedence: ``SUTRA_MODE`` (validated), then the persisted mode file, then
+    the legacy ``SUTRA_SEARCH`` mapping. ``source`` is one of ``explicit``,
+    ``file``, ``legacy`` or ``default``; only an explicit source may disable
+    behaviour that used to be on (notably exact-duplicate reuse), so existing
+    installations keep their current output when they set nothing new.
+    """
+    raw = os.environ.get("SUTRA_MODE")
+    if raw is not None and str(raw).strip():
+        value = str(raw).strip().lower()
+        value = _MODE_ALIASES.get(value, value)
+        if value not in MODES:
+            _warn_once(f"SUTRA_MODE={raw!r} is not one of "
+                       f"{', '.join(MODES)}; ignoring it and resolving the "
+                       "next configured source")
+        else:
+            return value, "explicit"
+    file_value = _read_mode_file()
+    if file_value:
+        if file_value in MODES:
+            return file_value, "file"
+        _warn_once(f"{mode_file_path()} names an unknown mode "
+                   f"{file_value!r}; ignoring it and resolving the next "
+                   "configured source")
+    legacy = _search_mode()
+    if legacy == "safe":
+        return "balanced", "legacy"
+    if legacy == "balanced":
+        return "balanced", "legacy"
+    if legacy == "aggressive":
+        return "aggressive", "legacy"
+    return DEFAULT_MODE, "default"
+
+
+def write_mode(mode: str, path: str | None = None) -> str:
+    """Persist ``mode`` for future processes and return the file path.
+
+    Raises ``ValueError`` for an unknown mode rather than writing a file the
+    resolver would ignore.
+    """
+    value = str(mode or "").strip().lower()
+    value = _MODE_ALIASES.get(value, value)
+    if value not in MODES:
+        raise ValueError(f"unknown mode {mode!r}; choose {', '.join(MODES)}")
+    target = os.path.abspath(os.path.expanduser(path or mode_file_path()))
+    parent = os.path.dirname(target)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    temporary = f"{target}.{os.getpid()}.tmp"
+    try:
+        with open(temporary, "w", encoding="utf-8") as handle:
+            handle.write(value + "\n")
+        os.replace(temporary, target)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
+    return target
+
+
 def _optional_int(name: str, default: int | None) -> int | None:
     """Read an int from the environment; invalid or negative falls back."""
     raw = os.environ.get(name)
@@ -293,6 +387,26 @@ class Config:
     search_budget_ms: int = DEFAULT_SEARCH_BUDGET_MS
     language: bool = DEFAULT_LANGUAGE
     ledger_path: str = ""
+    mode: str = DEFAULT_MODE
+    mode_source: str = "default"
+
+    @property
+    def mode_explicit(self) -> bool:
+        """True when ``SUTRA_MODE`` or the persisted mode file chose the mode.
+
+        Legacy ``SUTRA_SEARCH`` values also set ``mode`` (so reporting is
+        coherent) but keep their historical policy; only an explicit mode may
+        switch an engine that used to be on off, so an unchanged installation
+        keeps its output.
+        """
+        return self.mode_source in ("explicit", "file")
+
+    @property
+    def reuse_active(self) -> bool:
+        """Exact-duplicate reuse, disabled only by an explicit ``off`` mode."""
+        if self.mode_explicit and self.mode == "off":
+            return False
+        return self.reuse
 
     def as_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -302,6 +416,10 @@ def resolve() -> Config:
     """Parse the environment once and return the whole configuration."""
     cache = cache_dir()
     enabled = _flag("SUTRA_ENABLED", True)
+    mode, mode_source = _resolve_mode()
+    if not enabled:
+        # A disabled plugin must not advertise a mode that cannot act.
+        mode, mode_source = "off", mode_source
     return Config(
         enabled=enabled,
         max_bytes=_int("SUTRA_MAX_BYTES", DEFAULT_MAX_BYTES),
@@ -350,6 +468,8 @@ def resolve() -> Config:
                               DEFAULT_SEARCH_BUDGET_MS, minimum=1,
                               maximum=5000),
         language=_flag("SUTRA_LANGUAGE", DEFAULT_LANGUAGE),
+        mode=mode,
+        mode_source=mode_source,
         ledger_path=os.path.abspath(os.path.expanduser(
             os.environ.get("SUTRA_LEDGER_FILE") or "")) if
         os.environ.get("SUTRA_LEDGER_FILE") else "",

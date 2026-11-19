@@ -33,7 +33,8 @@ RUNTIME_MODULES = frozenset({
     "__init__", "cache", "claude_code", "cli", "codex", "config", "context",
     "core", "cost", "discovery", "engine", "failure", "hermes", "hook",
     "installer", "jsonc", "language", "mcp", "metrics", "opencode", "openclaw",
-    "optimize", "parsers", "policy", "preserve", "providers", "recovery",
+    "optimize", "orchestrator", "parsers", "policy", "preserve", "providers",
+    "recovery",
     "redundancy", "repomap", "reuse", "runner", "scoring", "store", "telemetry",
     "ui", "update", "utf8",
 })
