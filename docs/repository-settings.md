@@ -91,11 +91,9 @@ already done.
 
 1. **Require the remaining CI checks.** Only three of the four Python legs are
    required, so a change that breaks 3.14 still merges. Add `test (3.14)`; add
-   `package`, `validate` and `hyphen-checkout` once you accept their runtime,
-   and `lint` from `lint.yml`. Do not require the Windows job while it reports
-   the single context `test (windows-latest)` for four matrix legs: give the
-   job a `name:` that includes `${{ matrix.python-version }}` first, then
-   require those contexts.
+   `test (windows-latest) (3.11)`–`(3.14)` if you want the Windows legs to
+   block; add `package`, `validate` and `hyphen-checkout` once you accept their
+   runtime, and `lint` from `lint.yml`.
 2. **Do not require `dependency-review` or `analyze` yet.** CodeQL analysis is
    not produced for every pull request (forks and Dependabot branches differ),
    and a required check that never reports blocks the merge permanently.
