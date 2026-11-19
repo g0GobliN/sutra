@@ -66,17 +66,7 @@ jobs:
         run: |
           mkdir -p gh-pages
           cp results/run_benchmarks.json gh-pages/results.json
-          python3 - <<'PY'
-          import html, pathlib
-          report = pathlib.Path("results/run_benchmarks.md").read_text(encoding="utf-8")
-          page = (
-              '<!doctype html><meta charset="utf-8"><title>SUTRA benchmarks</title>'
-              '<h1>SUTRA benchmarks</h1>'
-              '<p><a href="results.json">results.json</a></p>'
-              f"<pre>{html.escape(report)}</pre>"
-          )
-          pathlib.Path("gh-pages/index.html").write_text(page, encoding="utf-8")
-          PY
+          cp -R bench/site/. gh-pages/
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4
         with:

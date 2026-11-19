@@ -136,7 +136,7 @@ The mode benchmark is separate: it compares `off`, `balanced`, `aggressive` and 
 - [Benchmark source and charts](bench/)
 - [Benchmark workflow and run history](https://github.com/g0GobliN/sutra/actions/workflows/benchmark.yml)
 
-CI uploads per-Python benchmark reports as workflow artifacts. **GitHub Pages is not currently enabled for this repository**, so this README intentionally does not advertise a live Pages dashboard. Use the benchmark workflow and its artifacts for current run output.
+The current results page is published at **https://g0goblin.github.io/sutra/**. CI also uploads per-Python benchmark reports as workflow artifacts, so a run can be reproduced without trusting the page.
 
 ## Configuration
 

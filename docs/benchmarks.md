@@ -10,6 +10,13 @@ The benchmark suite addresses three key questions:
 2. **Can the agent still reach the evidence it needs?** Measured in retrieval calls and response sizes
 3. **What does the work cost?** Measured as separated wall-clock phases and memory usage
 
+## Published results
+
+The latest main-branch run is rendered at
+[g0goblin.github.io/sutra](https://g0goblin.github.io/sutra/). The page reads
+`results.json` from the same run; the raw JSON is linked there and remains the
+authoritative artifact. Pull requests run the measurement without publishing.
+
 ## Data Sources
 
 ### Fixture Corpus (`benchmarks/fixtures/`)
