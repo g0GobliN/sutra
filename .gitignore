@@ -74,9 +74,11 @@ SOUL.md
 soul.md
 goal.md
 goals.md
+goal1.md
 idea.md
 *.local.md
 docs/*.local.md
+STANDING-RULES.md
 
 # Runtime artifacts (never publish)
 compressed.json

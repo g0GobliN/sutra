@@ -13,7 +13,7 @@ model see [../SECURITY.md](../SECURITY.md).
 | `status: unavailable` | `SUTRA_STORE=0`, or the store path is not a plain directory | re-enable the store; use a normal directory for `SUTRA_STORE_DIR` |
 | `status: not_found` | wrong, expired or pruned id, or a corrupt entry deleted on lookup | re-run the tool; do not invent ids |
 | `status: error` | malformed field pointer, range, or query | read `error`; fix the argument |
-| marker has no id | not retained: store off, over quota, entry too large, or write failed | re-run narrower; check `SUTRA_STORE*` |
+| content-eliding rewrite was refused | store off, over quota, entry too large, write failed, or marker pass failed; the original was returned unchanged | check `SUTRA_STORE*`; a lossless formatting/wording pass may still apply |
 
 ## The tool is not visible to the model
 

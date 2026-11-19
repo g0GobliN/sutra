@@ -110,9 +110,39 @@ def _record_compression(stats: dict[str, Any], cfg: _config.Config) -> None:
         logger.debug("sutra: compression metric failed", exc_info=True)
 
 
+def _reverted(stats: dict[str, Any], text: str, rule: str) -> dict[str, Any]:
+    """Record a decision to keep the original because recovery is unavailable.
+
+    The preserve-or-recover rule is binary: a rewrite that the caller cannot
+    reverse exactly is not an optimization, it is data loss. Every field that
+    claimed a saving is reset, so telemetry and accounting cannot report a
+    saving that was never delivered.
+    """
+    original = int(stats.get("original_bytes") or len(text.encode("utf-8")))
+    return {
+        **stats,
+        "changed": False,
+        "compressed_bytes": original,
+        "omitted_bytes": 0,
+        "partial": False,
+        "rule": rule,
+        "fail_open": True,
+        "stored": False,
+        "id": None,
+        "search_applied": "",
+        "search_saved_bytes": 0,
+    }
+
+
 def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                         session_id: str = "") -> tuple[str, dict[str, Any]]:
-    """Compress one string, retaining the original first when it is rewritten."""
+    """Compress one string, retaining the original first when it is rewritten.
+
+    A rewrite is accepted only when the store actually holds a recoverable
+    original and the marker quotes that id. A disabled store, an entry above
+    the store's size limit, a failed write and a failed marker pass all keep
+    the original text: the caller can always reverse what it was given.
+    """
     started = time.perf_counter()
     out, stats = engine.compress(text, cfg=cfg)
     # engine.compress returns the typed record; the seam mutates a plain dict
@@ -120,12 +150,29 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
     stats = dict(stats)
     stats.setdefault("stored", False)
     stats.setdefault("id", None)
-    if stats.get("changed"):
-        store_cfg = _store.StoreConfig.from_config(cfg)
-        if cfg.store_enabled and stats["original_bytes"] <= cfg.store_max_entry_bytes:
+    if stats.get("changed") and not int(stats.get("omitted_bytes") or 0) \
+            and not stats.get("partial"):
+        # A lossless rewrite (formatting, Caveman wording) removed no content,
+        # so there is nothing to recover and no marker is needed. Requiring a
+        # marker here would silently disable the optimization layer for every
+        # payload below ``max_bytes``.
+        stats = dict(stats)
+        stats["stored"] = False
+        stats["id"] = None
+    elif stats.get("changed"):
+        if not cfg.store_enabled:
+            out, stats = text, _reverted(
+                stats, text, "recovery-unavailable-kept")
+        elif stats["original_bytes"] > cfg.store_max_entry_bytes:
+            out, stats = text, _reverted(stats, text, "recovery-over-limit-kept")
+        else:
+            store_cfg = _store.StoreConfig.from_config(cfg)
             store = _store.Store(store_cfg, telemetry_config=cfg)
             entry = store.put(text, tool_name=tool_name, session_id=session_id)
-            if entry is not None:
+            if entry is None:
+                out, stats = text, _reverted(
+                    stats, text, "recovery-store-failed-kept")
+            else:
                 # Second pass only when the original is actually on disk, so the
                 # marker can quote a real id instead of promising one.
                 kept_out, kept_stats = engine.compress(
@@ -133,12 +180,13 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                 # A rewrite that quotes no id cannot be recovered, so it must
                 # not leave an unreachable entry behind or claim one.
                 if kept_stats.get("changed") and "[sutra:" in kept_out:
-                    out, stats = kept_out, kept_stats
-                    stats = dict(stats)
+                    out, stats = kept_out, dict(kept_stats)
                     stats["stored"] = True
                     stats["id"] = entry.id
                 else:
                     store.delete(entry.id)
+                    out, stats = text, _reverted(
+                        stats, text, "recovery-marker-failed-kept")
     stats["duration_ms"] = round((time.perf_counter() - started) * 1000, 2)
     stats["tool"] = str(tool_name or "")[:64]
     return out, stats
@@ -213,7 +261,7 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
         logger.exception("sutra: compression failed; returning the original")
         return _failed(text, original_bytes)
     _record_compression(stats, cfg)
-    if (cfg.reuse and stats.get("stored") and stats.get("id")
+    if (cfg.reuse_active and stats.get("stored") and stats.get("id")
             and stats.get("rule") in _reuse.REUSABLE_RULES):
         _reuse.remember(text, session_id=session_id, entry_id=str(stats["id"]),
                         visible_bytes=int(stats.get("compressed_bytes") or 0),

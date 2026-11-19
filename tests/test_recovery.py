@@ -585,11 +585,13 @@ def test_cleanup_between_lookup_and_read_is_reported(sutra, store, monkeypatch):
     assert response["status"] == "not_found"
 
 
-def test_disabled_store_marks_the_result_as_not_retained(sutra, monkeypatch):
+def test_disabled_store_keeps_the_original(sutra, monkeypatch):
     monkeypatch.setenv("SUTRA_STORE", "0")
-    stored = sutra.compress_result({"output": big()})["output"]
-    assert "original not retained" in stored
-    assert not ID_RE.search(stored)
+    original = big()
+    outcome = sutra.compress_result({"output": original})
+    assert outcome["output"] == original
+    assert "original not retained" not in outcome["output"]
+    assert not ID_RE.search(outcome["output"])
     response = json.loads(sutra.recovery.restore({"id": "su_" + "0" * 32}))
     assert response["status"] == "unavailable"
 
@@ -1120,11 +1122,12 @@ def test_oversized_json_document_is_compressed_and_round_trips(sutra, monkeypatc
 
 # --- failure-matrix rows verified end to end (2026-10-24 audit) --------------
 
-def test_a_write_that_pushes_the_store_over_quota_is_pruned_and_reports_not_retained(
+def test_a_write_that_pushes_the_store_over_quota_keeps_the_original(
         sutra, tmp_path, monkeypatch):
     """Failure matrix: quota exceeded after write. An entry that fits the per-entry
     cap but not the total quota is written, immediately swept, and `put` returns
-    None — so the adapter deletes it again and the marker claims no id."""
+    None.  Because no recovery id can be promised, the adapter returns the
+    original text rather than a lossy rewrite."""
     store = make_store(sutra, directory=tmp_path / "store", max_bytes=500,
                        max_entry_bytes=1_000, max_entries=100)
     assert store.put("x" * 600) is None
@@ -1136,9 +1139,11 @@ def test_a_write_that_pushes_the_store_over_quota_is_pruned_and_reports_not_reta
         store_dir=str(tmp_path / "store"), store_enabled=True, store_ttl_hours=1,
         store_max_bytes=500, store_max_entry_bytes=1_000, store_max_entries=100,
         recovery_max_bytes=8_192, recovery_max_matches=5))
-    out = sutra.compress_result("y" * 2_000, tool_name="terminal")
-    assert "original not retained" in out
+    original = "y" * 2_000
+    out = sutra.compress_result(original, tool_name="terminal")
+    assert out == original
     assert "id=" not in out
+    assert "original not retained" not in out
 
 
 def test_restore_max_bytes_argument_is_clamped_both_ways(sutra, store):

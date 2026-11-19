@@ -62,6 +62,9 @@ RANKING_OVERHEAD_MS = 1.0
 # Combination search multiplies the work by the number of ordered pairs. The
 # cap is a payload size, not a clock, so the decision stays deterministic.
 PAIR_MAX_BYTES = 256 * 1024
+# Triple combinations are only tried when no pair was accepted and the payload
+# is small; the size bound keeps the choice deterministic and bounded.
+TRIPLE_MAX_BYTES = 64 * 1024
 
 
 def _size(text: str) -> int:
@@ -265,6 +268,53 @@ def _evaluate(
     return Evaluation(strategy.name, saved, elapsed, True), candidate
 
 
+def _evaluate_chain(
+    base: str,
+    original: str,
+    strategies: Sequence[Strategy],
+    validator: Callable[[str, str], tuple[bool, list[str]]],
+    min_saved_bytes: int,
+) -> tuple[Evaluation, str | None]:
+    """Apply an ordered strategy chain, validating against the run's original.
+
+    Combination search exists because two transformations can each save
+    nothing alone while the pair still shrinks the payload. Validating the
+    final text against the text at the start of the run keeps the cumulative
+    guarantee the single-strategy path has.
+    """
+    name = "+".join(item.name for item in strategies)
+    started = time.monotonic()
+    candidate = base
+    try:
+        for strategy in strategies:
+            candidate = strategy.apply(candidate)
+            if not isinstance(candidate, str) or not candidate:
+                elapsed = (time.monotonic() - started) * 1000.0
+                return Evaluation(name, 0, elapsed, False,
+                                  f"{strategy.name} produced no text"), None
+    except Exception as exc:
+        elapsed = (time.monotonic() - started) * 1000.0
+        return Evaluation(name, 0, elapsed, False,
+                          f"strategy raised: {exc}"), None
+    elapsed = (time.monotonic() - started) * 1000.0
+    saved = _size(base) - _size(candidate)
+    try:
+        ok, reasons = validator(original, candidate)
+    except Exception as exc:
+        return Evaluation(name, saved, elapsed, False,
+                          f"validator raised: {exc}"), None
+    if not ok:
+        reason = (reasons[0] if reasons else "validator rejected")
+        return Evaluation(name, saved, elapsed, False,
+                          reason[:_MAX_REASON_CHARS]), None
+    if saved < min_saved_bytes:
+        return Evaluation(
+            name, saved, elapsed, False,
+            f"saved {saved} bytes, below the {min_saved_bytes}-byte minimum",
+        ), None
+    return Evaluation(name, saved, elapsed, True), candidate
+
+
 def _evaluate_pair(
     base: str,
     original: str,
@@ -330,6 +380,7 @@ def optimize(
     validator: Callable[[str, str], tuple[bool, list[str]]] | None = None,
     ledger: failure.Ledger | None = None,
     combine: bool = False,
+    triple: bool = False,
 ) -> Report:
     """Run the bounded optimization loop over ``text``.
 
@@ -378,6 +429,33 @@ def optimize(
                         evaluations.append(pair_evaluation)
                         if pair_text is not None:
                             pairs.append((pair_evaluation, pair_text))
+                if not pairs and triple and _size(current) <= TRIPLE_MAX_BYTES:
+                    triples: list[tuple[Evaluation, str]] = []
+                    for first in candidates:
+                        for second in candidates:
+                            if second is first:
+                                continue
+                            for third in candidates:
+                                if third is first or third is second:
+                                    continue
+                                combo_evaluation, combo_text = _evaluate_chain(
+                                    current, text, (first, second, third),
+                                    check, min_saved_bytes)
+                                evaluations.append(combo_evaluation)
+                                if combo_text is not None:
+                                    triples.append((combo_evaluation, combo_text))
+                    if triples:
+                        best, best_text = min(
+                            triples,
+                            key=lambda item: (
+                                -scoring.seof(item[0].saved_bytes,
+                                              RANKING_OVERHEAD_MS),
+                                item[0].name,
+                            ),
+                        )
+                        current = best_text
+                        applied.append(best.name)
+                        continue
                 if pairs:
                     best, best_text = min(
                         pairs,

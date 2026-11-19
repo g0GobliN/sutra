@@ -19,6 +19,11 @@ from pathlib import Path
 
 import pytest
 
+pytest.importorskip(
+    "opentelemetry.sdk",
+    reason="the telemetry extra is required for the real exporter path",
+)
+
 ROOT = Path(__file__).resolve().parent.parent
 PAYLOAD = "".join(f"line {index:04d}\n" for index in range(5000))
 
@@ -30,7 +35,9 @@ def _environment(tmp_path: Path, endpoint: str) -> dict[str, str]:
         "SUTRA_TELEMETRY": "1",
         "SUTRA_TELEMETRY_ENDPOINT": endpoint,
         "SUTRA_TELEMETRY_SAMPLE_RATE": "1.0",
-        "SUTRA_STORE": "0",
+        "SUTRA_MODE": "off",
+        "SUTRA_STORE": "1",
+        "SUTRA_STORE_DIR": str(tmp_path / "store"),
         "SUTRA_STATS_FILE": str(tmp_path / "stats.jsonl"),
     }
 

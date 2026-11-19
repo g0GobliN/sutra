@@ -4,6 +4,18 @@
 
 ### Added
 
+- Four optimization modes behind one switch: `SUTRA_MODE=off|balanced|aggressive|beast`.
+  A mode selects the deterministic plans, bounded passes, combination depth and
+  repeated-call reuse policy; `sutra mode` shows or persists the choice in
+  `~/.sutra/mode`. `off` remains the default and keeps the existing head/tail
+  compression and recovery path. The legacy `SUTRA_SEARCH` values still map to
+  their previous policies.
+- A single orchestrator now owns mode policy, plan ordering, candidate
+  evaluation, SACE selection and the recorded decision. JSON documents and
+  patches never enter the optimization layer.
+- Caveman gained adjacent repeated-word and exact repeated-sentence removal and
+  a tool-description entry point. Everything still passes the exact
+  protected-span check.
 - The live-model A/B experiment now has explicit protocol versions. `v1` keeps
   the original frozen eight tasks and is the default for a live run; `v2` is
   the expanded 30-task corpus and is opt-in. Result rows and filenames carry the
@@ -13,6 +25,16 @@
 
 ### Changed
 
+- `balanced` is now the default `SUTRA_MODE`. A normal installation obtains
+  optimization by installing and optionally selecting a mode; no search,
+  language, plan, reuse or budget variable is required. Existing installations
+  keep the legacy `SUTRA_SEARCH`/`SUTRA_LANGUAGE` paths, and `SUTRA_MODE=off`
+  preserves the previous no-optimization path.
+
+- A rewrite is now returned only when the original is stored and the marker
+  quotes its id. A disabled store, an over-quota entry, a failed write or a
+  failed marker pass returns the original with a `recovery-*-kept` rule instead
+  of an unrecoverable smaller result.
 - Release verification now polls TestPyPI and PyPI for up to 20 minutes,
   logging each JSON-API and simple-index attempt and backing off from 10 to 60
   seconds. Index propagation no longer requires a manual rerun, while the

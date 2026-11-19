@@ -92,7 +92,8 @@ def test_another_session_has_its_own_index():
     assert second.id != first.id
 
 
-def test_a_payload_below_the_reuse_threshold_is_not_remembered():
+def test_a_payload_below_the_reuse_threshold_is_not_remembered(monkeypatch):
+    monkeypatch.setenv("SUTRA_MODE", "off")
     text = _payload(lines=10)  # below both the compression cap and the reuse floor
     first = _first(text, session="session-small")
     second = _first(text, session="session-small")
@@ -110,13 +111,14 @@ def test_disabled_reuse_keeps_compression_working(reusable):
     assert "[sutra: repeated output" not in second.output
 
 
-def test_disabled_store_cannot_offer_reuse(reusable):
+def test_disabled_store_keeps_the_original(reusable):
     reusable.setenv("SUTRA_STORE", "0")
     text = _payload()
     first = _first(text, session="session-nostore")
     second = _first(text, session="session-nostore")
-    assert first.changed and first.id is None
-    assert second.changed and not second.output.startswith("[sutra: repeated output")
+    assert not first.changed and first.output == text and first.id is None
+    assert not second.changed and second.output == text
+    assert "[sutra: repeated output" not in second.output
 
 
 def test_a_pruned_entry_falls_back_to_normal_compression():

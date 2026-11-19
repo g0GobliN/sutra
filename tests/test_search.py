@@ -18,7 +18,14 @@ PAYLOAD = "".join(f"line {i:03d}   \n" for i in range(200))
 
 
 def _cfg(monkeypatch, **env):
-    for key, value in {**_BUDGET, **env}.items():
+    values = {**_BUDGET, **env}
+    # These tests describe the pre-mode search layer. Keep its explicit opt-out
+    # unless the test itself selects a mode or a legacy search value.
+    if "SUTRA_SEARCH" in values:
+        monkeypatch.delenv("SUTRA_MODE", raising=False)
+    elif "SUTRA_MODE" not in values:
+        values["SUTRA_MODE"] = "off"
+    for key, value in values.items():
         monkeypatch.setenv(key, value)
     return config.resolve()
 

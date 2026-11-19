@@ -24,7 +24,7 @@ import time
 from dataclasses import asdict, dataclass, fields, replace
 from typing import Any, Iterator
 
-from . import config, failure, language, optimize, utf8
+from . import config, failure, orchestrator, utf8
 from .parsers import PARSER_REGISTRY, Limits as ParserLimits
 from .telemetry import get_telemetry
 
@@ -802,51 +802,36 @@ def _ledger(cfg: config.Config) -> failure.Ledger:
     return ledger
 
 
-def _search_limits(cfg: config.Config) -> tuple[int, float]:
-    """Passes and time budget for the configured search mode.
-
-    ``safe`` and ``balanced`` are one bounded pass over the formatting
-    strategies (``safe`` never adds the language strategy); ``aggressive``
-    spends the configured pass count and budget and may try combinations.
-    ``off`` never reaches this function.
-    """
-    if cfg.search_mode != "aggressive":
-        return 1, cfg.search_budget_ms
-    return cfg.search_passes, cfg.search_budget_ms
-
-
 def _apply_search(out: str, stats: CompressionStats,
-                  cfg: config.Config) -> tuple[str, CompressionStats]:
-    """Run the bounded optimizer over an already-changed result.
+                  cfg: config.Config, *,
+                  structured: bool = False,
+                  patch: bool = False) -> tuple[str, CompressionStats]:
+    """Run the orchestrated mode over the compressed result.
 
-    The optimizer never removes content and never rewrites recovery markers or
-    fenced blocks; it only normalises formatting. Its output replaces the
-    compressed text only when it is strictly smaller and the protected-span
-    validator accepted every step, so the original stays recoverable through
-    the store exactly as before.
+    The orchestrator owns mode policy, candidate ranking and the SPC
+    validation; this function only translates its report into the engine's
+    stats. A structured payload (JSON) and a patch never reach an engine: their
+    byte representation is the contract, and changing it without a recovery
+    map would violate the preserve-or-recover rule.
     """
-    passes, budget_ms = _search_limits(cfg)
-    strategies = list(optimize.default_strategies())
-    if cfg.language and cfg.search_mode != "safe":
-        strategies.append(optimize.Strategy(
-            "language", language.compress_text,
-            "remove verbosity fillers on prose lines, validated against SPC"))
     try:
-        report = optimize.optimize(
-            out, max_passes=passes, max_ms=float(budget_ms),
-            strategies=strategies, ledger=_ledger(cfg),
-            combine=cfg.search_mode == "aggressive")
+        report = orchestrator.optimize_text(
+            out, cfg=cfg, ledger=_ledger(cfg),
+            structured=structured, patch=patch)
     except Exception:  # fail open: the deterministic result is still correct
         logger.exception("sutra: search layer failed; keeping the compressed result")
         return out, stats
-    if not report.applied or report.saved_bytes <= 0:
+    if not report.chosen or report.saved_bytes <= 0 or report.text == out:
         return out, stats
+    chosen_plan = next(
+        (item for item in report.plans if item.plan == report.chosen), None)
+    applied = "+".join(chosen_plan.applied) if chosen_plan else report.chosen
     stats = replace(
         stats,
         compressed_bytes=len(report.text.encode("utf-8")),
-        changed=stats.changed or bool(report.applied),
+        changed=stats.changed or bool(report.chosen),
         rule=stats.rule if stats.rule != "none" else "search",
-        search_applied="+".join(report.applied),
+        search_applied=applied,
         search_saved_bytes=report.saved_bytes,
     )
     return report.text, stats
@@ -892,20 +877,26 @@ def compress(text: str, *, max_bytes: int | None = None, head_bytes: int | None 
             budget_exceeded=stats.budget_exceeded,
         )
 
-    # A JSON document's search already ran on each decoded string field, where
-    # prose is visible as prose. Re-running it over the serialized document
-    # finds nothing and would only add latency, so the recorded field-level
-    # result stands as the document's result.
-    if cfg.search_mode != "off" and not stats.search_applied:
+    # Search runs only on prose-shaped text. A JSON document and a patch are
+    # byte contracts: the optimizer's formatting strategies would rewrite
+    # significant whitespace inside them (or a JSON string's unicode spaces)
+    # with no recovery map, which the preserve-or-recover rule forbids.
+    policy = orchestrator.policy_for(cfg)
+    if policy.passes > 0 and not stats.search_applied:
+        is_json = _parse_json_document(text) is not None
+        kind = KIND_JSON if is_json else _classify_work(strip_ansi(text)).kind
         before = out
-        out, stats = _apply_search(out, stats, cfg)
+        out, stats = _apply_search(
+            out, stats, cfg,
+            structured=is_json, patch=kind == KIND_PATCH)
         if (out is not before and not _parses_as_json(out)
                 and _parse_json_document(text) is not None):
             # The optimizer must not turn a valid document into a broken one.
             out = before
             stats = replace(stats, compressed_bytes=len(before.encode("utf-8")),
                             search_applied="", search_saved_bytes=0)
-    stats = replace(stats, search_mode=cfg.search_mode)
+    effective_mode = cfg.mode if cfg.mode_explicit else cfg.search_mode
+    stats = replace(stats, search_mode=effective_mode)
 
     # Record telemetry
     latency_ms = (time.perf_counter() - start_time) * 1000

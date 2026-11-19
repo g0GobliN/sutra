@@ -191,8 +191,14 @@ def test_a_parser_rewrite_names_its_recovery_id(sutra, monkeypatch, tmp_path):
     assert restored["content"] == text
 
 
-def test_a_markerless_rewrite_does_not_claim_a_stored_entry(monkeypatch, tmp_path):
-    """Regression: a rewrite with no id left an unreachable store entry."""
+def test_a_markerless_rewrite_is_rejected_not_merely_unclaimed(
+        monkeypatch, tmp_path):
+    """A rewrite that cannot name its recovery id is discarded entirely.
+
+    The earlier behaviour handed back the shorter text without an id, which
+    silently lost the untouched bytes.  The preserve-or-recover contract makes
+    that case revert to the original instead.
+    """
     monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path / "store"))
     monkeypatch.setenv("SUTRA_STATS_FILE", str(tmp_path / "stats.jsonl"))
 
@@ -204,8 +210,11 @@ def test_a_markerless_rewrite_does_not_claim_a_stored_entry(monkeypatch, tmp_pat
         }
 
     monkeypatch.setattr(engine, "compress", fake_compress)
-    _, stats = core._compress_and_store("payload\n" * 500, cfg=config.resolve())
+    original = "payload\n" * 500
+    visible, stats = core._compress_and_store(original, cfg=config.resolve())
 
-    assert stats["changed"] is True
+    assert visible == original
+    assert stats["changed"] is False
     assert stats["stored"] is False
     assert stats["id"] is None
+    assert stats["rule"] == "recovery-marker-failed-kept"

@@ -61,14 +61,11 @@ newline, `]` or `)` is left uncompressed rather than labelled with a pointer
 recovery cannot resolve. In that case the document is returned whole for that
 field, so no evidence is claimed or lost.
 
-**No storage** (disabled, over quota, too large, or the write failed):
-
-```
-[sutra: partial · 45,231 bytes elided (large output) · original not retained ·
- re-run the tool with a narrower query (grep/head/offset) to see the middle]
-```
-
-No id is invented. The marker states the loss and the only remaining remedy.
+**No storage** (disabled, over quota, too large, or the write failed): the
+original is returned unchanged. SUTRA emits no marker, no id, and no elided
+bytes; `stats.rule` is one of the `recovery-*-kept` values and the caller can
+re-run the tool narrower if it wants a smaller result. A lossless formatting or
+wording pass may still apply, and it needs no stored original.
 
 **Repeat collapse** uses its own marker, with the same id. It names the first
 omitted line and the omitted range in the scope (`end` is exclusive), so the
@@ -288,13 +285,13 @@ Without supplied bytes, `verify(entry)` still reads the file once itself.
 
 | Situation | Behaviour |
 |---|---|
-| store disabled | no id is written; marker says "not retained"; tool returns `unavailable` |
-| per-entry cap exceeded | no id; marker says "not retained" |
-| quota exceeded after write | the new entry is pruned immediately, `put` returns nothing, marker says "not retained" |
+| store disabled | original returned unchanged; no marker or id; `recovery-unavailable-kept` |
+| per-entry cap exceeded | original returned unchanged; no marker or id; `recovery-over-limit-kept` |
+| quota exceeded after write | the new entry is pruned immediately; original returned unchanged; `recovery-store-failed-kept` |
 | TTL elapsed | entry deleted on lookup; `expired` |
 | data file truncated or missing | deleted on lookup; `not_found` |
 | metadata present, data missing | metadata removed; `not_found` |
-| store path is a symlink | store refuses to write; marker says "not retained" |
+| store path is a symlink | store refuses to write; original returned unchanged |
 | interrupted write | temp file, never an entry; cleaned up after an hour |
 | cleanup between lookup and read | read raises, tool answers `expired` |
 | unknown id | `not_found` (after id validation) |
