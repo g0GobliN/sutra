@@ -1,0 +1,72 @@
+name: Security
+
+# Dependency and workflow-hygiene checks. GitHub's own secret scanning and push
+# protection are repository settings, not workflow configuration; they cannot
+# be enabled from this file. See docs/repository-settings.md for what is on.
+#
+# The audit derives its requirement list from pyproject.toml, so a new runtime
+# dependency is audited without editing this workflow. `dev` holds tooling and
+# is intentionally not audited.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # A new advisory can affect a release that has not changed: rescan weekly.
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dependencies:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Collect every non-dev runtime requirement
+        run: |
+          python - <<'PY'
+          import pathlib, tomllib
+          project = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          extras = project["project"].get("optional-dependencies", {})
+          requirements = [item for name, items in extras.items() if name != "dev"
+                          for item in items]
+          pathlib.Path("audit-requirements.txt").write_text(
+              "\n".join(requirements) + "\n", encoding="utf-8")
+          print(pathlib.Path("audit-requirements.txt").read_text(encoding="utf-8"))
+          PY
+      - name: Install the pinned auditor
+        run: pip install pip-audit==2.10.1
+      - name: Audit the resolved dependency set
+        # --strict turns an unresolvable requirement into a failure instead of
+        # a green run over a partial dependency set.
+        run: python -m pip_audit -r audit-requirements.txt --strict --desc on --progress-spinner off
+
+  workflows:
+    name: workflow security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the validator
+        run: pip install PyYAML==6.0.3
+      - name: Check the trust boundaries of the automation
+        run: python scripts/check_github_config.py --security

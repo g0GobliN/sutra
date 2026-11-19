@@ -201,3 +201,33 @@ def test_the_release_document_describes_the_same_path():
         "the release guide must explain how to promote the rehearsal artifact")
     assert "The build and smoke jobs repeat" not in text, (
         "the documentation still claims production rebuilds the distribution")
+
+
+def test_the_workflow_is_dispatch_only_and_holds_no_secret():
+    text = WORKFLOW.read_text(encoding="utf-8")
+    triggers = text.split("\njobs:", 1)[0]
+    assert "workflow_dispatch:" in triggers
+    for forbidden in ("  push:", "  pull_request:", "  schedule:", "  workflow_run:"):
+        assert forbidden not in triggers, (
+            f"release must not trigger on {forbidden.strip(': ')}")
+    assert "secrets." not in text, (
+        "publishing exchanges an OIDC identity for a token; no secret belongs "
+        "in this workflow")
+
+
+def test_the_tagged_commit_is_tested_before_anything_is_built():
+    jobs = _job_blocks()
+    test_job = jobs["test"]
+    assert "ref: ${{ inputs.tag }}" in test_job, (
+        "the tests must run on the commit the tag points at")
+    assert "python -m pytest tests -q" in test_job
+    assert _needs(jobs["build"]) == {"test"}, (
+        "the build must wait for the tagged commit's suite")
+
+
+def test_the_build_records_the_changelog_section_as_release_notes():
+    build = _job_blocks()["build"]
+    assert "scripts/check_version.py" in build
+    assert "--notes" in build
+    assert "GITHUB_STEP_SUMMARY" in build, (
+        "the run summary is where the release notes are read from")

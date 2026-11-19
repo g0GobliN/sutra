@@ -1,0 +1,52 @@
+name: Stale
+
+# Conservative housekeeping: nothing is marked or closed before it has been
+# untouched for six months, and work that someone owns or plans to finish is
+# never touched. The workflow runs on a schedule only; it cannot react to a
+# pull request.
+
+on:
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stale:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/stale@1e223db275d687790206a7acac4d1a11bd6fe629 # v10
+        with:
+          days-before-stale: 180
+          days-before-close: 45
+          stale-issue-label: stale
+          stale-pr-label: stale
+          close-issue-reason: not_planned
+          remove-stale-when-updated: true
+          exempt-all-assignees: true
+          exempt-all-milestones: true
+          exempt-draft-pr: true
+          exempt-issue-labels: security, pinned, help wanted, good first issue
+          exempt-pr-labels: security, pinned, blocked
+          operations-per-run: 60
+          stale-issue-message: >
+            No activity for six months. This issue stays open for another 45
+            days; comment or push work and it returns to normal. If it is still
+            accurate but unplanned, say so and it will be kept.
+          close-issue-message: >
+            Closed after six months without activity and 45 further days of
+            notice. It is not a judgement on the report: reopen it with new
+            information and it will be read again.
+          stale-pr-message: >
+            No activity for six months. This pull request stays open for
+            another 45 days; rebase or comment and it returns to normal.
+          close-pr-message: >
+            Closed after six months without activity and 45 further days of
+            notice. The branch is untouched: reopen the pull request when the
+            work resumes.
