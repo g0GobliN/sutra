@@ -1,6 +1,6 @@
 <!doctype html><meta charset="utf-8"><title>SUTRA benchmarks</title><h1>SUTRA benchmarks</h1><p><a href="results.json">results.json</a></p><pre># SUTRA v0.6.3 Performance Benchmarks
 
-Generated: 2026-11-19T04:18:18+00:00
+Generated: 2026-11-19T05:01:02+00:00
 Total fixtures: 46
 Real tool outputs: 46
 Synthetic benchmarks: 0
@@ -9,42 +9,42 @@ Synthetic benchmarks: 0
 
 | Metric | Before | After | Saved | Saved % |
 |--------|--------|-------|-------|---------|
-| **Total** | **503.5K** | **503.5K** | **0** | **0.0%** |
+| **Total** | **503.5K** | **503.2K** | **271** | **0.1%** |
 
 ## Per-Tool Category Results (with Token Counts)
 
 | Tool | Category | Cases | Original | Compressed | Saved | Saved % | Tokens Before | Tokens After | Tokens Saved | Tokens Saved % |
 |------|----------|-------|----------|------------|-------|---------|---------------|--------------|---------------|-----------------|
-| gcc | general/compiler_errors | 1 | 265 | 265 | 0 | 0.0% | 67 | 67 | 0 | 0.0% |
-| git | general/git_diff | 6 | 748 | 748 | 0 | 0.0% | 260 | 260 | 0 | 0.0% |
+| gcc | general/compiler_errors | 1 | 265 | 253 | 12 | 4.5% | 67 | 66 | 1 | 1.5% |
+| git | general/git_diff | 6 | 748 | 747 | 1 | 0.1% | 260 | 259 | 1 | 0.4% |
 | python3 (generated) | general/large_json | 1 | 480.2K | 480.2K | 0 | 0.0% | 127,771 | 127,771 | 0 | 0.0% |
-| node | general/long_stack_trace | 4 | 1.9K | 1.9K | 0 | 0.0% | 587 | 587 | 0 | 0.0% |
+| node | general/long_stack_trace | 4 | 1.9K | 1.9K | 33 | 1.7% | 587 | 587 | 0 | 0.0% |
 | python3 | general/long_stack_trace | 5 | 1.5K | 1.5K | 0 | 0.0% | 424 | 424 | 0 | 0.0% |
-| pytest | general/repeated_test_output | 6 | 10.2K | 10.2K | 0 | 0.0% | 2,349 | 2,349 | 0 | 0.0% |
+| pytest | general/repeated_test_output | 6 | 10.2K | 10.1K | 53 | 0.5% | 2,349 | 2,346 | 3 | 0.1% |
 | go (not installed) | go/compiler | 4 | 1.0K | 1.0K | 0 | 0.0% | 320 | 320 | 0 | 0.0% |
 | eslint | javascript/eslint | 3 | 627 | 627 | 0 | 0.0% | 192 | 192 | 0 | 0.0% |
-| jest | javascript/jest | 2 | 887 | 887 | 0 | 0.0% | 306 | 306 | 0 | 0.0% |
+| jest | javascript/jest | 2 | 887 | 801 | 86 | 9.7% | 306 | 299 | 7 | 2.3% |
 | tsc | javascript/tsc | 3 | 591 | 591 | 0 | 0.0% | 184 | 184 | 0 | 0.0% |
-| vitest | javascript/vitest | 2 | 1.0K | 1.0K | 0 | 0.0% | 444 | 444 | 0 | 0.0% |
+| vitest | javascript/vitest | 2 | 1.0K | 1.0K | 45 | 4.3% | 444 | 432 | 12 | 2.7% |
 | mypy | python/mypy | 2 | 385 | 385 | 0 | 0.0% | 108 | 108 | 0 | 0.0% |
-| pip | python/pip | 1 | 1.0K | 1.0K | 0 | 0.0% | 237 | 237 | 0 | 0.0% |
-| cargo | rust/cargo_check | 6 | 3.1K | 3.1K | 0 | 0.0% | 955 | 955 | 0 | 0.0% |
+| pip | python/pip | 1 | 1.0K | 1.0K | 12 | 1.2% | 237 | 234 | 3 | 1.3% |
+| cargo | rust/cargo_check | 6 | 3.1K | 3.0K | 29 | 0.9% | 955 | 951 | 4 | 0.4% |
 
 ## Individual Tool Results
 
 | Case | Tool | Original | Compressed | Saved | Saved % | Rule |
 |------|------|----------|------------|-------|---------|------|
-| general/compiler_errors/gcc_type_error.txt | gcc | 265 | 265 | 0 | 0.0% | none |
+| general/compiler_errors/gcc_type_error.txt | gcc | 265 | 253 | 12 | 4.5% | search |
 | general/git_diff/git_diff_staged.txt | git | 116 | 116 | 0 | 0.0% | none |
 | general/git_diff/git_diff_unstaged.txt | git | 118 | 118 | 0 | 0.0% | none |
 | general/git_status/git_log.txt | git | 30 | 30 | 0 | 0.0% | none |
 | general/git_status/git_status_clean.txt | git | 53 | 53 | 0 | 0.0% | none |
-| general/git_status/git_status_mixed.txt | git | 36 | 36 | 0 | 0.0% | none |
+| general/git_status/git_status_mixed.txt | git | 36 | 35 | 1 | 2.8% | search |
 | general/git_status/git_status_verbose.txt | git | 395 | 395 | 0 | 0.0% | none |
 | general/large_json/large_json_api_response.txt | python3 (generated) | 480.2K | 480.2K | 0 | 0.0% | json-kept |
 | general/long_stack_trace/node_async_stack.txt | node | 390 | 390 | 0 | 0.0% | none |
 | general/long_stack_trace/python_recursion_error.txt | python3 | 405 | 405 | 0 | 0.0% | none |
-| general/repeated_test_output/repeated_pytest_output.txt | pytest | 892 | 892 | 0 | 0.0% | none |
+| general/repeated_test_output/repeated_pytest_output.txt | pytest | 892 | 876 | 16 | 1.8% | search |
 | go/compiler/go_compiler_syntax_error.txt | go (not installed) | 294 | 294 | 0 | 0.0% | none |
 | go/compiler/go_compiler_type_error.txt | go (not installed) | 227 | 227 | 0 | 0.0% | none |
 | go/test/go_test_failing.txt | go (not installed) | 380 | 380 | 0 | 0.0% | none |
@@ -52,21 +52,21 @@ Synthetic benchmarks: 0
 | javascript/eslint/eslint_clean.txt | eslint | 0 | 0 | 0 | 0.0% | none |
 | javascript/eslint/eslint_errors.txt | eslint | 487 | 487 | 0 | 0.0% | none |
 | javascript/eslint/eslint_unused_variable.txt | eslint | 140 | 140 | 0 | 0.0% | none |
-| javascript/jest/jest_clean.txt | jest | 216 | 216 | 0 | 0.0% | none |
-| javascript/jest/jest_failing.txt | jest | 671 | 671 | 0 | 0.0% | none |
-| javascript/node/node_reference_error.txt | node | 582 | 582 | 0 | 0.0% | none |
-| javascript/node/node_uncaught_exception.txt | node | 632 | 632 | 0 | 0.0% | none |
-| javascript/node/node_unhandled_rejection.txt | node | 315 | 315 | 0 | 0.0% | none |
+| javascript/jest/jest_clean.txt | jest | 216 | 201 | 15 | 6.9% | search |
+| javascript/jest/jest_failing.txt | jest | 671 | 600 | 71 | 10.6% | search |
+| javascript/node/node_reference_error.txt | node | 582 | 578 | 4 | 0.7% | search |
+| javascript/node/node_uncaught_exception.txt | node | 632 | 629 | 3 | 0.5% | search |
+| javascript/node/node_unhandled_rejection.txt | node | 315 | 289 | 26 | 8.3% | search |
 | javascript/tsc/tsc_clean.txt | tsc | 0 | 0 | 0 | 0.0% | none |
 | javascript/tsc/tsc_strict_null.txt | tsc | 60 | 60 | 0 | 0.0% | none |
 | javascript/tsc/tsc_type_errors.txt | tsc | 531 | 531 | 0 | 0.0% | none |
-| javascript/vitest/vitest_clean.txt | vitest | 194 | 194 | 0 | 0.0% | none |
-| javascript/vitest/vitest_failing.txt | vitest | 854 | 854 | 0 | 0.0% | none |
+| javascript/vitest/vitest_clean.txt | vitest | 194 | 189 | 5 | 2.6% | search |
+| javascript/vitest/vitest_failing.txt | vitest | 854 | 814 | 40 | 4.7% | search |
 | python/mypy/mypy_clean.txt | mypy | 42 | 42 | 0 | 0.0% | none |
 | python/mypy/mypy_type_errors.txt | mypy | 343 | 343 | 0 | 0.0% | none |
-| python/pip/pip_install_fails.txt | pip | 1.0K | 1.0K | 0 | 0.0% | none |
-| python/pytest/pytest_collection_error.txt | pytest | 2.7K | 2.7K | 0 | 0.0% | none |
-| python/pytest/pytest_failing.txt | pytest | 2.4K | 2.4K | 0 | 0.0% | none |
+| python/pip/pip_install_fails.txt | pip | 1.0K | 1.0K | 12 | 1.2% | search |
+| python/pytest/pytest_collection_error.txt | pytest | 2.7K | 2.7K | 21 | 0.8% | search |
+| python/pytest/pytest_failing.txt | pytest | 2.4K | 2.3K | 16 | 0.7% | search |
 | python/pytest/pytest_passing.txt | pytest | 1.4K | 1.4K | 0 | 0.0% | none |
 | python/pytest/pytest_passing_warnings.txt | pytest | 1.5K | 1.5K | 0 | 0.0% | none |
 | python/pytest/pytest_skipped.txt | pytest | 1.3K | 1.3K | 0 | 0.0% | none |
@@ -75,9 +75,9 @@ Synthetic benchmarks: 0
 | python/traceback/traceback_chained.txt | python3 | 508 | 508 | 0 | 0.0% | none |
 | python/traceback/traceback_valueerror.txt | python3 | 164 | 164 | 0 | 0.0% | none |
 | rust/cargo_check/cargo_check_clean.txt | cargo | 118 | 118 | 0 | 0.0% | none |
-| rust/cargo_check/cargo_check_deadcode.txt | cargo | 718 | 718 | 0 | 0.0% | none |
-| rust/cargo_check/cargo_check_type_error.txt | cargo | 408 | 408 | 0 | 0.0% | none |
-| rust/cargo_check/cargo_check_unused_import.txt | cargo | 481 | 481 | 0 | 0.0% | none |
+| rust/cargo_check/cargo_check_deadcode.txt | cargo | 718 | 715 | 3 | 0.4% | search |
+| rust/cargo_check/cargo_check_type_error.txt | cargo | 408 | 386 | 22 | 5.4% | search |
+| rust/cargo_check/cargo_check_unused_import.txt | cargo | 481 | 477 | 4 | 0.8% | search |
 | rust/cargo_test/cargo_test_failing.txt | cargo | 705 | 705 | 0 | 0.0% | none |
 | rust/cargo_test/cargo_test_panic.txt | cargo | 639 | 639 | 0 | 0.0% | none |
 
@@ -85,4 +85,4 @@ Synthetic benchmarks: 0
 
 | Metric | SUTRA (adaptive) | SUTRA (no parser) | GZIP | ZSTD |
 |--------|------------------|-------------------|------|------|
-| **Median** | **0.0** | **0.009** | N/A | N/A |</pre>
+| **Median** | **0.0** | **0.09** | N/A | N/A |</pre>

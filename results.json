@@ -1,9 +1,9 @@
 {
   "metadata": {
     "version": "v0.6.3",
-    "generated_at": "2026-11-19T04:18:18+00:00",
+    "generated_at": "2026-11-19T05:01:02+00:00",
     "python_version": "3.13.18",
-    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43"
+    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
   },
   "summary": {
     "total_fixtures": 46,
@@ -11,9 +11,9 @@
     "synthetic_benchmarks": 0,
     "overall_compression": {
       "before_bytes": 503507,
-      "after_bytes": 503507,
-      "saved_bytes": 0,
-      "saved_percentage": 0.0
+      "after_bytes": 503236,
+      "saved_bytes": 271,
+      "saved_percentage": 0.1
     }
   },
   "tool_categories": {
@@ -21,9 +21,9 @@
       "category": "general/compiler_errors",
       "count": 1,
       "total_before_bytes": 265,
-      "total_after_bytes": 265,
+      "total_after_bytes": 253,
       "total_tokens_before": 67,
-      "total_tokens_after": 67,
+      "total_tokens_after": 66,
       "cases": [
         {
           "case": "general/compiler_errors/gcc_type_error.txt",
@@ -31,17 +31,17 @@
           "tool": "gcc",
           "category": "general/compiler_errors",
           "original_bytes": 265,
-          "compressed_bytes": 265,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 253,
+          "saved_bytes": 12,
+          "saved_pct": 4.5,
+          "rule": "search",
           "tokens_before": 67,
-          "tokens_after": 67,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0,
-          "latency_ms": 0.045,
-          "latency_min_ms": 0.044291999998335996,
-          "latency_max_ms": 0.05285000000299078
+          "tokens_after": 66,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 1.5,
+          "latency_ms": 1.227,
+          "latency_min_ms": 1.2160080000001017,
+          "latency_max_ms": 1.2488890000099673
         }
       ]
     },
@@ -49,9 +49,9 @@
       "category": "general/git_diff",
       "count": 6,
       "total_before_bytes": 748,
-      "total_after_bytes": 748,
+      "total_after_bytes": 747,
       "total_tokens_before": 260,
-      "total_tokens_after": 260,
+      "total_tokens_after": 259,
       "cases": [
         {
           "case": "general/git_diff/git_diff_staged.txt",
@@ -67,9 +67,9 @@
           "tokens_after": 56,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.044,
-          "latency_min_ms": 0.04279099999848768,
-          "latency_max_ms": 0.05119799999420138
+          "latency_ms": 0.089,
+          "latency_min_ms": 0.08557900000027985,
+          "latency_max_ms": 0.13661399999875812
         },
         {
           "case": "general/git_diff/git_diff_unstaged.txt",
@@ -85,9 +85,9 @@
           "tokens_after": 56,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.046,
-          "latency_min_ms": 0.043278999996232415,
-          "latency_max_ms": 0.054511000001866705
+          "latency_ms": 0.085,
+          "latency_min_ms": 0.08317599998974856,
+          "latency_max_ms": 0.09140100000593065
         },
         {
           "case": "general/git_status/git_log.txt",
@@ -103,9 +103,9 @@
           "tokens_after": 12,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.045,
-          "latency_min_ms": 0.04299400000462583,
-          "latency_max_ms": 0.05016499999754842
+          "latency_ms": 0.315,
+          "latency_min_ms": 0.2985269999982165,
+          "latency_max_ms": 0.3360070000013593
         },
         {
           "case": "general/git_status/git_status_clean.txt",
@@ -121,9 +121,9 @@
           "tokens_after": 12,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.044,
-          "latency_min_ms": 0.043037999994055554,
-          "latency_max_ms": 0.04680900000408883
+          "latency_ms": 0.34,
+          "latency_min_ms": 0.3279309999868474,
+          "latency_max_ms": 0.3524070000082702
         },
         {
           "case": "general/git_status/git_status_mixed.txt",
@@ -131,17 +131,17 @@
           "tool": "git",
           "category": "general/git_status",
           "original_bytes": 36,
-          "compressed_bytes": 36,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 35,
+          "saved_bytes": 1,
+          "saved_pct": 2.8,
+          "rule": "search",
           "tokens_before": 16,
-          "tokens_after": 16,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0,
-          "latency_ms": 0.045,
-          "latency_min_ms": 0.04385300000109282,
-          "latency_max_ms": 0.048171999999624404
+          "tokens_after": 15,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 6.2,
+          "latency_ms": 0.569,
+          "latency_min_ms": 0.5604650000066158,
+          "latency_max_ms": 0.6004800000027899
         },
         {
           "case": "general/git_status/git_status_verbose.txt",
@@ -157,9 +157,9 @@
           "tokens_after": 108,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.044,
-          "latency_min_ms": 0.043695999998760726,
-          "latency_max_ms": 0.04741800000118701
+          "latency_ms": 0.49,
+          "latency_min_ms": 0.46539800000289233,
+          "latency_max_ms": 0.49864999999726933
         }
       ]
     },
@@ -185,9 +185,9 @@
           "tokens_after": 127771,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 56.583,
-          "latency_min_ms": 56.09516599999864,
-          "latency_max_ms": 56.85004000000049
+          "latency_ms": 96.342,
+          "latency_min_ms": 94.2529290000067,
+          "latency_max_ms": 99.02068000000952
         }
       ]
     },
@@ -195,7 +195,7 @@
       "category": "general/long_stack_trace",
       "count": 4,
       "total_before_bytes": 1919,
-      "total_after_bytes": 1919,
+      "total_after_bytes": 1886,
       "total_tokens_before": 587,
       "total_tokens_after": 587,
       "cases": [
@@ -213,9 +213,9 @@
           "tokens_after": 139,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.048,
-          "latency_min_ms": 0.04407799999484041,
-          "latency_max_ms": 0.10381400000625263
+          "latency_ms": 0.942,
+          "latency_min_ms": 0.9234520000092061,
+          "latency_max_ms": 1.1172039999962635
         },
         {
           "case": "javascript/node/node_reference_error.txt",
@@ -223,10 +223,10 @@
           "tool": "node",
           "category": "javascript/node",
           "original_bytes": 582,
-          "compressed_bytes": 582,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 578,
+          "saved_bytes": 4,
+          "saved_pct": 0.7,
+          "rule": "search",
           "tokens_before": 169,
           "tokens_after": 169,
           "tokens_saved": 0,
@@ -238,10 +238,10 @@
           "tool": "node",
           "category": "javascript/node",
           "original_bytes": 632,
-          "compressed_bytes": 632,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 629,
+          "saved_bytes": 3,
+          "saved_pct": 0.5,
+          "rule": "search",
           "tokens_before": 190,
           "tokens_after": 190,
           "tokens_saved": 0,
@@ -253,10 +253,10 @@
           "tool": "node",
           "category": "javascript/node",
           "original_bytes": 315,
-          "compressed_bytes": 315,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 289,
+          "saved_bytes": 26,
+          "saved_pct": 8.3,
+          "rule": "search",
           "tokens_before": 89,
           "tokens_after": 89,
           "tokens_saved": 0,
@@ -286,9 +286,9 @@
           "tokens_after": 124,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.046,
-          "latency_min_ms": 0.04370199999925717,
-          "latency_max_ms": 0.05648299999450046
+          "latency_ms": 0.363,
+          "latency_min_ms": 0.35746599999697537,
+          "latency_max_ms": 0.39095900000063466
         },
         {
           "case": "python/traceback/python_importerror.txt",
@@ -356,9 +356,9 @@
       "category": "general/repeated_test_output",
       "count": 6,
       "total_before_bytes": 10159,
-      "total_after_bytes": 10159,
+      "total_after_bytes": 10106,
       "total_tokens_before": 2349,
-      "total_tokens_after": 2349,
+      "total_tokens_after": 2346,
       "cases": [
         {
           "case": "general/repeated_test_output/repeated_pytest_output.txt",
@@ -366,14 +366,14 @@
           "tool": "pytest",
           "category": "general/repeated_test_output",
           "original_bytes": 892,
-          "compressed_bytes": 892,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 876,
+          "saved_bytes": 16,
+          "saved_pct": 1.8,
+          "rule": "search",
           "tokens_before": 167,
-          "tokens_after": 167,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 166,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 0.6
         },
         {
           "case": "python/pytest/pytest_collection_error.txt",
@@ -381,14 +381,14 @@
           "tool": "pytest",
           "category": "python/pytest",
           "original_bytes": 2718,
-          "compressed_bytes": 2718,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 2697,
+          "saved_bytes": 21,
+          "saved_pct": 0.8,
+          "rule": "search",
           "tokens_before": 644,
-          "tokens_after": 644,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 643,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 0.2
         },
         {
           "case": "python/pytest/pytest_failing.txt",
@@ -396,14 +396,14 @@
           "tool": "pytest",
           "category": "python/pytest",
           "original_bytes": 2353,
-          "compressed_bytes": 2353,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 2337,
+          "saved_bytes": 16,
+          "saved_pct": 0.7,
+          "rule": "search",
           "tokens_before": 565,
-          "tokens_after": 565,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 564,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 0.2
         },
         {
           "case": "python/pytest/pytest_passing.txt",
@@ -581,9 +581,9 @@
       "category": "javascript/jest",
       "count": 2,
       "total_before_bytes": 887,
-      "total_after_bytes": 887,
+      "total_after_bytes": 801,
       "total_tokens_before": 306,
-      "total_tokens_after": 306,
+      "total_tokens_after": 299,
       "cases": [
         {
           "case": "javascript/jest/jest_clean.txt",
@@ -591,14 +591,14 @@
           "tool": "jest",
           "category": "javascript/jest",
           "original_bytes": 216,
-          "compressed_bytes": 216,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 201,
+          "saved_bytes": 15,
+          "saved_pct": 6.9,
+          "rule": "search",
           "tokens_before": 73,
-          "tokens_after": 73,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 70,
+          "tokens_saved": 3,
+          "tokens_saved_pct": 4.1
         },
         {
           "case": "javascript/jest/jest_failing.txt",
@@ -606,14 +606,14 @@
           "tool": "jest",
           "category": "javascript/jest",
           "original_bytes": 671,
-          "compressed_bytes": 671,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 600,
+          "saved_bytes": 71,
+          "saved_pct": 10.6,
+          "rule": "search",
           "tokens_before": 233,
-          "tokens_after": 233,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 229,
+          "tokens_saved": 4,
+          "tokens_saved_pct": 1.7
         }
       ]
     },
@@ -676,9 +676,9 @@
       "category": "javascript/vitest",
       "count": 2,
       "total_before_bytes": 1048,
-      "total_after_bytes": 1048,
+      "total_after_bytes": 1003,
       "total_tokens_before": 444,
-      "total_tokens_after": 444,
+      "total_tokens_after": 432,
       "cases": [
         {
           "case": "javascript/vitest/vitest_clean.txt",
@@ -686,14 +686,14 @@
           "tool": "vitest",
           "category": "javascript/vitest",
           "original_bytes": 194,
-          "compressed_bytes": 194,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 189,
+          "saved_bytes": 5,
+          "saved_pct": 2.6,
+          "rule": "search",
           "tokens_before": 75,
-          "tokens_after": 75,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 70,
+          "tokens_saved": 5,
+          "tokens_saved_pct": 6.7
         },
         {
           "case": "javascript/vitest/vitest_failing.txt",
@@ -701,14 +701,14 @@
           "tool": "vitest",
           "category": "javascript/vitest",
           "original_bytes": 854,
-          "compressed_bytes": 854,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 814,
+          "saved_bytes": 40,
+          "saved_pct": 4.7,
+          "rule": "search",
           "tokens_before": 369,
-          "tokens_after": 369,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 362,
+          "tokens_saved": 7,
+          "tokens_saved_pct": 1.9
         }
       ]
     },
@@ -756,9 +756,9 @@
       "category": "python/pip",
       "count": 1,
       "total_before_bytes": 1024,
-      "total_after_bytes": 1024,
+      "total_after_bytes": 1012,
       "total_tokens_before": 237,
-      "total_tokens_after": 237,
+      "total_tokens_after": 234,
       "cases": [
         {
           "case": "python/pip/pip_install_fails.txt",
@@ -766,14 +766,14 @@
           "tool": "pip",
           "category": "python/pip",
           "original_bytes": 1024,
-          "compressed_bytes": 1024,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 1012,
+          "saved_bytes": 12,
+          "saved_pct": 1.2,
+          "rule": "search",
           "tokens_before": 237,
-          "tokens_after": 237,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 234,
+          "tokens_saved": 3,
+          "tokens_saved_pct": 1.3
         }
       ]
     },
@@ -781,9 +781,9 @@
       "category": "rust/cargo_check",
       "count": 6,
       "total_before_bytes": 3069,
-      "total_after_bytes": 3069,
+      "total_after_bytes": 3040,
       "total_tokens_before": 955,
-      "total_tokens_after": 955,
+      "total_tokens_after": 951,
       "cases": [
         {
           "case": "rust/cargo_check/cargo_check_clean.txt",
@@ -806,14 +806,14 @@
           "tool": "cargo",
           "category": "rust/cargo_check",
           "original_bytes": 718,
-          "compressed_bytes": 718,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 715,
+          "saved_bytes": 3,
+          "saved_pct": 0.4,
+          "rule": "search",
           "tokens_before": 227,
-          "tokens_after": 227,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 226,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 0.4
         },
         {
           "case": "rust/cargo_check/cargo_check_type_error.txt",
@@ -821,14 +821,14 @@
           "tool": "cargo",
           "category": "rust/cargo_check",
           "original_bytes": 408,
-          "compressed_bytes": 408,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 386,
+          "saved_bytes": 22,
+          "saved_pct": 5.4,
+          "rule": "search",
           "tokens_before": 120,
-          "tokens_after": 120,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 118,
+          "tokens_saved": 2,
+          "tokens_saved_pct": 1.7
         },
         {
           "case": "rust/cargo_check/cargo_check_unused_import.txt",
@@ -836,14 +836,14 @@
           "tool": "cargo",
           "category": "rust/cargo_check",
           "original_bytes": 481,
-          "compressed_bytes": 481,
-          "saved_bytes": 0,
-          "saved_pct": 0.0,
-          "rule": "none",
+          "compressed_bytes": 477,
+          "saved_bytes": 4,
+          "saved_pct": 0.8,
+          "rule": "search",
           "tokens_before": 148,
-          "tokens_after": 148,
-          "tokens_saved": 0,
-          "tokens_saved_pct": 0.0
+          "tokens_after": 147,
+          "tokens_saved": 1,
+          "tokens_saved_pct": 0.7
         },
         {
           "case": "rust/cargo_test/cargo_test_failing.txt",
@@ -885,17 +885,17 @@
       "tool": "gcc",
       "category": "general/compiler_errors",
       "original_bytes": 265,
-      "compressed_bytes": 265,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 253,
+      "saved_bytes": 12,
+      "saved_pct": 4.5,
+      "rule": "search",
       "tokens_before": 67,
-      "tokens_after": 67,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0,
-      "latency_ms": 0.045,
-      "latency_min_ms": 0.044291999998335996,
-      "latency_max_ms": 0.05285000000299078
+      "tokens_after": 66,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 1.5,
+      "latency_ms": 1.227,
+      "latency_min_ms": 1.2160080000001017,
+      "latency_max_ms": 1.2488890000099673
     },
     {
       "case": "general/git_diff/git_diff_staged.txt",
@@ -911,9 +911,9 @@
       "tokens_after": 56,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.044,
-      "latency_min_ms": 0.04279099999848768,
-      "latency_max_ms": 0.05119799999420138
+      "latency_ms": 0.089,
+      "latency_min_ms": 0.08557900000027985,
+      "latency_max_ms": 0.13661399999875812
     },
     {
       "case": "general/git_diff/git_diff_unstaged.txt",
@@ -929,9 +929,9 @@
       "tokens_after": 56,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.046,
-      "latency_min_ms": 0.043278999996232415,
-      "latency_max_ms": 0.054511000001866705
+      "latency_ms": 0.085,
+      "latency_min_ms": 0.08317599998974856,
+      "latency_max_ms": 0.09140100000593065
     },
     {
       "case": "general/git_status/git_log.txt",
@@ -947,9 +947,9 @@
       "tokens_after": 12,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.045,
-      "latency_min_ms": 0.04299400000462583,
-      "latency_max_ms": 0.05016499999754842
+      "latency_ms": 0.315,
+      "latency_min_ms": 0.2985269999982165,
+      "latency_max_ms": 0.3360070000013593
     },
     {
       "case": "general/git_status/git_status_clean.txt",
@@ -965,9 +965,9 @@
       "tokens_after": 12,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.044,
-      "latency_min_ms": 0.043037999994055554,
-      "latency_max_ms": 0.04680900000408883
+      "latency_ms": 0.34,
+      "latency_min_ms": 0.3279309999868474,
+      "latency_max_ms": 0.3524070000082702
     },
     {
       "case": "general/git_status/git_status_mixed.txt",
@@ -975,17 +975,17 @@
       "tool": "git",
       "category": "general/git_status",
       "original_bytes": 36,
-      "compressed_bytes": 36,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 35,
+      "saved_bytes": 1,
+      "saved_pct": 2.8,
+      "rule": "search",
       "tokens_before": 16,
-      "tokens_after": 16,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0,
-      "latency_ms": 0.045,
-      "latency_min_ms": 0.04385300000109282,
-      "latency_max_ms": 0.048171999999624404
+      "tokens_after": 15,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 6.2,
+      "latency_ms": 0.569,
+      "latency_min_ms": 0.5604650000066158,
+      "latency_max_ms": 0.6004800000027899
     },
     {
       "case": "general/git_status/git_status_verbose.txt",
@@ -1001,9 +1001,9 @@
       "tokens_after": 108,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.044,
-      "latency_min_ms": 0.043695999998760726,
-      "latency_max_ms": 0.04741800000118701
+      "latency_ms": 0.49,
+      "latency_min_ms": 0.46539800000289233,
+      "latency_max_ms": 0.49864999999726933
     },
     {
       "case": "general/large_json/large_json_api_response.txt",
@@ -1019,9 +1019,9 @@
       "tokens_after": 127771,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 56.583,
-      "latency_min_ms": 56.09516599999864,
-      "latency_max_ms": 56.85004000000049
+      "latency_ms": 96.342,
+      "latency_min_ms": 94.2529290000067,
+      "latency_max_ms": 99.02068000000952
     },
     {
       "case": "general/long_stack_trace/node_async_stack.txt",
@@ -1037,9 +1037,9 @@
       "tokens_after": 139,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.048,
-      "latency_min_ms": 0.04407799999484041,
-      "latency_max_ms": 0.10381400000625263
+      "latency_ms": 0.942,
+      "latency_min_ms": 0.9234520000092061,
+      "latency_max_ms": 1.1172039999962635
     },
     {
       "case": "general/long_stack_trace/python_recursion_error.txt",
@@ -1055,9 +1055,9 @@
       "tokens_after": 124,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.046,
-      "latency_min_ms": 0.04370199999925717,
-      "latency_max_ms": 0.05648299999450046
+      "latency_ms": 0.363,
+      "latency_min_ms": 0.35746599999697537,
+      "latency_max_ms": 0.39095900000063466
     },
     {
       "case": "general/repeated_test_output/repeated_pytest_output.txt",
@@ -1065,14 +1065,14 @@
       "tool": "pytest",
       "category": "general/repeated_test_output",
       "original_bytes": 892,
-      "compressed_bytes": 892,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 876,
+      "saved_bytes": 16,
+      "saved_pct": 1.8,
+      "rule": "search",
       "tokens_before": 167,
-      "tokens_after": 167,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 166,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 0.6
     },
     {
       "case": "go/compiler/go_compiler_syntax_error.txt",
@@ -1185,14 +1185,14 @@
       "tool": "jest",
       "category": "javascript/jest",
       "original_bytes": 216,
-      "compressed_bytes": 216,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 201,
+      "saved_bytes": 15,
+      "saved_pct": 6.9,
+      "rule": "search",
       "tokens_before": 73,
-      "tokens_after": 73,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 70,
+      "tokens_saved": 3,
+      "tokens_saved_pct": 4.1
     },
     {
       "case": "javascript/jest/jest_failing.txt",
@@ -1200,14 +1200,14 @@
       "tool": "jest",
       "category": "javascript/jest",
       "original_bytes": 671,
-      "compressed_bytes": 671,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 600,
+      "saved_bytes": 71,
+      "saved_pct": 10.6,
+      "rule": "search",
       "tokens_before": 233,
-      "tokens_after": 233,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 229,
+      "tokens_saved": 4,
+      "tokens_saved_pct": 1.7
     },
     {
       "case": "javascript/node/node_reference_error.txt",
@@ -1215,10 +1215,10 @@
       "tool": "node",
       "category": "javascript/node",
       "original_bytes": 582,
-      "compressed_bytes": 582,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 578,
+      "saved_bytes": 4,
+      "saved_pct": 0.7,
+      "rule": "search",
       "tokens_before": 169,
       "tokens_after": 169,
       "tokens_saved": 0,
@@ -1230,10 +1230,10 @@
       "tool": "node",
       "category": "javascript/node",
       "original_bytes": 632,
-      "compressed_bytes": 632,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 629,
+      "saved_bytes": 3,
+      "saved_pct": 0.5,
+      "rule": "search",
       "tokens_before": 190,
       "tokens_after": 190,
       "tokens_saved": 0,
@@ -1245,10 +1245,10 @@
       "tool": "node",
       "category": "javascript/node",
       "original_bytes": 315,
-      "compressed_bytes": 315,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 289,
+      "saved_bytes": 26,
+      "saved_pct": 8.3,
+      "rule": "search",
       "tokens_before": 89,
       "tokens_after": 89,
       "tokens_saved": 0,
@@ -1305,14 +1305,14 @@
       "tool": "vitest",
       "category": "javascript/vitest",
       "original_bytes": 194,
-      "compressed_bytes": 194,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 189,
+      "saved_bytes": 5,
+      "saved_pct": 2.6,
+      "rule": "search",
       "tokens_before": 75,
-      "tokens_after": 75,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 70,
+      "tokens_saved": 5,
+      "tokens_saved_pct": 6.7
     },
     {
       "case": "javascript/vitest/vitest_failing.txt",
@@ -1320,14 +1320,14 @@
       "tool": "vitest",
       "category": "javascript/vitest",
       "original_bytes": 854,
-      "compressed_bytes": 854,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 814,
+      "saved_bytes": 40,
+      "saved_pct": 4.7,
+      "rule": "search",
       "tokens_before": 369,
-      "tokens_after": 369,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 362,
+      "tokens_saved": 7,
+      "tokens_saved_pct": 1.9
     },
     {
       "case": "python/mypy/mypy_clean.txt",
@@ -1365,14 +1365,14 @@
       "tool": "pip",
       "category": "python/pip",
       "original_bytes": 1024,
-      "compressed_bytes": 1024,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 1012,
+      "saved_bytes": 12,
+      "saved_pct": 1.2,
+      "rule": "search",
       "tokens_before": 237,
-      "tokens_after": 237,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 234,
+      "tokens_saved": 3,
+      "tokens_saved_pct": 1.3
     },
     {
       "case": "python/pytest/pytest_collection_error.txt",
@@ -1380,14 +1380,14 @@
       "tool": "pytest",
       "category": "python/pytest",
       "original_bytes": 2718,
-      "compressed_bytes": 2718,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 2697,
+      "saved_bytes": 21,
+      "saved_pct": 0.8,
+      "rule": "search",
       "tokens_before": 644,
-      "tokens_after": 644,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 643,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 0.2
     },
     {
       "case": "python/pytest/pytest_failing.txt",
@@ -1395,14 +1395,14 @@
       "tool": "pytest",
       "category": "python/pytest",
       "original_bytes": 2353,
-      "compressed_bytes": 2353,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 2337,
+      "saved_bytes": 16,
+      "saved_pct": 0.7,
+      "rule": "search",
       "tokens_before": 565,
-      "tokens_after": 565,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 564,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 0.2
     },
     {
       "case": "python/pytest/pytest_passing.txt",
@@ -1530,14 +1530,14 @@
       "tool": "cargo",
       "category": "rust/cargo_check",
       "original_bytes": 718,
-      "compressed_bytes": 718,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 715,
+      "saved_bytes": 3,
+      "saved_pct": 0.4,
+      "rule": "search",
       "tokens_before": 227,
-      "tokens_after": 227,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 226,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 0.4
     },
     {
       "case": "rust/cargo_check/cargo_check_type_error.txt",
@@ -1545,14 +1545,14 @@
       "tool": "cargo",
       "category": "rust/cargo_check",
       "original_bytes": 408,
-      "compressed_bytes": 408,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 386,
+      "saved_bytes": 22,
+      "saved_pct": 5.4,
+      "rule": "search",
       "tokens_before": 120,
-      "tokens_after": 120,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 118,
+      "tokens_saved": 2,
+      "tokens_saved_pct": 1.7
     },
     {
       "case": "rust/cargo_check/cargo_check_unused_import.txt",
@@ -1560,14 +1560,14 @@
       "tool": "cargo",
       "category": "rust/cargo_check",
       "original_bytes": 481,
-      "compressed_bytes": 481,
-      "saved_bytes": 0,
-      "saved_pct": 0.0,
-      "rule": "none",
+      "compressed_bytes": 477,
+      "saved_bytes": 4,
+      "saved_pct": 0.8,
+      "rule": "search",
       "tokens_before": 148,
-      "tokens_after": 148,
-      "tokens_saved": 0,
-      "tokens_saved_pct": 0.0
+      "tokens_after": 147,
+      "tokens_saved": 1,
+      "tokens_saved_pct": 0.7
     },
     {
       "case": "rust/cargo_test/cargo_test_failing.txt",
