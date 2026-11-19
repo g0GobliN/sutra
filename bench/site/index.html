@@ -184,10 +184,12 @@
   }
   @media (max-width: 560px) {
     .shell { width: min(100% - 22px, 1180px); }
-    .topbar { align-items: flex-start; }
+    .topbar { align-items: flex-start; flex-wrap: wrap; }
+    .top-actions { gap: 7px; }
     .stats { gap: 9px; }
     .stat { padding: 12px; }
     .stat .value { font-size: 22px; }
+    .stat .sub { white-space: normal; overflow: visible; }
     .top-actions .pill { display: none; }
   }
   @media (prefers-reduced-motion: reduce) {
