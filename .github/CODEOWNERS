@@ -1,2 +1,53 @@
-# Every change is reviewed by the maintainer.
+# Every change is reviewed by the maintainer. The area rules below make the
+# review requirement explicit for paths where a mistake is expensive, and give
+# GitHub a separate reason to block a pull request that touches them.
 * @g0GobliN
+
+# Compression, recovery and execution core: these files decide what is elided,
+# what must survive, and how a tool result is stored and returned.
+/config.py @g0GobliN
+/core.py @g0GobliN
+/engine.py @g0GobliN
+/optimize.py @g0GobliN
+/parsers.py @g0GobliN
+/preserve.py @g0GobliN
+/recovery.py @g0GobliN
+/runner.py @g0GobliN
+/store.py @g0GobliN
+
+# Host integrations write into another tool's configuration and run its
+# plugin; a mistake here changes a user's editor or agent, not just SUTRA.
+/claude_code.py @g0GobliN
+/codex.py @g0GobliN
+/hermes.py @g0GobliN
+/hook.py @g0GobliN
+/installer.py @g0GobliN
+/mcp.py @g0GobliN
+/openclaw.py @g0GobliN
+/opencode.py @g0GobliN
+/update.py @g0GobliN
+
+# Automation, publishing and the governance files in this directory.
+/.github/ @g0GobliN
+/scripts/ @g0GobliN
+
+# Release identity: the tag check compares all three, and the sdist manifest
+# decides what a user actually receives.
+/__init__.py @g0GobliN
+/MANIFEST.in @g0GobliN
+/plugin.yaml @g0GobliN
+/pyproject.toml @g0GobliN
+
+# Documentation and the policies contributors are held to.
+/CODE_OF_CONDUCT.md @g0GobliN
+/CONTRIBUTING.md @g0GobliN
+/README.md @g0GobliN
+/SECURITY.md @g0GobliN
+/STANDING-RULES.md @g0GobliN
+/CHANGELOG.md @g0GobliN
+/docs/ @g0GobliN
+
+# Tests and measurements: the evidence behind every claim in a pull request.
+/tests/ @g0GobliN
+/bench/ @g0GobliN
+/eval/ @g0GobliN

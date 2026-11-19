@@ -1,0 +1,40 @@
+name: Documentation issue
+description: Report missing, wrong, or outdated documentation
+title: "[Docs]: "
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The documentation map is in [docs/README.md](https://github.com/g0GobliN/sutra/blob/main/docs/README.md).
+        For a security problem, stop here and use **Security → Report a vulnerability**.
+  - type: input
+    id: location
+    attributes:
+      label: Where is the problem
+      description: File name, section heading, or URL. One location per issue.
+      placeholder: docs/release.md — "Publication model"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong or missing
+      description: Quote the sentence or describe the gap. If a command failed, include the command and output.
+    validations:
+      required: true
+  - type: textarea
+    id: correction
+    attributes:
+      label: Suggested correction
+      description: The wording or example you expected to find. A rough draft is fine.
+  - type: input
+    id: version
+    attributes:
+      label: Version the documentation was read against
+      description: The release, tag, or commit, if it is not the current README.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: What you were trying to do when the documentation stopped helping.

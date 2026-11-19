@@ -6,7 +6,8 @@ import pathlib
 import re
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+WORKFLOWS = ROOT / ".github" / "workflows"
+WORKFLOW = WORKFLOWS / "ci.yml"
 
 
 def test_ci_uses_a_read_only_token_by_default():
@@ -42,13 +43,33 @@ def test_the_package_job_exercises_the_installed_cli():
 
 
 def test_every_action_is_pinned_to_a_commit_with_a_version_comment():
-    for path in (WORKFLOW, ROOT / ".github" / "workflows" / "release.yml"):
+    for path in sorted(WORKFLOWS.glob("*.yml")):
         for line in path.read_text(encoding="utf-8").splitlines():
             if " uses: " not in line or line.lstrip().startswith("#"):
                 continue
             reference = line.split("@", 1)[1].split("#", 1)[0].strip()
-            assert re.fullmatch(r"[0-9a-f]{40}", reference), line
-            assert " # " in line, line
+            assert re.fullmatch(r"[0-9a-f]{40}", reference), f"{path.name}: {line}"
+            assert " # " in line, f"{path.name}: {line}"
+
+
+def test_every_workflow_declares_top_level_permissions():
+    # A workflow without a `permissions:` block inherits whatever the repository
+    # default is; every file here must state its own floor.
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        assert re.search(r"(?m)^permissions:\n", text), (
+            f"{path.name} must declare top-level permissions")
+        assert "write-all" not in text, f"{path.name} must not grant write-all"
+
+
+def test_no_workflow_uses_pull_request_target():
+    # pull_request_target runs with a write token and the base repository's
+    # secrets, so a checkout of the pull request head there is unsafe.
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        text = path.read_text(encoding="utf-8")
+        assert "pull_request_target" not in text, (
+            f"{path.name} must not run untrusted pull request code with a "
+            "privileged token")
 
 
 def test_the_test_jobs_install_the_telemetry_extra():

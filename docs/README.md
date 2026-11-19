@@ -50,6 +50,7 @@ need the detail behind a claim.
 | [../SECURITY.md](../SECURITY.md) | Threat model, storage protections, prompt-injection handling |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | Development, tests and pull-request expectations |
 | [release.md](release.md) | Trusted Publishing, versioning, TestPyPI rehearsal and production approval |
+| [repository-settings.md](repository-settings.md) | What the files in `.github/` enforce, the protection state inspected on GitHub, and the settings only an administrator can change |
 
 ## Historical prototypes
 

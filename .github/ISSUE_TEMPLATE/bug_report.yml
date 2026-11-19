@@ -1,5 +1,6 @@
 name: Bug report
 description: A result that was mangled, lost, or could not be recovered
+title: "[Bug]: "
 labels: ["bug"]
 body:
   - type: markdown
@@ -8,6 +9,33 @@ body:
         Do not file security issues here — use **Security → Report a vulnerability**.
 
         A report with a fixture and the settings in force can be fixed in one commit.
+        Remove credentials, API keys, tokens and private paths from every log and
+        fixture you paste: an issue is public and permanent.
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The shortest sequence that shows the problem, including the tool call.
+      placeholder: |
+        1. Run a terminal tool that prints 40 KB of output
+        2. sutra compress the result
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have been returned, or what should have stayed recoverable.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What was returned instead, with the exact text if it is short.
+    validations:
+      required: true
   - type: input
     id: tool
     attributes:
@@ -43,12 +71,6 @@ body:
       placeholder: 41 KB; SUTRA_MAX_BYTES=65536
     validations:
       required: true
-  - type: textarea
-    id: expected
-    attributes:
-      label: What happened, and what you expected
-    validations:
-      required: true
   - type: input
     id: recovery
     attributes:
@@ -61,3 +83,25 @@ body:
       placeholder: sutra 0.3.0, hermes 0.22.5 / claude 2.1.268 / opencode 1.19.5
     validations:
       required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other / container
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Output of `sutra doctor --json` or the failing command. Remove secrets first.
+      render: shell
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that changes how the result was produced or stored.

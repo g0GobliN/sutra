@@ -40,6 +40,32 @@ That check loads the plugin, calls `register()`, and verifies the manifest
 declares exactly the tools and middleware that were registered. A plugin that
 fails it does not load in a real session.
 
+## Continuous integration
+
+Every pull request runs the suite before a maintainer looks at it:
+
+- `ci.yml` — Python 3.11–3.14 on Linux, macOS 3.13, Windows 3.11–3.14, the
+  installed wheel exercised through the CLI, a hyphenated checkout, Hermes
+  validation and the live adapter tests.
+- `lint.yml` — `ruff check .` at the pinned version, plus
+  `scripts/check_github_config.py`, which validates the workflows, issue forms,
+  Dependabot configuration and `CODEOWNERS`, and checks the workflows'
+  permissions and triggers.
+
+`security.yml` audits the optional dependencies and the workflow trust
+boundaries, `codeql.yml` analyzes the Python sources, and
+`dependency-review.yml` fails a pull request that introduces a high or critical
+advisory. None of them need anything from you beyond a normal pull request.
+
+Run the same commands locally before opening it: `python -m pytest tests -q` and
+`ruff check .`. The release workflow is manual and only publishes from a tag;
+you do not need to touch it. What each workflow enforces, and which protections
+live in repository settings rather than in these files, is recorded in
+[docs/repository-settings.md](docs/repository-settings.md).
+
+Report a vulnerability through the private advisory page described in
+[SECURITY.md](SECURITY.md), not in an issue or a pull request.
+
 ## What makes a good pull request
 
 1. **One rule per PR.** A new compression rule, a fix to an existing one, a

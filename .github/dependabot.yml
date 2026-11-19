@@ -1,13 +1,33 @@
 version: 2
 updates:
+  # The pinned action commits in .github/workflows/. Dependabot updates the
+  # commit and keeps the trailing version comment readable; review the upstream
+  # release before merging, because a new major can change inputs.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:
       interval: weekly
+    open-pull-requests-limit: 5
     commit-message:
       prefix: "chore(ci)"
     groups:
       github-actions:
         patterns: ["*"]
-    # Dependabot updates the pinned commit and keeps the trailing version
-    # comment readable; review the upstream release before merging.
+
+  # The optional telemetry extra is the only third-party runtime dependency.
+  # Minor and patch updates arrive together; a major arrives as its own pull
+  # request so the review can look at the upstream breaking-change list.
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      opentelemetry:
+        patterns: ["opentelemetry-*"]
+        update-types: ["minor", "patch"]
+      development:
+        dependency-type: development
+        update-types: ["minor", "patch"]
