@@ -1,5 +1,6 @@
 name: Rule or feature proposal
 description: Propose a new compression rule, a recovery change, or a configuration knob
+title: "[Proposal]: "
 labels: ["enhancement"]
 body:
   - type: markdown
@@ -34,3 +35,31 @@ body:
       description: Explain the effect on diffs, payload schemas, and traceback tails.
     validations:
       required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative approaches
+      description: Other ways to get the same saving, and why they are worse.
+  - type: textarea
+    id: benefits
+    attributes:
+      label: Who benefits, and why this belongs in SUTRA
+      description: The use case, and why this project is the right place for it rather than a host or an integration.
+    validations:
+      required: true
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: Compatibility implications
+      options:
+        - No change to existing behavior
+        - Adds an opt-in setting
+        - Changes existing output (explained below)
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Prior art, related issues, or a prototype.

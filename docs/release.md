@@ -53,7 +53,9 @@ build, the target index (`testpypi` or `pypi`) and an optional
 the build refuses to continue when the tag, `__init__.py` and `plugin.yaml`
 disagree.
 
-A run builds once. `build` produces `dist/` and a `SHA256SUMS` manifest, uploads
+A run builds once. `test` checks out the tagged commit and runs the product
+suite before anything is produced, so a tag whose commit fails the tests never
+yields an artifact. `build` then produces `dist/` and a `SHA256SUMS` manifest, uploads
 them as one immutable workflow artifact, and every later job downloads that
 artifact. Production is a promotion of those same bytes: `publish-pypi` needs
 `verify-testpypi`, so a dispatch cannot reach PyPI without publishing to
@@ -114,14 +116,18 @@ A release version is declared in two files and must agree everywhere:
   read;
 - `plugin.yaml` — `version`, which the Hermes plugin manifest reports.
 
-`scripts/check_version.py <tag>` compares both against a tag such as `v1.2.3`
-and is the first step of the release workflow. Bump both files in the same
-commit.
+`scripts/check_version.py <tag>` compares both against a tag such as `v1.2.3`,
+requires a matching `CHANGELOG.md` heading, and fails with the mismatch or the
+missing heading before anything is built. `build` runs it first; its `--notes`
+mode prints the section under that heading, which the workflow appends to the
+run summary as the release notes. Bump both files and add the heading in the
+same commit.
 
 `CHANGELOG.md` follows [Keep a Changelog](https://keepachangelog.com/) style:
 entries accumulate under `## Unreleased`, and a release moves them under a
 `## <version> (unreleased)` heading. The heading keeps `(unreleased)` until the
-version is actually on PyPI; only then does it take the publication date.
+version is actually on PyPI; only then does it take the publication date. The
+heading itself must exist for the tag, in either form, or the build stops.
 Describe user-visible behaviour, not the internal sequence of commits.
 
 ## Preparing a release
@@ -132,7 +138,8 @@ Describe user-visible behaviour, not the internal sequence of commits.
 4. Open a pull request and wait for CI. Every job must pass:
    - the product suite on Python 3.11, 3.12, 3.13 and 3.14, plus macOS and
      Windows;
-   - `ruff check .`;
+   - `ruff check .` and the GitHub configuration validator, which `lint.yml`
+     runs separately from the product suite;
    - `hermes plugins validate .` at the pinned Hermes revision;
    - the `package` job, which builds the sdist and wheel, runs
      `twine check --strict`, validates the archive contents, installs the
@@ -320,7 +327,8 @@ silently.
 
 ## Release checklist
 
-- [ ] Version bumped in `__init__.py` and `plugin.yaml`, changelog updated.
+- [ ] Version bumped in `__init__.py` and `plugin.yaml`, with a matching
+  `## <version>` heading in `CHANGELOG.md`.
 - [ ] Pull request merged with every CI job green, including `package`.
 - [ ] Tag pushed for the merged commit.
 - [ ] TestPyPI rehearsal passed, including install-back verification.

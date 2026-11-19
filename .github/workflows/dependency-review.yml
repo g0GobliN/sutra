@@ -1,0 +1,31 @@
+name: Dependency review
+
+# Runs on pull requests only. The job summary carries the report, so no
+# pull-request write permission is needed and fork pull requests behave the
+# same as branch pull requests.
+#
+# Policy: a pull request that introduces a dependency with a high or critical
+# advisory fails. Lower severities and license changes are reported, not
+# blocked. When the dependency graph has no data for a changed manifest (for
+# example an ecosystem GitHub does not parse) the action reports that it could
+# not compare instead of inventing a failure.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48 # v4
+        with:
+          fail-on-severity: high
