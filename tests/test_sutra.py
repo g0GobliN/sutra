@@ -128,7 +128,8 @@ def test_traceback_with_no_room_reports_no_change(sutra):
 
 # --- text fidelity ---------------------------------------------------------
 
-def test_crlf_and_final_newline_are_preserved(sutra):
+def test_crlf_and_final_newline_are_preserved(sutra, monkeypatch):
+    monkeypatch.setenv("SUTRA_MODE", "off")
     """Regression: splitlines() + '\\n'.join normalised every payload to LF."""
     text = "\r\n".join(f"line {i}" for i in range(3000)) + "\r\n"
     out, stats = sutra.compress(text, max_bytes=2000, head_bytes=600, tail_bytes=300)

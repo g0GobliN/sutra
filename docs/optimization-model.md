@@ -138,8 +138,8 @@ with `scoring.priority` before evaluating them, so a larger mode explores more
 plans instead of discarding low-probability ones. `SUTRA_SEARCH_BUDGET_MS` and
 the policy budget are recorded, but neither stops the loop: a wall-clock stop
 made the same input produce different output under host load, which the
-determinism invariant caught. `SUTRA_MODE` selects the policy; `off` remains the
-default.
+determinism invariant caught. `SUTRA_MODE` selects the policy; `balanced` is the
+installed default and `off` is the explicit opt-out.
 
 ## Pareto comparison
 
@@ -172,9 +172,9 @@ The loop below is what the code runs, in the order it runs it:
 | Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_MODE` selects the effort level. Learned policies are still deferred — see the limits below |
 | Stop conditions | `max_passes` or no accepted candidate; no clock in the decision, so identical input gives identical output |
 
-The loop is opt-in and fail-open: with `SUTRA_MODE=off` (the default) the
-diagram above does not execute at all, and a broken strategy or validator can
-only lose its own candidate, never the caller's text.
+The loop is fail-open: with `SUTRA_MODE=off` the diagram above does not execute
+at all, and a broken strategy or validator can only lose its own candidate,
+never the caller's text.
 
 ## Implementation map
 

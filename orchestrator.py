@@ -180,9 +180,9 @@ def policy_for(cfg: config.Config) -> ModePolicy:
     (environment or mode file) is set. ``SUTRA_MODE`` therefore wins, and the
     precedence is visible in ``cfg.mode_source``.
     """
-    if cfg.mode_explicit:
-        return MODE_POLICIES[cfg.mode]
-    return _legacy_policy(cfg)
+    if cfg.mode_source == "legacy":
+        return _legacy_policy(cfg)
+    return MODE_POLICIES[cfg.mode]
 
 
 @dataclass(frozen=True)

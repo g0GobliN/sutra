@@ -15,6 +15,22 @@ One core. Multiple agents. Recoverable output. No compression model calls.
 
 > **Eight-fixture benchmark:** payload size reduced by **54.3%**, o200k tokenizer counts by **55.2%**; **8/8** planted clues recovered; **0** diffs touched. The fixtures are generated tool-output shapes and the token figure is not a provider bill — [method](#evidence-and-benchmarks).
 
+## Quick start
+
+```bash
+pip install sutra-agent
+sutra mode balanced     # optional: balanced is already the default
+```
+
+Selecting a mode is the only user decision. SUTRA chooses the applicable
+strategies, plans, combinations, reuse policy and search budget itself, and
+keeps the same preservation and recovery rules in every mode. `balanced`
+already runs the full essential plan set; `aggressive` and `beast` spend more
+effort exploring combinations, they do not unlock a separate capability. Use
+`sutra mode off` for the previous no-optimization path. Advanced tuning
+exists for maintainers and debugging, but is never required for normal use —
+see [docs/modes.md](docs/modes.md).
+
 [Why](#the-problem-tool-output-is-re-read-all-session) · [How it works](#how-sutra-handles-a-tool-result) · [Architecture](#architecture) · [Evidence](#evidence-and-benchmarks) · [Install](#install) · [Integrations](#supported-integrations) · [Limitations](#limitations)
 
 ## The problem: tool output is re-read all session
@@ -335,7 +351,9 @@ The authoritative, per-client matrix — mechanisms, install paths, evidence and
 
 ## Configuration
 
-Common settings, read on every call:
+Normal use needs only `SUTRA_MODE`. The remaining settings are advanced
+controls for existing installations, adapters and debugging; none of them is
+required to obtain optimization. Common settings, read on every call:
 
 | Variable | Default | Meaning |
 |---|---|---|
@@ -349,10 +367,10 @@ Common settings, read on every call:
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` session guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
-| `SUTRA_MODE` | `off` | optimization policy: `off`, `balanced`, `aggressive` or `beast` (see [docs/modes.md](docs/modes.md)) |
+| `SUTRA_MODE` | `balanced` | the one user-facing optimization choice: `off`, `balanced`, `aggressive` or `beast` (see [docs/modes.md](docs/modes.md)) |
 | `SUTRA_MODE_FILE` | `~/.sutra/mode` | persistent mode file written by `sutra mode` |
-| `SUTRA_SEARCH` | `off` | legacy effort switch, honored when `SUTRA_MODE` is unset |
-| `SUTRA_LANGUAGE` | `0` | legacy Caveman gate for the `SUTRA_SEARCH` paths |
+| `SUTRA_SEARCH` | `off` | legacy effort switch for existing installations, honored only when `SUTRA_MODE` is unset; advanced |
+| `SUTRA_LANGUAGE` | `0` | legacy Caveman gate for the `SUTRA_SEARCH` paths; advanced |
 
 The complete table, including store quotas, stats-log rotation and retrieval bounds, is in [docs/configuration.md](https://github.com/g0GobliN/sutra/blob/main/docs/configuration.md).
 
@@ -365,9 +383,10 @@ The complete table, including store quotas, stats-log rotation and retrieval bou
 - **The store is not encrypted.** It is local, permission-protected and expiring, but any process running as you can read it.
 - **The recovery tool may need enabling.** In Hermes, `sutra_restore` is gated by the plugin toolset; without it the marker degrades to "re-run narrower".
 - **No live-model A/B has been run.** No task-success, invoice or provider-token claim is made. The policy's prompt cost is measured by the offline replay; its behavioural effect is not.
-- **The optimization layer is opt-in.** `SUTRA_MODE` defaults to `off`, which
-  keeps the base head/tail compression and recovery but runs no optimization
-  plan. Active modes only accept smaller candidates that still pass the
+- **The optimization layer defaults to `balanced`.** An installation that sets
+  nothing still gets formatting, wording and safe reuse; `SUTRA_MODE=off` is
+  the explicit opt-out and keeps the base head/tail compression without
+  optimization. Active modes only accept smaller candidates that still pass the
   protected-span check, and JSON documents and patches bypass the layer
   entirely. On the measured fixtures the lossless wording pass improves
   repeated test output by 1.79% and compiler errors by 4.53%; the larger

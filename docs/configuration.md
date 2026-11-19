@@ -22,13 +22,13 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_POLICY` | `off` | `off`, `balanced` or `aggressive` agent guidance |
 | `SUTRA_REUSE` | `1` | replace an exact repeat with a marker quoting the earlier id |
 | `SUTRA_REUSE_MIN_BYTES` | `4096` | smallest output eligible for exact-duplicate reuse |
-| `SUTRA_MODE` | `off` | `off`, `balanced`, `aggressive` or `beast` optimization policy; see [modes.md](modes.md) |
+| `SUTRA_MODE` | `balanced` | the only required optimization setting: `off`, `balanced`, `aggressive` or `beast`; see [modes.md](modes.md) |
 | `SUTRA_MODE_FILE` | `~/.sutra/mode` | file written by `sutra mode`; read when `SUTRA_MODE` is unset |
 | `SUTRA_SEARCH` | `off` | legacy effort switch, still honored when `SUTRA_MODE` is unset: `off`, `safe`, `balanced` or `aggressive` |
-| `SUTRA_SEARCH_PASSES` | `4` | most accepted optimization passes per result (1-16) |
+| `SUTRA_SEARCH_PASSES` | `4` | advanced legacy pass cap for `SUTRA_SEARCH=aggressive` (1-16); modes derive their own pass count |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | retained for compatibility and validated (1-5000 ms), but no longer a stop condition: the pass cap is the deterministic bound (see below) |
 | `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
-| `SUTRA_LANGUAGE` | `0` | opt-in wording compression on prose lines while a search mode is active; never applied to code, quotes or fenced blocks |
+| `SUTRA_LANGUAGE` | `0` | advanced legacy Caveman gate for `SUTRA_SEARCH`; modes enable wording themselves and never apply it to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
 | `SUTRA_TELEMETRY` | `0` | enable OpenTelemetry export; see [telemetry.md](telemetry.md) |
@@ -38,8 +38,10 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 
 ## Optimization modes
 
-`SUTRA_MODE` is the normal switch: `off` (default), `balanced`, `aggressive` or
-`beast`. It selects which deterministic plans run, how many passes they get and
+`SUTRA_MODE` is the normal switch: `balanced` (default), `off`, `aggressive` or
+`beast`. A normal installation needs no other optimization variable; the plans,
+passes, combination order, reuse policy and search bound are derived from the
+mode. It selects which deterministic plans run, how many passes they get and
 which repeated calls Ponytail may reuse. The base head/tail compression and its
 recovery path run in every mode, including `off`.
 

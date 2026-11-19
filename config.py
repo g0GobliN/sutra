@@ -13,9 +13,12 @@ at import: the host sets the environment before the plugin is used, and callers
 (tests, operators) may change it between calls. The cost is a dozen dictionary
 lookups.
 
-Every existing name, default and precedence rule is unchanged. Parsing an
-invalid value logs one warning per problem per process and falls back to the
-documented default.
+Every existing name and precedence rule is unchanged. The one deliberate
+default change is ``SUTRA_MODE``: ``balanced`` now applies when nothing is set,
+so a normal installation gets optimization without choosing individual
+features. ``SUTRA_MODE=off`` or an explicit legacy ``SUTRA_SEARCH=off`` keeps
+the previous no-optimization path. Parsing an invalid value logs one warning per
+problem per process and falls back to the documented default.
 """
 
 from __future__ import annotations
@@ -65,9 +68,12 @@ DEFAULT_LANGUAGE = False
 
 # Unified optimization modes. ``SUTRA_MODE`` is the canonical switch; the
 # legacy ``SUTRA_SEARCH`` names above remain accepted and keep their old
-# semantics when no mode is set. ``off`` is the default until the benchmark
-# evidence in docs/modes.md justifies changing it.
-DEFAULT_MODE = "off"
+# semantics when no mode is set. ``balanced`` is the default because selecting
+# a mode must be the only decision a normal installation has to make; the
+# earlier opt-in default asked users to discover a second switch before any
+# optimization happened. Installations that need the previous byte-identical
+# output set ``SUTRA_MODE=off`` explicitly.
+DEFAULT_MODE = "balanced"
 MODES = ("off", "balanced", "aggressive", "beast")
 MODE_FILE = os.path.join("~", ".sutra", "mode")
 
@@ -228,10 +234,11 @@ def _resolve_mode() -> tuple[str, str]:
     """Resolve the unified mode and where it came from.
 
     Precedence: ``SUTRA_MODE`` (validated), then the persisted mode file, then
-    the legacy ``SUTRA_SEARCH`` mapping. ``source`` is one of ``explicit``,
-    ``file``, ``legacy`` or ``default``; only an explicit source may disable
-    behaviour that used to be on (notably exact-duplicate reuse), so existing
-    installations keep their current output when they set nothing new.
+    the legacy ``SUTRA_SEARCH`` mapping, then ``balanced``. ``source`` is one of
+    ``explicit``, ``file``, ``legacy`` or ``default``; only an explicit source
+    may disable behaviour that used to be on (notably exact-duplicate reuse).
+    Legacy variables keep working unchanged, and an installation that wants the
+    old untouched output selects ``off`` once.
     """
     raw = os.environ.get("SUTRA_MODE")
     if raw is not None and str(raw).strip():
@@ -251,6 +258,10 @@ def _resolve_mode() -> tuple[str, str]:
                    f"{file_value!r}; ignoring it and resolving the next "
                    "configured source")
     legacy = _search_mode()
+    if os.environ.get("SUTRA_SEARCH", "").strip().lower() == "off":
+        # An explicit legacy opt-out is a choice, not an absent setting; do not
+        # upgrade it to the new ``balanced`` default behind the user's back.
+        return "off", "legacy"
     if legacy == "safe":
         return "balanced", "legacy"
     if legacy == "balanced":

@@ -151,6 +151,7 @@ def isolated_home(tmp_path, monkeypatch):
     """Never touch the developer's real ~/.hermes, and never inherit ambient tuning."""
     for name in _SUTRA_ENV:
         monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SUTRA_MODE_FILE", str(tmp_path / "mode"))
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "codex"))
     yield

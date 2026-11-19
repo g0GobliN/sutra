@@ -92,7 +92,8 @@ def test_another_session_has_its_own_index():
     assert second.id != first.id
 
 
-def test_a_payload_below_the_reuse_threshold_is_not_remembered():
+def test_a_payload_below_the_reuse_threshold_is_not_remembered(monkeypatch):
+    monkeypatch.setenv("SUTRA_MODE", "off")
     text = _payload(lines=10)  # below both the compression cap and the reuse floor
     first = _first(text, session="session-small")
     second = _first(text, session="session-small")

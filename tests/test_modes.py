@@ -19,16 +19,52 @@ _BUDGET = {"SUTRA_ENABLED": "1", "SUTRA_MAX_BYTES": "2000",
 
 
 def _cfg(monkeypatch, **env):
-    for key, value in {**_BUDGET, **env}.items():
+    values = {**_BUDGET, **env}
+    if "SUTRA_MODE" not in values:
+        monkeypatch.delenv("SUTRA_MODE", raising=False)
+    for key, value in values.items():
         monkeypatch.setenv(key, value)
     return config.resolve()
 
 
-def test_modes_are_off_by_default(monkeypatch):
-    cfg = _cfg(monkeypatch)
-    assert cfg.mode == "off"
+def test_a_fresh_installation_defaults_to_balanced(monkeypatch):
+    monkeypatch.delenv("SUTRA_MODE", raising=False)
+    cfg = config.resolve()
+    assert cfg.mode == "balanced"
     assert cfg.mode_source == "default"
-    assert orchestrator.policy_for(cfg).passes == 0
+    policy = orchestrator.policy_for(cfg)
+    assert policy.passes == 2
+    assert policy.language is True
+
+
+def test_a_fresh_installation_optimizes_without_selecting_anything(monkeypatch):
+    monkeypatch.delenv("SUTRA_MODE", raising=False)
+    text = ("In order to make use of the queue, it is important to note that "
+            "the worker is able to retry the request.\n") * 20
+    cfg = config.resolve()
+    outcome = core.process_text(text, cfg=cfg)
+    assert outcome.changed is True
+    assert len(outcome.output) < len(text)
+    assert "in order to" not in outcome.output.lower()
+
+
+def test_mode_alone_is_enough_configuration(monkeypatch):
+    monkeypatch.setenv("SUTRA_MODE", "balanced")
+    text = ("In order to make use of the queue, it is important to note that "
+            "the worker is able to retry the request.\n") * 20
+    cfg = config.resolve()
+    outcome = core.process_text(text, cfg=cfg)
+    assert outcome.changed is True
+    assert len(outcome.output) < len(text)
+
+
+def test_balanced_already_has_every_essential_plan(monkeypatch):
+    policies = [orchestrator.policy_for(_cfg(monkeypatch, SUTRA_MODE=mode))
+                for mode in ("balanced", "aggressive", "beast")]
+    balanced = set(policies[0].plans)
+    assert balanced == {"format", "caveman"}
+    for policy in policies[1:]:
+        assert balanced.issubset(set(policy.plans))
 
 
 def test_balanced_turns_caveman_on_without_a_second_switch(monkeypatch):
@@ -54,6 +90,13 @@ def test_explicit_mode_wins_over_legacy_search(monkeypatch):
     cfg = _cfg(monkeypatch, SUTRA_MODE="beast", SUTRA_SEARCH="safe")
     assert cfg.mode == "beast"
     assert orchestrator.policy_for(cfg).combine is True
+
+
+def test_an_explicit_legacy_off_is_not_upgraded_to_balanced(monkeypatch):
+    cfg = _cfg(monkeypatch, SUTRA_SEARCH="off")
+    assert cfg.mode == "off"
+    assert cfg.mode_source == "legacy"
+    assert orchestrator.policy_for(cfg).passes == 0
 
 
 def test_legacy_safe_keeps_its_conservative_policy(monkeypatch):
@@ -85,6 +128,7 @@ def test_explicit_off_disables_exact_duplicate_reuse(monkeypatch):
 def test_mode_file_is_read_and_env_wins(monkeypatch, tmp_path):
     path = tmp_path / "mode"
     monkeypatch.setenv("SUTRA_MODE_FILE", str(path))
+    monkeypatch.delenv("SUTRA_MODE", raising=False)
     config.write_mode("aggressive")
     assert config.resolve().mode == "aggressive"
     monkeypatch.setenv("SUTRA_MODE", "balanced")
@@ -268,7 +312,7 @@ def test_mode_command_persists_and_clears(monkeypatch, tmp_path, capsys):
     assert any(engine["name"] == "ponytail" for engine in payload["engines"])
     assert cli.main(["mode", "--clear"]) == 0
     assert not path.exists()
-    assert config.resolve().mode == "off"
+    assert config.resolve().mode == "balanced"
 
 
 def test_unknown_mode_file_falls_through_to_legacy(monkeypatch, tmp_path):
@@ -285,7 +329,7 @@ def test_unknown_mode_file_falls_through_to_legacy(monkeypatch, tmp_path):
 
 def test_cache_advice_is_mode_gated_and_uses_break_even(monkeypatch):
     economics = cache.Economics(write_cost=3.0, read_cost=1.0, miss_cost=5.0)
-    off = _cfg(monkeypatch)
+    off = _cfg(monkeypatch, SUTRA_MODE="off")
     assert orchestrator.cache_advice(economics, 10, cfg=off) is None
     active = _cfg(monkeypatch, SUTRA_MODE="balanced")
     advice = orchestrator.cache_advice(economics, 1, cfg=active)

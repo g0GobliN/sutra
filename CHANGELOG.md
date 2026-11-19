@@ -25,6 +25,12 @@
 
 ### Changed
 
+- `balanced` is now the default `SUTRA_MODE`. A normal installation obtains
+  optimization by installing and optionally selecting a mode; no search,
+  language, plan, reuse or budget variable is required. Existing installations
+  keep the legacy `SUTRA_SEARCH`/`SUTRA_LANGUAGE` paths, and `SUTRA_MODE=off`
+  preserves the previous no-optimization path.
+
 - A rewrite is now returned only when the original is stored and the marker
   quotes its id. A disabled store, an over-quota entry, a failed write or a
   failed marker pass returns the original with a `recovery-*-kept` rule instead

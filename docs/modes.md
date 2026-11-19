@@ -5,8 +5,13 @@ resource and search-effort policy. It is not a different compression guarantee,
 and it does not change the protected-span rules: every candidate in every mode
 must survive the same exact preservation check before it can replace a byte.
 
-`off` is the default. An installation that has not set `SUTRA_MODE` behaves as it
-did before modes existed.
+`balanced` is the installed default: an installation that sets nothing still
+gets formatting, wording and safe reuse. `off` is the explicit opt-out that
+keeps the base compression and recovery path without running an optimization
+plan. Existing
+installations remain compatible: the legacy `SUTRA_SEARCH` and `SUTRA_LANGUAGE`
+variables are still honored when `SUTRA_MODE` is unset, and public APIs,
+markers and adapters are unchanged.
 
 ## Set a mode
 
@@ -25,7 +30,7 @@ Resolution order, highest first:
 1. `SUTRA_MODE` in the environment;
 2. the mode file;
 3. the legacy `SUTRA_SEARCH` value (see [Migration](#migration-from-sutra_search));
-4. `off`.
+4. `balanced`.
 
 An unknown `SUTRA_MODE` logs a warning and falls through to the next source
 instead of silently forcing a mode. An unknown value passed to `sutra mode` is
@@ -99,7 +104,7 @@ JSON document invalid in exchange for a few bytes.
 
 | `SUTRA_SEARCH` | Equivalent result |
 |---|---|
-| `off` (default) | no search |
+| `off` (explicit opt-out) | no search |
 | `safe` | one formatting pass, Caveman disabled |
 | `balanced` | one formatting pass; Caveman only when `SUTRA_LANGUAGE=1` |
 | `aggressive` | `SUTRA_SEARCH_PASSES` passes with pair combinations; Caveman only when `SUTRA_LANGUAGE=1` |
@@ -114,9 +119,10 @@ in the legacy `balanced` and `aggressive` paths.
 ## Reuse in `off`
 
 Exact-duplicate reuse is disabled when `off` is selected explicitly through
-`SUTRA_MODE` or the mode file. It remains enabled under the legacy default,
-where `off` only means "no search", so an existing installation that sets
-nothing keeps its previous behavior. `SUTRA_REUSE=0` disables it in every case.
+`SUTRA_MODE` or the mode file. It remains enabled for the legacy
+`SUTRA_SEARCH=off` path, where `off` only means "no search", so an existing
+installation that uses the old variables keeps its previous behavior.
+`SUTRA_REUSE=0` disables it in every case.
 
 ## Measured behavior
 
