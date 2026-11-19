@@ -11,7 +11,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_TAIL_BYTES` | `6144` | bytes kept from the end (scaled down proportionally if head and tail exceed the cap) |
 | `SUTRA_STATS_FILE` | `$HERMES_HOME/cache/sutra-stats.jsonl` | where savings are recorded |
 | `SUTRA_STATS_MAX_BYTES` | `5242880` | rotate the log at this size (one `.1` file is kept) |
-| `SUTRA_STORE` | `1` | `0` stops retaining originals; markers then say "not retained" |
+| `SUTRA_STORE` | `1` | `0` stops retaining originals; content-eliding rewrites are then returned unchanged |
 | `SUTRA_STORE_DIR` | `$HERMES_HOME/cache/sutra-store` | where originals are retained |
 | `SUTRA_STORE_TTL_HOURS` | `168` | age at which a retained original expires (7 days) |
 | `SUTRA_STORE_MAX_BYTES` | `134217728` | total size of the store (128 MiB) |

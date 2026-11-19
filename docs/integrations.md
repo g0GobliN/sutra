@@ -41,7 +41,7 @@ server) expose exactly two operations plus introspection:
     output: {changed: bool,          // false = returned untouched
              output: string,         // the text the agent should see
              marker: bool,           // a [sutra: …] marker is present
-             id: string | null,      // recovery reference; null = not retained
+             id: string | null,      // recovery reference; null = nothing retained
              original_bytes: int, compressed_bytes: int}
 
 **restore** — the `sutra_restore` protocol verbatim (arguments, statuses
@@ -138,7 +138,7 @@ The hook is fail-open: a parse error, a missing `tool_response`, a non-text
 result, an envelope that is not valid UTF-8, or any internal failure prints `{}`
 and leaves the original tool result untouched. It never decodes its protocol
 input with replacement characters. When storage is unavailable it still
-compresses, but the marker says "original not retained" and quotes no id.
+returns the original result unchanged, logs a warning to stderr, and quotes no id.
 
 When Claude Code persists a large Bash/PowerShell result, the hook reads the
 full file named by `persistedOutputPath` only if it is a regular `.txt` file of

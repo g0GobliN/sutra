@@ -43,14 +43,17 @@ Related: [recovery.md](recovery.md) (the retrieval protocol in full),
 
 ## 4. Markers — the machine-readable surface
 
-Every rewrite carries one single-line marker stating: completeness (`partial`),
-the omitted byte count and reason, the JSON pointer when the elision is inside a
-field, the retention id, the retention window, and an exact `sutra_restore` call
-for the omitted range (byte offsets) or the omitted lines (repeat collapse).
+Every content-eliding rewrite carries one single-line marker stating:
+completeness (`partial`), the omitted byte count and reason, the JSON pointer
+when the elision is inside a field, the retention id, the retention window, and
+an exact `sutra_restore` call for the omitted range (byte offsets) or the
+omitted lines (repeat collapse). A lossless rewrite — formatting or wording
+with `omitted_bytes == 0` — changes the text without a marker because there is
+no omitted content to recover.
 
 | Guarantee | Enforced by |
 |---|---|
-| The marker is the only place omission is recorded, and it never claims bytes it did not keep: no stored original → no id, and the marker says "original not retained" with re-run advice. | `test_disabled_store_marks_the_result_as_not_retained`, `test_every_marker_renders_exactly` |
+| The marker is the only place omission is recorded, and it never claims bytes it did not keep. If the store is disabled, the entry is over a limit, the write fails, or the marker pass fails, the original is returned unchanged with no marker and no id; `stats.rule` records which recovery step refused. | `test_disabled_store_keeps_the_original`, `test_a_write_that_pushes_the_store_over_quota_keeps_the_original`, `test_a_markerless_rewrite_is_rejected_not_merely_unclaimed`, `test_every_marker_renders_exactly` |
 | Every emitted retrieval hint parses as a Python call and returns evidence when executed against the real store. | `test_every_marker_hint_parses_and_runs` |
 | Byte offsets address the stored original — computed before ANSI stripping and de-duplication, never against the rewritten copy. | `test_byte_offsets_address_the_stored_original_after_dedupe_and_ansi` |
 | Repeat-collapse markers name the omitted line range in the retained original; where line numbers cannot be aligned (exotic breaks, tail fragments), the marker says so and quotes no call. | `test_repeat_collapse_hint_returns_the_omitted_lines`, `test_tail_dedupe_hint_uses_original_line_numbers`, `test_unaddressable_line_breaks_quote_no_hint` |

@@ -35,7 +35,9 @@ def _environment(tmp_path: Path, endpoint: str) -> dict[str, str]:
         "SUTRA_TELEMETRY": "1",
         "SUTRA_TELEMETRY_ENDPOINT": endpoint,
         "SUTRA_TELEMETRY_SAMPLE_RATE": "1.0",
-        "SUTRA_STORE": "0",
+        "SUTRA_MODE": "off",
+        "SUTRA_STORE": "1",
+        "SUTRA_STORE_DIR": str(tmp_path / "store"),
         "SUTRA_STATS_FILE": str(tmp_path / "stats.jsonl"),
     }
 

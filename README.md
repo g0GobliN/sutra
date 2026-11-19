@@ -130,7 +130,7 @@ model reads the smaller result
 original retrieved from the local store when needed
 ```
 
-The recovery path is separate from the compression path: compression can run with storage disabled, but then the marker says the original was not retained and the model can only re-run the command narrower. Recovery reads the local store by validated id and bounded mode.
+The recovery path is separate from the compression path. A rewrite that elides content is returned only when its original was retained and the marker quotes a working id; if storage is unavailable, or the write or marker pass fails, SUTRA returns the original unchanged. Recovery reads the local store by validated id and bounded mode.
 
 The context selector is a separate, opt-in surface: [`context.py`](context.py)
 scores context items, honours dependencies, preserves mandatory material and
@@ -185,7 +185,7 @@ Safety properties you can rely on:
 - **Diffs and patches are byte-identical.** Always.
 - **JSON keeps its shape.** Documents are decoded and re-encoded, never byte-sliced; an array stays an array.
 - **Tracebacks keep their error end.** Only the middle is elided.
-- **An id means the bytes exist.** If storage is off, full or the write failed, the marker says "not retained" and quotes no id.
+- **An id means the bytes exist.** A content-eliding rewrite is returned only after the original is stored and the marker quotes its id. If storage is off, full or the write failed, the original is returned unchanged with no marker.
 - **Fail-open.** Any unexpected shape, parse error or internal exception leaves the original result untouched.
 - **Bounded storage.** Defaults: 32 MiB per entry, 128 MiB total, 2,000 entries, 7-day TTL, 8 KiB recovery response (64 KiB hard cap). The store is local and **not encrypted**; it is protected by filesystem permissions, and tool output can contain secrets. Set `SUTRA_STORE=0` to opt out.
 

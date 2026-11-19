@@ -151,13 +151,12 @@ def test_a_second_pass_over_compressed_output_is_a_noop(sutra):
     assert second.stdout.strip() == "{}"
 
 
-def test_storage_failure_compresses_without_a_false_recovery_id(tmp_path):
+def test_storage_failure_keeps_the_original_without_a_false_recovery_id(tmp_path):
     not_a_dir = tmp_path / "store-is-a-file"
     not_a_dir.write_text("occupied", encoding="utf-8")
     env = dict(os.environ, SUTRA_STORE_DIR=str(not_a_dir))
     result = run_hook({"tool_name": "Bash", "tool_response": big()}, env=env)
     assert result.returncode == 0
-    output = json.loads(result.stdout)["stopReason"]
-    assert "[sutra:" in output
-    assert "original not retained" in output
-    assert not ID_RE.search(output)
+    assert result.stdout.strip() == "{}"
+    assert "could not retain an original" in result.stderr
+    assert not ID_RE.search(result.stdout)
