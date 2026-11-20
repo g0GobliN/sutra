@@ -28,6 +28,17 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_SEARCH_PASSES` | `4` | advanced legacy pass cap for `SUTRA_SEARCH=aggressive` (1-16); modes derive their own pass count |
 | `SUTRA_SEARCH_BUDGET_MS` | `50` | retained for compatibility and validated (1-5000 ms), but no longer a stop condition: the pass cap is the deterministic bound (see below) |
 | `SUTRA_LEDGER_FILE` | unset | optional JSONL path for scoped failure records; unset keeps the ledger in memory only |
+| `SUTRA_SEARCH_OVERHEAD` | `nominal` | how SROF prices a plan's own cost: `nominal` keeps ranking host-independent, `measured` charges the share of the mode's budget the plan used. See [optimization-model.md](optimization-model.md#srof--the-resource-objective) |
+| `SUTRA_REPLAY` | `1` | reuse a read-only tool result before the call runs, where the host asks first; off in `off` mode. See [redundancy.md](redundancy.md) |
+| `SUTRA_REPLAY_FILE` | `$HERMES_HOME/cache/sutra-replay.json` | where the bounded reuse store lives; one file per user, never shared |
+| `SUTRA_REPLAY_TTL_SECONDS` | `600` | how long a recorded read stays reusable |
+| `SUTRA_REPLAY_MAX_ENTRIES` | `64` | most recorded reads kept; the oldest are evicted |
+| `SUTRA_REPLAY_MAX_RESULT_BYTES` | `262144` | largest result worth storing (256 KiB) |
+| `SUTRA_PROMPT` | `0` | trim older recoverable tool results out of the outbound request (Hermes `llm_request` stage); also off in `off` mode. See [integrations.md](integrations.md) |
+| `SUTRA_PROMPT_KEEP_LAST` | `6` | how many of the newest messages are never touched |
+| `SUTRA_PROMPT_MIN_MESSAGE_BYTES` | `8192` | a tool result smaller than this is not worth trimming |
+| `SUTRA_PROMPT_MIN_REQUEST_BYTES` | `65536` | a request smaller than this is left alone entirely |
+| `SUTRA_PROMPT_MAX_MESSAGES` | `8` | most tool results trimmed from one request |
 | `SUTRA_LANGUAGE` | `0` | advanced legacy Caveman gate for `SUTRA_SEARCH`; modes enable wording themselves and never apply it to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |

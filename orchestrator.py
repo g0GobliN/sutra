@@ -87,6 +87,12 @@ __all__ = [
 # must select the same plan on an idle and a loaded host. Real time is still
 # measured and reported.
 RANKING_OVERHEAD = 0.0
+# The two ways to supply SROF's ``O(a)``. ``nominal`` keeps ranking independent
+# of host load; ``measured`` charges each plan the share of the mode's
+# processing budget it actually used, so a plan that spends the whole budget to
+# save a sliver is refused. Both are dimensionless ratios, which is what makes
+# them comparable with the saved fraction.
+OVERHEAD_SOURCES = ("nominal", "measured")
 # Sampling for SMESP ordering never changes the text; it only decides which
 # plan is tried first when the budget cannot cover every plan.
 SAMPLE_BYTES = 8 * 1024
@@ -395,8 +401,25 @@ def _run_plan(text: str, plan: Plan, policy: ModePolicy,
     )
 
 
+def search_overhead(result: PlanResult, policy: ModePolicy,
+                    source: str = "nominal") -> float:
+    """SROF's ``O(a)``: the cost of producing this plan, in plan units.
+
+    ``nominal`` returns the documented constant, which keeps plan selection
+    identical on an idle and a loaded host. ``measured`` charges the plan the
+    fraction of the mode's processing budget it used: ``elapsed / budget``,
+    capped at 1.0. Both are ratios, so they subtract cleanly from the saved
+    fraction; nothing here converts bytes into milliseconds or money.
+    """
+    if source == "measured":
+        budget = policy.budget_ms if policy.budget_ms > 0 else 1.0
+        return min(1.0, max(0.0, result.elapsed_ms) / budget)
+    return RANKING_OVERHEAD
+
+
 def _decide(results: Sequence[PlanResult], policy: ModePolicy,
-            original_bytes: int) -> tuple[PlanResult | None, dict[str, object]]:
+            original_bytes: int, *, overhead_source: str = "nominal",
+            ) -> tuple[PlanResult | None, dict[str, object]]:
     """Run SROF, SEOF, SACE and Pareto over the measured plan results."""
     total = max(1, original_bytes)
     candidates: list[scoring.Candidate] = []
@@ -407,7 +430,7 @@ def _decide(results: Sequence[PlanResult], policy: ModePolicy,
                           "reason": result.error})
             continue
         fraction = result.saved_bytes / total
-        overhead = RANKING_OVERHEAD
+        overhead = search_overhead(result, policy, overhead_source)
         # SROF: the measured benefit must survive the nominal search cost.
         benefit = scoring.net_benefit(fraction, overhead)
         admitted = benefit > 0 and result.saved_bytes > 0
@@ -421,6 +444,8 @@ def _decide(results: Sequence[PlanResult], policy: ModePolicy,
                 "plan": result.plan,
                 "admitted": False,
                 "saved_bytes": result.saved_bytes,
+                "overhead": round(overhead, 6),
+                "overhead_source": overhead_source,
                 "reason": "no positive net saving",
             })
             continue
@@ -434,6 +459,8 @@ def _decide(results: Sequence[PlanResult], policy: ModePolicy,
             "saved_bytes": result.saved_bytes,
             "saved_fraction": round(fraction, 6),
             "sroF_benefit": round(benefit, 6),
+            "overhead": round(overhead, 6),
+            "overhead_source": overhead_source,
             "seof": round(scoring.seof(fraction, overhead,
                                        quality=quality, risk=0.0), 6),
             "sace_cost": round(max(0.0, plan_cost), 6),
@@ -501,7 +528,9 @@ def optimize_text(text: str, *, cfg: config.Config | None = None,
     started = time.monotonic()
     plans = _ordered_plans(text, _plans(policy), policy.budget_ms)
     results = [_run_plan(text, plan, policy, ledger) for plan in plans]
-    chosen, decision = _decide(results, policy, original_bytes)
+    chosen, decision = _decide(results, policy, original_bytes,
+                               overhead_source=getattr(
+                                   cfg, "search_overhead", "nominal"))
     elapsed = (time.monotonic() - started) * 1000.0
     decision = dict(decision)
     decision["budget_ms"] = policy.budget_ms

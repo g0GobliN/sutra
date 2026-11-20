@@ -97,6 +97,8 @@ def workloads() -> list[dict[str, str]]:
         ("git-diff", "general/git_diff/git_diff_unstaged.txt"),
         ("git-patch", "general/git_patch/git_patch_staged.patch"),
         ("compiler-errors", "general/compiler_errors/gcc_type_error.txt"),
+        ("verbose-instructions",
+         "general/verbose_instructions/verbose_instructions.txt"),
     )
     picked: list[dict[str, str]] = []
     for label, relative in choices:
@@ -123,6 +125,30 @@ def _cfg(mode: str, directory: pathlib.Path):
     )
 
 
+_ENCODING: object = None
+
+
+def _encoding():
+    """The o200k tokenizer, or None when tiktoken is not installed."""
+    global _ENCODING
+    if _ENCODING is None:
+        try:
+            import tiktoken
+        except ImportError:  # pragma: no cover - optional benchmark extra
+            _ENCODING = False
+        else:
+            _ENCODING = tiktoken.get_encoding("o200k_base")
+    return _ENCODING or None
+
+
+def tokens(text: str) -> int | None:
+    """Tokens a model would read, or None when the tokenizer is absent."""
+    encoding = _encoding()
+    if encoding is None:
+        return None
+    return len(encoding.encode(text))
+
+
 def _run_once(text: str, mode: str, directory: pathlib.Path,
               tool: str) -> dict[str, object]:
     cfg = _cfg(mode, directory)
@@ -142,10 +168,17 @@ def _run_once(text: str, mode: str, directory: pathlib.Path,
         response = json.loads(recovery.restore(request, store=store))
         restored = response.get("status")
     original_bytes = len(text.encode("utf-8"))
+    original_tokens = tokens(text)
+    output_tokens = tokens(outcome.output)
     return {
         "mode": mode,
         "original_bytes": original_bytes,
         "output_bytes": len(outcome.output.encode("utf-8")),
+        "original_tokens": original_tokens,
+        "output_tokens": output_tokens,
+        "token_reduction_pct": (
+            round((1 - output_tokens / original_tokens) * 100, 3)
+            if original_tokens and output_tokens is not None else None),
         "byte_reduction_pct": (
             round((1 - len(outcome.output.encode("utf-8")) / original_bytes)
                   * 100, 3) if original_bytes else 0.0),
@@ -257,18 +290,24 @@ def _git_sha() -> str:
 
 
 def _print_table(payload: dict[str, object]) -> None:
-    print("| workload | mode | bytes | reduction | changed | restore | chosen |")
-    print("| --- | --- | ---: | ---: | --- | --- | --- |")
+    print("| workload | mode | bytes | byte cut | tokens | token cut | "
+          "restore | chosen |")
+    print("| --- | --- | ---: | ---: | ---: | ---: | --- | --- |")
     for entry in payload["results"]:  # type: ignore[index]
         label = entry["label"]
         for mode in MODES:
             row = entry["modes"][mode]
             trace = entry["trace"][mode]
+            tokens_out = row.get("output_tokens")
+            token_cut = row.get("token_reduction_pct")
+            tokens_cell = "-" if tokens_out is None else str(tokens_out)
+            cut_cell = "-" if token_cut is None else f"{token_cut:.2f}%"
             print(f"| {label} | {mode} | {row['output_bytes']} | "
-                  f"{row['byte_reduction_pct']:.2f}% | {row['changed']} | "
-                  f"{row['restore_status'] or '-'} | "
+                  f"{row['byte_reduction_pct']:.2f}% | {tokens_cell} | "
+                  f"{cut_cell} | {row['restore_status'] or '-'} | "
                   f"{trace['chosen'] or '-'} |")
-    print("\nLocal byte measurements only; no provider token or cost claim.")
+    print("\nLocal measurements only: bytes are exact, tokens are o200k counts "
+          "of the text the model would read. No provider cost claim.")
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -66,6 +66,17 @@ def _run(args: list[str], timeout: int = 90):
         return None
 
 
+def _why(result, timeout: int) -> str:
+    """Explain a failed host call: its own output, or why there is none."""
+    if result is None:
+        return (f"no result from hermes within {timeout}s "
+                "(missing binary, spawn failure or timeout)")
+    text = (result.stderr or result.stdout or "").strip()
+    if text:
+        return text[-300:]
+    return f"hermes exited {result.returncode} without a message"
+
+
 def _manifest_name(path: pathlib.Path) -> str | None:
     try:
         text = (path / MANIFEST).read_text(encoding="utf-8")
@@ -184,15 +195,14 @@ def install(*, dry_run: bool = False) -> int:
         return 1
     validation = _run(["plugins", "validate", str(target)], timeout=VALIDATION_TIMEOUT)
     if validation is None or validation.returncode != 0:
-        detail = ((validation.stderr or validation.stdout) if validation else "hermes did not run")
         _restore(target, backup)
-        print_error(f"Hermes rejected the plugin: {(detail or '').strip()[-300:]}")
+        print_error("Hermes rejected the plugin: "
+                    + _why(validation, VALIDATION_TIMEOUT))
         return 1
     enabled = _run(["plugins", "enable", PLUGIN_NAME], timeout=60)
     if enabled is None or enabled.returncode != 0:
-        detail = ((enabled.stderr or enabled.stdout) if enabled else "hermes did not run")
         _restore(target, backup)
-        print_error(f"could not enable the Hermes plugin: {(detail or '').strip()[-300:]}")
+        print_error("could not enable the Hermes plugin: " + _why(enabled, 60))
         return 1
     if _enabled() is not True:
         _restore(target, backup)
@@ -251,8 +261,8 @@ def doctor() -> dict:
     report["installed"] = True
     validation = _run(["plugins", "validate", str(target)], timeout=VALIDATION_TIMEOUT)
     if validation is None or validation.returncode != 0:
-        detail = ((validation.stderr or validation.stdout) if validation else "hermes did not run")
-        report["probe"] = f"Hermes validation failed: {(detail or '').strip()[-300:]}"
+        report["probe"] = ("Hermes validation failed: "
+                           + _why(validation, VALIDATION_TIMEOUT))
         return report
     enabled = _enabled()
     report["enabled"] = enabled

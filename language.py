@@ -1,19 +1,19 @@
 """Deterministic, opt-in wording compression for prose lines.
 
-The rule is narrow: remove words that carry no technical meaning, never
-rewrite code, and let the protected-span validator decide whether the result is
-acceptable. It is deterministic — a
-fixed table of verbose phrases and politeness fillers — and it refuses to touch
-a line that looks like code, contains a quote or a template placeholder, or is
-inside a fenced block.
+Three narrow passes, all of them strict rewrites that keep the sentence's
+grammatical skeleton: a table of verbose phrases, a subordination compaction
+(", which means that X" becomes ", meaning X") and a sentence-opener removal
+("Note that X" becomes "X"). They never rewrite code, and the protected-span
+validator still decides whether the result is acceptable. Everything is
+deterministic, and a line is refused when it looks like code, contains a quote
+or a template placeholder, or sits inside a fenced block.
 
-Deliberately *not* implemented: paraphrasing, sentence rewriting, synonym
-selection, dropping whole sentences. Those need a model and a semantic
+Deliberately *not* implemented: paraphrasing, synonym selection, clause
+reordering, dropping whole sentences. Those need a model and a semantic
 guarantee this project does not have; claiming them from a word table would be
-dishonest. Everything here is a strict substring replacement that keeps the
-sentence's grammatical skeleton, and every candidate must still pass
-``preserve.preservation_ok`` (negations, numbers, identifiers, commands,
-paths, URLs, error and security terms) before the optimizer may apply it.
+dishonest. Every candidate must still pass ``preserve.preservation_ok``
+(negations, numbers, identifiers, commands, paths, URLs, error and security
+terms) before the optimizer may apply it.
 """
 
 from __future__ import annotations
@@ -21,32 +21,74 @@ from __future__ import annotations
 import re
 from typing import Iterable
 
-# Longest phrase first: "in order to" must win over "in order".
+# Longest phrase first: "in order to" must win over "in order", and every
+# "...the fact that" variant must be rewritten before the generic one.
 _PHRASES: tuple[tuple[str, str], ...] = (
     ("due to the fact that", "because"),
     ("in light of the fact that", "because"),
+    ("owing to the fact that", "because"),
+    ("because of the fact that", "because"),
     ("notwithstanding the fact that", "although"),
     ("in spite of the fact that", "although"),
+    ("despite the fact that", "although"),
+    ("for the reason that", "because"),
+    ("in the majority of cases", "usually"),
+    ("the vast majority of", "most"),
+    ("a significant number of", "many"),
+    ("in close proximity to", "near"),
+    ("with the exception of", "except"),
+    ("in the absence of", "without"),
+    ("in conjunction with", "with"),
+    ("with the aim of", "to"),
+    ("conduct an investigation into", "investigate"),
+    ("perform an analysis of", "analyze"),
+    ("take into consideration", "consider"),
+    ("give consideration to", "consider"),
+    ("in such a way that", "so that"),
+    ("at the present time", "now"),
+    ("at this point in time", "now"),
+    ("in the near future", "soon"),
+    ("on the other hand", "however"),
+    ("as a result of", "from"),
+    ("with regard to", "about"),
+    ("with respect to", "about"),
+    ("in relation to", "about"),
     ("for the purpose of", "to"),
     ("in the event that", "if"),
-    ("at this point in time", "now"),
-    ("with regard to", "about"),
+    ("in order that", "so"),
     ("in order to", "to"),
     ("has the ability to", "can"),
+    ("have the ability to", "can"),
+    ("will be able to", "can"),
     ("is able to", "can"),
+    ("is going to", "will"),
+    ("are going to", "will"),
+    ("make use of", "use"),
+    # No ("make sure to", "ensure"): "ensure clear the cache" is ungrammatical,
+    # and fixing it needs a verb-phrase rewrite this table cannot express.
+    ("make a decision", "decide"),
+    ("provide assistance", "help"),
     ("a large number of", "many"),
+    ("a small number of", "few"),
+    ("a majority of", "most"),
     ("a number of", "some"),
     ("on a regular basis", "regularly"),
-    ("in the near future", "soon"),
+    ("on account of", "because of"),
+    ("by means of", "via"),
+    ("prior to", "before"),
+    ("subsequent to", "after"),
+    ("so as to", "to"),
+    ("as well as", "and"),
+    ("for this reason", "so"),
     ("in the process of", ""),
     ("it should be noted that", ""),
-    ("make use of", "use"),
-    ("make sure to", "ensure"),
     ("it is important to note that", ""),
     ("please note that", ""),
     ("as a matter of fact", ""),
     ("could you please", ""),
     ("i would like you to", ""),
+    # Generic, so it runs after every specific "...the fact that" phrase.
+    ("the fact that", "that"),
     ("kindly", ""),
     ("please", ""),
     ("basically", ""),
@@ -64,9 +106,35 @@ _MARKER_PREFIX = "[sutra:"
 # inside a literal, an interpolation or a piece of code the reader must see.
 _CODE_HINTS = ('"', "'", "`", "${", "{{", "}}", "{", "}", ";", "=", "\t", "->", "::")
 
-_COMPILED = tuple(
-    (re.compile(r"(?<![\w-])" + re.escape(phrase) + r"(?![\w-])", re.IGNORECASE), replacement)
-    for phrase, replacement in _PHRASES
+_PHRASE_ALTERNATION = "|".join(
+    re.escape(phrase)
+    for phrase, _ in sorted(_PHRASES, key=lambda entry: len(entry[0]), reverse=True)
+)
+# One alternation instead of one pattern per phrase: a line is scanned once,
+# not once per entry (the table is ~60 entries, and the orchestrator calls this
+# for every line of every candidate). Longest phrase first, so "a small number
+# of" is not pre-empted by "a number of".
+_COMPILED = re.compile(
+    r"(?<![\w-])(?:" + _PHRASE_ALTERNATION + r")(?![\w-])", re.IGNORECASE
+)
+_PHRASE_REPLACEMENTS = {phrase.lower(): replacement for phrase, replacement in _PHRASES}
+
+# A relative clause whose whole meaning is the conjunction: "X, which means
+# that Y" states the same thing as "X, meaning Y". The comma is required, so a
+# list item that merely contains the words is left alone.
+_SUBORDINATE: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r",\s+which means that\s+", re.IGNORECASE), ", meaning "),
+    (re.compile(r",\s+and that means\s+", re.IGNORECASE), ", so "),
+    (re.compile(r",\s+which is why\s+", re.IGNORECASE), ", so "),
+    (re.compile(r",\s+which means\s+", re.IGNORECASE), ", meaning "),
+)
+
+# A line-opening reminder carries no instruction of its own. Anchored to the
+# start of the line, so "the note that ..." is never touched.
+_OPENER = re.compile(
+    r"^(?:also\s+|pls\s+)?(?:note|remember|keep in mind|bear in mind|be aware)"
+    r"\s+that\s+",
+    re.IGNORECASE,
 )
 
 
@@ -123,6 +191,39 @@ def _dedupe_sentences(text: str) -> str:
     return " ".join(kept)
 
 
+def _phrase(match: re.Match[str]) -> str:
+    """Replace one table hit, keeping the original starting capital."""
+    return _keep_case(match, _PHRASE_REPLACEMENTS[match.group(0).lower()])
+
+
+def _rewrite(text: str) -> str:
+    """Apply the three passes, then the duplicate and whitespace cleanups."""
+    out = text
+    # A single pass is the normal case. Repeating a bounded number of times
+    # reproduces the cascade the per-phrase loop allowed, where one
+    # replacement exposed another entry ("on account of" -> "because of").
+    for _ in range(3):
+        rewritten = _COMPILED.sub(_phrase, out)
+        if rewritten == out:
+            break
+        out = rewritten
+    for pattern, replacement in _SUBORDINATE:
+        out = pattern.sub(replacement, out)
+    out = _OPENER.sub("", out)
+    out = _dedupe_words(out)
+    out = _dedupe_sentences(out)
+    return _squeeze(out)
+
+
+def _rewrite_line(text: str) -> str:
+    """Rewrite one trimmed line, keeping a capitalised line starting capital."""
+    capitalised_start = text[:1].isupper()
+    out = _rewrite(text)
+    if out and capitalised_start and out[:1].islower():
+        out = out[:1].upper() + out[1:]
+    return out
+
+
 def compress_line(line: str) -> str:
     """Rewrite one prose line; never raises, never returns a non-str."""
     stripped = line.strip()
@@ -131,17 +232,9 @@ def compress_line(line: str) -> str:
     if any(hint in line for hint in _CODE_HINTS):
         return line
     indent = line[:len(line) - len(line.lstrip(" "))]
-    out = line.strip(" ")
-    capitalised_start = out[:1].isupper()
-    for pattern, replacement in _COMPILED:
-        out = pattern.sub(lambda m, r=replacement: _keep_case(m, r), out)
-    out = _dedupe_words(out)
-    out = _dedupe_sentences(out)
-    out = _squeeze(out)
+    out = _rewrite_line(line.strip(" "))
     if not out:
         return line
-    if capitalised_start and out[:1].islower():
-        out = out[:1].upper() + out[1:]
     return indent + out
 
 
@@ -194,10 +287,7 @@ def compress_tool_description(text: str) -> str:
         if any(hint in line for hint in ("${", "{{", "}}")) or "`" in line:
             lines.append(line)
             continue
-        out = line.strip(" ")
-        for pattern, replacement in _COMPILED:
-            out = pattern.sub(lambda m, r=replacement: _keep_case(m, r), out)
-        out = _squeeze(_dedupe_sentences(_dedupe_words(out)))
+        out = _rewrite_line(line.strip(" "))
         lines.append(out if out else line)
     return "\n".join(lines)
 

@@ -4,5 +4,6 @@ version: "0.6.3"
 description: "Cost optimization middleware for Hermes Agent: deterministic tool-output reduction, recoverable originals and bounded agent guidance."
 provides_middleware:
   - tool_execution
+  - llm_request
 provides_tools:
   - sutra_restore

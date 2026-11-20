@@ -55,10 +55,14 @@ change:
 
 from __future__ import annotations
 
+import logging
+import os
 from typing import Any
 
 from . import config as _config
 from . import metrics, policy
+from . import prompt as _prompt
+from . import replay
 from . import recovery
 from . import store as _store
 from .core import (
@@ -80,6 +84,8 @@ from .engine import (  # re-exported: this was a single-module plugin before 0.2
     config_from_env,
     strip_ansi,
 )
+
+logger = logging.getLogger(__name__)
 
 __version__ = "0.6.3"
 
@@ -111,19 +117,96 @@ def metrics_snapshot(store=None) -> dict[str, Any]:
     return metrics.snapshot(store)
 
 
+def _replay_store():
+    """The reuse store for this call, or ``None`` when it is off or broken."""
+    try:
+        return replay.store_for(_config)
+    except Exception:  # fail open: reuse is an optimization, never a dependency
+        return None
+
+
+def _replay_root(args: Any) -> str:
+    """The directory the call's relative paths are read from."""
+    for key in ("cwd", "workdir", "root"):
+        if isinstance(args, dict):
+            value = args.get(key)
+            if isinstance(value, str) and value:
+                return value
+    return os.getcwd()
+
+
 def tool_execution(*, next_call, tool_name: str | None = None, args: Any = None,
                    session_id: str | None = None, **_context: Any) -> Any:
-    """The middleware frame: run the tool, then compress what comes back.
+    """The middleware frame: reuse a proven-fresh read, else run and compress.
 
-    The seam owns the bypass list, so a host never needs its own copy of it.
-    ``next_call`` runs before the try: a downstream tool error must propagate
-    unchanged, not be mistaken for a compression failure.
+    This is the one shipped pre-dispatch boundary, so it is the only place
+    where Ponytail can skip work rather than shrink it afterwards. Reuse is
+    attempted first and is deliberately narrow: a structured read-only tool, a
+    named local path, an unchanged dependency stamp, the same session and an
+    entry inside its TTL (``replay.py`` documents the full list). Anything
+    unproven falls through to ``next_call``, which runs before any try block so
+    a downstream tool error still propagates unchanged.
     """
+    store = _replay_store()
+    if store is not None:
+        try:
+            decision = store.lookup(tool_name, args, session_id=session_id,
+                                    root=_replay_root(args))
+        except Exception:
+            decision = None
+        if decision is not None and isinstance(decision, replay.Hit):
+            return decision.value
     result = next_call(args)
     try:
-        return process_result(result, tool_name=tool_name, session_id=session_id)
+        served = process_result(result, tool_name=tool_name, session_id=session_id)
     except Exception:  # fail open: an exotic result shape is never worth a broken call
-        return result
+        served = result
+    if store is not None:
+        try:
+            store.remember(tool_name, args, served, session_id=session_id,
+                           root=_replay_root(args))
+        except Exception:
+            pass
+    return served
+
+
+def request_middleware(*, request: Any = None, session_id: str | None = None,
+                       **_context: Any) -> dict[str, Any] | None:
+    """The ``llm_request`` frame: trim recoverable bytes from the outbound copy.
+
+    The request the host is about to send is the only place where SUTRA can
+    influence what the model reads before it reads it. The policy is
+    deliberately narrow (``prompt.py`` documents it): only older ``role: "tool"``
+    messages that already carry a recovery marker are candidates, the last few
+    messages are never touched, and the stored conversation is not modified. A
+    host that sends a shape this adapter does not model gets the request back
+    unchanged rather than a guess.
+
+    Returns ``None`` when nothing changed so the host keeps its own payload
+    byte-identical, and the middleware result dict otherwise.
+    """
+    if not isinstance(request, dict):
+        return None
+    try:
+        cfg = _config.resolve()
+        if not cfg.prompt_enabled or cfg.mode == "off":
+            return None
+        decision = _prompt.prepare(
+            request,
+            keep_last=cfg.prompt_keep_last,
+            min_message_bytes=cfg.prompt_min_message_bytes,
+            min_request_bytes=cfg.prompt_min_request_bytes,
+            max_messages=cfg.prompt_max_messages,
+        )
+    except Exception:  # fail open: a request rewrite is never worth a broken call
+        return None
+    if not decision.changed:
+        return None
+    return {
+        "request": decision.request,
+        "source": "sutra",
+        "reason": decision.reason,
+    }
 
 
 def register(ctx) -> None:
@@ -135,6 +218,12 @@ def register(ctx) -> None:
     the other two registrations.
     """
     ctx.register_middleware("tool_execution", tool_execution)
+    try:
+        ctx.register_middleware("llm_request", request_middleware)
+    except Exception as exc:  # an older host may not know this stage
+        # Compression and recovery must survive a host without the request
+        # frame, so this registration never propagates.
+        logger.warning("sutra: request optimization unavailable: %s", exc)
     ctx.register_tool(
         name=recovery.TOOL_NAME,
         toolset="sutra",
@@ -164,6 +253,7 @@ __all__ = [
     "process_result",
     "process_text",
     "register",
+    "request_middleware",
     "restore",
     "should_bypass",
     "stats_path",

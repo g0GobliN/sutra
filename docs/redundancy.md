@@ -107,11 +107,53 @@ classification and 240 µs per dependency snapshot. Both are far below the cost
 of the call they are deciding about, but they are not free, so the check is
 opt-in.
 
+## Reusing a result, not just classifying it
+
+Classification answers *may* this run be skipped. Serving the answer requires
+the answer itself, which the ledger deliberately does not hold — it keeps only a
+result digest. `replay.py` is the layer that can actually skip work, and it only
+exists where the host asks before executing:
+
+```python
+# Hermes routes every tool call through this frame; __init__.tool_execution
+# does exactly this, then compresses what came back.
+store = replay.store_for(config)
+hit = store.lookup(tool_name, args, session_id=session_id)
+if isinstance(hit, replay.Hit):
+    return hit.value            # the bytes the host served last time
+result = next_call(args)
+store.remember(tool_name, args, served, session_id=session_id)
+```
+
+A result is reused only when **all** of these hold:
+
+- the tool name is inspection-shaped (`read`, `cat`, `view`, `list`, `grep`,
+  `stat`, …) and carries no mutation token (`write`, `edit`, `run`, `bash`,
+  `apply`, `install`, `delete`, `push`, …);
+- at least one argument names an existing **regular file** — directories are
+  refused, because a directory's stamp does not cover the files inside it, so a
+  listing or recursive search could otherwise replay a stale answer;
+- no argument is a URL: remote content can change without any local stamp
+  noticing;
+- the caller supplies a session id, and the recording came from the same
+  session; results never cross sessions;
+- every stamped file still has the same size, mtime and content digest;
+- the entry is inside its TTL and the stored result is under the size bound.
+
+Everything else executes. The store is bounded (64 entries by default), written
+atomically, session-isolated and best-effort: a corrupt file, a full disk or an
+unserialisable result disables reuse for that call and never fails the tool.
+
+Settings: `SUTRA_REPLAY` (default on), `SUTRA_REPLAY_FILE`, `SUTRA_REPLAY_TTL_SECONDS`
+(600), `SUTRA_REPLAY_MAX_ENTRIES` (64), `SUTRA_REPLAY_MAX_RESULT_BYTES` (256 KiB).
+Reuse is off in `off` mode, and an explicit `off` mode wins over `SUTRA_REPLAY`.
+
 ## What this does not do
 
-- A PostToolUse-style hook sees results, not tool calls, so SUTRA cannot wire
-  this automatically. The classification is available to a host that chooses
-  to ask, through the CLI or the library.
+- A PostToolUse-style hook sees results, not tool calls, so it cannot use
+  either half of this automatically. Only the Hermes middleware asks before the
+  call; the Claude Code, Codex, OpenCode, OpenClaw and MCP surfaces observe
+  results, and they compress after the work rather than skipping it.
 - File dependencies are compared by content hash up to 1 MiB, and by size plus
   mtime above that. A same-size edit inside the same nanosecond on a file over
   1 MiB would be missed; that is stated instead of claimed away.

@@ -28,7 +28,7 @@ Rules, in the same priority order as the rest of the project:
    validator and an empty candidate are recorded as rejected evaluations; the
    caller still gets the original text.
 6. **Deterministic.** Strategies run in a fixed order, ranking is
-   ``scoring.seof`` over the measured bytes saved with a fixed nominal
+   ``scoring.seof`` over the measured fraction saved with a fixed nominal
    overhead and the strategy name as tie-break, and the same input always
    produces the same selection. Measured milliseconds are reported per
    attempt but never decide the winner: on a loaded host two identical runs
@@ -57,14 +57,28 @@ _MAX_REASON_CHARS = 200
 # Ranking uses a fixed nominal overhead, not the measured elapsed time: with
 # real timings two identical runs can rank two similarly sized candidates
 # differently, which makes the output depend on host load. Timings are still
-# measured and reported; they just do not decide the winner.
-RANKING_OVERHEAD_MS = 1.0
+# measured and reported; they just do not decide the winner. The value is a
+# ratio, not milliseconds: the saving it is subtracted from is
+# ``saved_bytes / original_bytes``, so both terms stay dimensionless and SEOF
+# never adds bytes to a clock reading.
+RANKING_OVERHEAD = 0.0
 # Combination search multiplies the work by the number of ordered pairs. The
 # cap is a payload size, not a clock, so the decision stays deterministic.
 PAIR_MAX_BYTES = 256 * 1024
 # Triple combinations are only tried when no pair was accepted and the payload
 # is small; the size bound keeps the choice deterministic and bounded.
 TRIPLE_MAX_BYTES = 64 * 1024
+
+
+def _fraction(saved_bytes: int, original_bytes: int) -> float:
+    """The saving as a dimensionless ratio, the unit SEOF is scored in."""
+    return saved_bytes / max(1, original_bytes)
+
+
+def _seof(saved_bytes: int, original_bytes: int) -> float:
+    """SEOF over one candidate, with both terms in the same (ratio) unit."""
+    return scoring.seof(_fraction(saved_bytes, original_bytes),
+                        RANKING_OVERHEAD)
 
 
 def _size(text: str) -> int:
@@ -448,8 +462,7 @@ def optimize(
                         best, best_text = min(
                             triples,
                             key=lambda item: (
-                                -scoring.seof(item[0].saved_bytes,
-                                              RANKING_OVERHEAD_MS),
+                                -_seof(item[0].saved_bytes, _size(text)),
                                 item[0].name,
                             ),
                         )
@@ -460,8 +473,7 @@ def optimize(
                     best, best_text = min(
                         pairs,
                         key=lambda item: (
-                            -scoring.seof(item[0].saved_bytes,
-                                          RANKING_OVERHEAD_MS),
+                            -_seof(item[0].saved_bytes, _size(text)),
                             item[0].name,
                         ),
                     )
@@ -472,7 +484,7 @@ def optimize(
         best, best_text = min(
             accepted,
             key=lambda item: (
-                -scoring.seof(item[0].saved_bytes, RANKING_OVERHEAD_MS),
+                -_seof(item[0].saved_bytes, _size(text)),
                 item[0].name,
             ),
         )
