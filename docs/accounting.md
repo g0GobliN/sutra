@@ -66,6 +66,13 @@ overhead. Net savings are `0.039`, and efficiency is `4 / 0.169`.
 - `percent_saved` is `None` when the baseline has no tokens; it is never `0%`.
 - A token reduction is only called comparable when the tokenizer is named;
   otherwise `reduction_basis` says "do not compare across models".
+- SUTRA itself ships no tokenizer: the package declares `dependencies = []`, so
+  nothing in the plugin needs model weights or an encoder at runtime. The
+  four-mode comparison in [modes.md](modes.md) is measured with `o200k_base`
+  from the benchmark-only extra (`bench/requirements.txt`), records the tokenizer
+  it used, and is labelled a tokenizer measurement rather than a provider's
+  billed usage. A provider's own counters, when a payload carries them, always
+  win over a local count.
 - `estimated_baseline` records whether the counterfactual was measured or
   estimated. The CLI never sets it on its own.
 

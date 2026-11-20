@@ -1,0 +1,12 @@
+Note that the repository has to be inspected prior to changing any file.
+In order to reproduce the failure, the cache has to be cleared first.
+Due to the fact that the worker cannot observe the tool call, the reuse decision stays conservative.
+The run is slow, which means that the first pass has to scan the whole input.
+It is important to note that the original input is never destroyed when a transformation fails.
+In the event that the provider returns a rate limit, the client will be able to retry after a short delay.
+Keep in mind that the store keeps the original bytes so the caller can restore them at any time.
+Prior to the release, a number of checks have to pass on a regular basis.
+The tool is in the process of reading one file at this point in time.
+Please provide assistance with the audit in the near future if the schedule allows it.
+It should be noted that the cache is invalidated when the dependency version changes.
+The output is truncated when it exceeds the configured budget, so the caller has to handle the marker.

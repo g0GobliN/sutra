@@ -152,6 +152,50 @@ experiment.
 - If the provider reports no usage, the experiment reports task success and
   recovery behavior only, and says so.
 
+## Provider-token check across the four modes
+
+The protocol above runs whole Hermes sessions and is the only thing allowed to
+answer "does an agent still finish the task". A smaller check answers a narrower
+question with the same rigor: **for one identical question, how many input
+tokens does the provider actually report when only the tool result differs?**
+
+The tool result is compressed with `sutra.core.process_text` under each mode;
+the conversation around it (system prompt, question, tool-call scaffolding) is
+byte-identical across modes, temperature is 0 and `max_tokens` is 300. The
+provider's `usage.prompt_tokens` is recorded, never derived from bytes. Answers
+are graded by required substrings, so a smaller request that lost the answer
+shows up as a failure rather than a saving.
+
+Recorded 2026-11-20 against `deepseek/deepseek-v4.1-flash` through the
+Command Code endpoint (`https://api.commandcode.ai/provider/v1`), one trial per
+cell, raw rows in `bench/live-ab.json` (gitignored, like `bench/modes.json`):
+
+| Workload | Original | off | balanced | aggressive | beast | Answers |
+|---|---:|---:|---:|---:|---:|---|
+| 700-line test log | 38,215 B | 289–295 tok | 286–290 tok | 290–292 tok | 288–292 tok | 4/4 correct |
+| 900-record JSON report | 70,431 B | 24,560 tok | 24,560 tok | 24,560 tok | 24,560 tok | 4/4 correct |
+| 40-function module | 3,183 B | 850 tok | 850 tok | 850 tok | 850 tok | 4/4 correct |
+| verbose prose instructions | 3,751 B | 955 tok | 822 tok | 822 tok | 822 tok | 4/4 correct |
+
+Three things this establishes, and two it does not:
+
+- On prose below the elision floor the active modes cut **13.9% of the
+  provider's reported input tokens** (955 → 822) with every answer still
+  correct. That is a measured provider-token saving, not a byte estimate.
+- The large log's reduction (38,215 B → ~676 B) is the base elision path and is
+  present in `off` too, so the four modes are indistinguishable there. That row
+  was measured twice and the two passes differ by up to six tokens with no
+  consistent direction, which is why the modes are not ranked on it. `off` is
+  not a passthrough baseline; the caveat in [modes.md](modes.md) is the same one.
+- Structured JSON is left byte-identical in every mode (24,560 tokens, 0%
+  reduction), by design: the P0 repair forbids rewriting structured documents.
+- No dollar figure is reported: the endpoint returns token counts, not
+  currency, and inventing a price per token would make the number fictional.
+- One trial per cell, four workloads, one model — except the log row, which was
+  repeated. This is evidence that the measurement works and where the savings
+  come from, not a distribution. Whole-session task success still requires the
+  protocol above.
+
 ## Amendment record
 
 Changes after freezing are listed here; the scorers, fixtures, task set and

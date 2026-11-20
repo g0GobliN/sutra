@@ -75,6 +75,58 @@ theoretical grounds.
 || OpenClaw | generated native plugin (`tool.execute.after` + tool registry) + MCP server for `sutra_restore` | **Yes, installed automatically** | **Live host tested** — OpenClaw 0.1.0, isolated config, real Bash tool, scripted local provider: 48,436 B compressed to 18,649 B in the model-facing request (marker + id), then `sutra_restore` returned the buried clue via MCP; `sutra doctor` passes | `sutra install --client openclaw` writes `~/.openclaw/plugins/sutra.js` (config directory overridable with `SUTRA_OPENCLAW_CONFIG`); restart OpenClaw | `tests/test_openclaw_adapter.py`: replacement, recovery through the real MCP server, protected/non-string pass-through, second-pass no-op, malformed/fail-open, storage failure; `tests/test_openclaw_doctor.py`: install, verify, idempotence, dry-run, uninstall, doctor trust states | Tested on OpenClaw 0.1.0 only; one short-lived Python process per oversized result (2.5 s timeout, fail-open); the configuring interpreter must remain available; the plugin is global for that config tree; Windows untested |
 || Cursor | native `postToolUse` hook (`updated_mcp_tool_output`) | **No adapter** | **Audited from official docs, not implemented** | MCP entry only, by hand (`~/.cursor/mcp.json`) | — | Cursor fires `postToolUse` for all tools but only replaces MCP tool output; built-in tool output cannot be replaced. No SUTRA hook is claimed. |
 
+## Which lifecycle stage each adapter reaches
+
+An optimizer can only act where the host hands it control. Seven stages matter:
+before the conversation is constructed, before the prompt is assembled, before
+the model request is sent, before a tool call executes, after a tool call
+returns, after the model produces its answer, and provider usage reporting. A
+"yes" below means the adapter really runs at that stage; "—" means the host
+exposes no such boundary, and SUTRA does not claim it.
+
+| Adapter | Before conversation | Before prompt | Before model request | Before tool call | After tool call | After generation | Usage reporting |
+|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|
+| Hermes Agent | — | — | **opt-in** | **yes** | yes | — | — |
+| Claude Code | — | — | — | — | yes | — | — |
+| Codex CLI | — | — | — | — | yes | — | — |
+| OpenCode | — | — | — | — | yes | — | — |
+| OpenClaw | — | — | — | — | yes | — | — |
+| MCP clients | — | — | — | — | explicit call | — | — |
+| CLI | — | — | — | — | explicit call | — | — |
+| Cursor | — | — | — | — | audited only | — | — |
+
+**Before model request** on Hermes is the `llm_request` stage: the plugin
+receives the assembled provider request and may return a replacement. SUTRA uses
+it only for one narrow job — trimming *older* tool results that already carry a
+recovery marker, so the bytes it removes can still be restored by id. It is off
+unless `SUTRA_PROMPT=1`, never touches system, user or assistant text, never
+touches the most recent messages, and never modifies the stored conversation.
+Everything else in this table is unchanged, including the fact that no adapter
+lets SUTRA choose what the model sees *before* the request exists.
+
+Three consequences follow, and they are the reason the capability set differs by
+host rather than by SUTRA version:
+
+1. **Skipping work is possible only in Hermes.** `tool_execution` is the single
+   shipped frame that sees a call before it runs, so it is the only place the
+   replay store can serve a recorded result instead of executing again. Every
+   other adapter sees the result already produced and can only compress it —
+   see [redundancy.md](redundancy.md).
+2. **Choosing context before the model reads it is possible in no shipped
+   adapter.** Selection needs a boundary that both receives the conversation
+   items and accepts a replacement list. None of the seven exposes one;
+   `tool_execution` fires after the prompt is built and the MCP and CLI surfaces
+   are invoked by the caller. `sutra context` therefore takes the items
+   explicitly, and the selection code in
+   [context-intelligence.md](context-intelligence.md) runs where a caller can
+   supply them.
+3. **Provider usage is never reported by a host.** `sutra cost --usage-file`
+   accepts a provider usage payload (or its own recorded JSON) and prices it;
+   reading a host's internal counters would be a claim nothing verifies. Cache
+   read and write tokens are parsed from provider responses where the payload
+   carries them, and stay labelled unavailable where it does not.
+
 ## Discovery and diagnosis
 
 `sutra detect` is read-only and reports concrete evidence, the selected

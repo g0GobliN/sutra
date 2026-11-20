@@ -52,16 +52,37 @@ path is not an optimization engine and is not disabled by `off`.
 - **Formatting** is the deterministic set already described in
   [configuration.md](configuration.md): line endings, unicode spaces, trailing
   spaces, blank runs and deep indentation.
-- **Caveman** removes filler and repeated prose from ordinary sentences. It
-  skips code, fenced blocks, commands, quoted material and any line carrying
-  shell or template syntax. It is a fixed rule set, not a rewriting model.
-- **Ponytail** is exposed through `decide_execution()` for hosts that control
-  tool dispatch. It classifies a repeated call as `SAFE_TO_REUSE`,
-  `REQUIRES_REVALIDATION`, `MUST_EXECUTE` or `UNKNOWN` from dependency
-  snapshots. Tests, lint, type checks and security scans are never reused, in
-  any mode. A post-tool hook cannot skip the call that already ran, so the hook
-  itself does not perform Ponytail reuse; the host adapter must call it before
-  dispatch.
+- **Caveman** removes filler and repeated prose from ordinary sentences with
+  three deterministic passes: a verbose-phrase table (`in order to` → `to`), a
+  subordination compaction that keeps the conjunction and drops the relative
+  clause (`X, which means that Y` → `X, meaning Y`), and a line-opening reminder
+  removal (`Note that X` → `X`). It keeps the sentence's grammatical skeleton —
+  no paraphrase, no synonym selection, no clause reordering — and it skips code,
+  fenced blocks, commands, quoted material and any line carrying shell or
+  template syntax.
+- **Ponytail** runs where a host asks before dispatching. `redundancy.py`
+  classifies a repeated call as `SAFE_TO_REUSE`, `REQUIRES_REVALIDATION`,
+  `MUST_EXECUTE` or `UNKNOWN` from dependency snapshots, and `replay.py` serves
+  the recorded result in the Hermes `tool_execution` middleware, which is the
+  one shipped frame that sees a call before it runs. Reuse is limited to
+  structured read-only tools naming a regular file in the same session, with
+  the dependency stamp still matching. Tests, lint, type checks, security scans,
+  writes, commands, directory listings and remote fetches are never reused, in
+  any mode. A post-tool hook (Claude Code, Codex, MCP, CLI) cannot skip a call
+  that already ran, so those surfaces compress results instead of skipping
+  them. See [redundancy.md](redundancy.md).
+- **Request trimming** happens on the Hermes `llm_request` stage when
+  `SUTRA_PROMPT=1`: older tool results in the outbound copy are shortened to a
+  head, a tail and the recovery marker they already carry, so the removed bytes
+  remain restorable by id. The stored conversation is not modified, the newest
+  messages are never touched, and a result SUTRA never compressed carries no
+  marker and is left byte-identical. Which older results go first is a context-value
+  decision (`V = w_r R + w_i I + w_d D + w_u U + w_t T` over citation, overlap with
+  the latest question, restorability and position), not an age order, and a result
+  that a later assistant or user message cites by its recovery id is never touched.
+  A request rewrite changes what the model
+  reads, so this stage is opt-in and off in `off` mode; see
+  [integrations.md](integrations.md).
 
 The nominal bound is not a deadline. The pass count and the payload size cap are
 the deterministic bounds, so the same input selects the same plan on an idle and
@@ -76,7 +97,7 @@ not converted into tokens or currency and do not change the winning candidate.
 2. orders them with the SMESP priority rule;
 3. runs each plan's bounded passes through the existing engines;
 4. validates every accepted candidate with `preserve.preservation_ok`;
-5. rejects a plan whose byte saving is not positive (SROF);
+5. rejects a plan whose net benefit is not positive (SROF, `SUTRA_SEARCH_OVERHEAD`);
 6. ranks the survivors with SEOF and selects the lowest-cost admissible plan
    with SACE, reporting the Pareto front.
 
@@ -128,25 +149,64 @@ installation that uses the old variables keeps its previous behavior.
 
 The mode benchmark in `bench/modes.py` compares the four modes through
 `core.process_text` with a fresh local store per trial. It reports exact bytes,
-whether the text changed, recovery status, elapsed time and the orchestrator
-trace. It does not call a model and makes no provider-token or cost claim.
+`o200k` token counts of what the model would read, whether the text changed,
+recovery status, elapsed time and the orchestrator trace. It does not call a
+model, does not see a provider's own counters and makes no cost claim: the token
+column is a tokenizer measurement of the payload, not a billed-usage figure.
 
 Every committed fixture is smaller than the default `SUTRA_MAX_BYTES`, so none
-exercises head/tail elision. Two are still improved by the lossless wording
-pass (892 → 876 bytes of repeated test output, 265 → 253 bytes of compiler
-errors); the others have no applicable plan. On the generated large payloads
-the byte reduction is dominated by the base head/tail elision. The active modes
-differ in the plans they evaluate and in the recorded decision, not in a large
-additional saving on that corpus. That result is reported as measured rather
-than rounded up into a claim.
+exercises head/tail elision on its own, while the generated large payloads are
+dominated by it. That base elision runs in every mode, `off` included — `off`
+disables the optimization engines and the search, not the plugin's own
+recoverable content omission — so the `off` column is not a raw-passthrough
+baseline.
+
+The recorded run over the eleven workloads (830,619 input bytes, this host,
+commit `6468e15` plus the local Caveman change) measured 570,668 bytes in `off`
+and 569,837 in each active mode. The 831-byte difference is the wording pass:
+22.07% on `verbose-instructions`, 4.53% on `compiler-errors`, 1.79% on
+`repeated-test-output`. `aggressive` and `beast` returned the same bytes as
+`balanced` on this corpus while spending far more time (summed medians: 0.82 s
+balanced, 4.81 s aggressive, 21.06 s beast), because none of these fixtures has
+a second applicable transformation for the extra combinations to find. That is a
+statement about the corpus, not a guarantee that deeper search never helps: the
+modes differ in plans evaluated and passes run, and the recorded trace shows it.
+
+The same run counts tokens as well as bytes, with the `o200k_base` tokenizer
+applied to the text the model would read. Bytes and tokens are reported
+separately because they are different measurements and do not move together:
+
+| Mode | Bytes out | Byte cut | Tokens out | Token cut | Summed median |
+|---|---:|---:|---:|---:|---:|
+| off | 570,668 | 31.30% | 157,889 | 33.15% | 0.64 s |
+| balanced | 569,837 | 31.40% | 157,756 | 33.20% | 0.82 s |
+| aggressive | 569,837 | 31.40% | 157,746 | 33.21% | 4.81 s |
+| beast | 569,837 | 31.40% | 157,778 | 33.19% | 21.06 s |
+
+Two things follow from that table and neither is a rounding artefact. The token
+cut is not the byte cut: `verbose-instructions` loses 22.07% of its bytes and
+24.17% of its tokens, while `synthetic-log` loses 90.02% of its bytes and
+89.46% of its tokens, because a saved byte is not a fixed fraction of a token.
+And `beast` returning the fewest tokens is noise, not an achievement — the
+differences across the three active modes (157,746 to 157,778, a spread of
+0.02%) are the wording pass landing on the same text with different search
+order, so no mode ranking should be read into them.
+
+`bench/modes.json` is the raw record: it names the commit and host it measured.
+Re-running `python3 bench/modes.py` regenerates it for the current checkout,
+which is the only way those numbers should be quoted.
 
 ## Limits
 
-- A mode cannot make a host call an API it does not expose. Ponytail reuse and
-  context selection require a host adapter that runs before dispatch or before
-  prompt assembly.
-- Caveman is a fixed prose rule set. It does not paraphrase sentences, and it
-  abstains on anything that looks like code, a command, a path or a template.
+- A mode cannot make a host call an API it does not expose. Ponytail reuse runs
+  in the Hermes middleware because it is the only shipped pre-dispatch frame;
+  context selection needs a host that hands SUTRA the conversation before
+  prompt assembly, which none of the shipped adapters do (`sutra context` takes
+  the items explicitly).
+- Caveman is a deterministic prose rule set: a phrase table, a relative-clause
+  compaction and a line-opening reminder removal. It does not paraphrase
+  sentences or select synonyms, and it abstains on anything that looks like
+  code, a command, a path or a template.
 - The mode bounds are effort bounds. `beast` tries more combinations; it does
   not guarantee a better result, and it still returns the original when no
   candidate passes validation with a positive saving.

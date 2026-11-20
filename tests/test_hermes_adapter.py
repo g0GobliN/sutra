@@ -7,6 +7,7 @@ contact a model or a gateway.
 """
 
 import json
+import os
 import shutil
 import types
 
@@ -181,8 +182,21 @@ def test_dry_run_writes_nothing(isolated, monkeypatch, capsys):
     assert "dry run" in capsys.readouterr().out
 
 
-@pytest.mark.skipif(shutil.which("hermes") is None or not _hermes_cli_works(), reason="hermes CLI not installed or not working")
+_REAL_HERMES = os.environ.get("SUTRA_TEST_REAL_HERMES") == "1"
+
+
+@pytest.mark.skipif(
+    not _REAL_HERMES or shutil.which("hermes") is None or not _hermes_cli_works(),
+    reason="set SUTRA_TEST_REAL_HERMES=1 to run the real Hermes CLI; a fresh "
+           "HERMES_HOME bootstraps a full Hermes install, which takes minutes")
 def test_real_hermes_plugin_round_trip_uses_an_isolated_home(tmp_path, monkeypatch, capsys):
+    """Live host round trip, opt-in.
+
+    An empty ``HERMES_HOME`` makes the CLI install itself first (measured at
+    256 MB and several minutes on this host), so this cannot run in the default
+    suite or under parallel load. Everything SUTRA decides is covered by the
+    fake-runner tests above; this one checks the real CLI accepts the plugin.
+    """
     monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes"))
     import importlib
     real = importlib.reload(hermes)

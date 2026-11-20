@@ -60,9 +60,23 @@ module performs no unit conversion: converting tokens to dollars needs a
 tokenizer and a price, which `cost.py` accepts only as explicit inputs and
 otherwise reports as `unavailable`.
 
-In the search loop, `savings` is the measured byte reduction and `overhead` is
-the measured elapsed time of the candidate. That is the cheapest honest
-measurement available without a provider call.
+When the orchestrator ranks plans it works in dimensionless ratios: the saving
+is `saved_bytes / original_bytes`, and the overhead comes from
+`SUTRA_SEARCH_OVERHEAD`.
+
+| Value | \(O(a)\) | Behaviour |
+|---|---|---|
+| `nominal` (default) | the documented constant `RANKING_OVERHEAD` | two identical payloads select the same plan on an idle and a loaded host |
+| `measured` | `elapsed_ms / budget_ms`, capped at 1.0 | a plan that spends its whole processing allowance to save a sliver is refused |
+
+Both are ratios of two quantities SUTRA actually observes, so the subtraction
+in \(B(a)\) stays unit-correct. The orchestrator records which one it used in
+`decision["trace"][i]["overhead_source"]`, together with the number itself.
+
+Both call sites pass ratios. `optimize.py` scores `saved_bytes / original_bytes`
+against the same nominal constant; the orchestrator scores
+`saved_bytes / original_bytes` against either constant or the measured share of
+the mode's budget. In neither place is a byte count added to a clock reading.
 
 ## SEOF — the efficiency score
 
@@ -78,11 +92,11 @@ finite at zero overhead and zero risk.
 The search loop ranks accepted candidates with
 
 ```python
-scoring.seof(item.saved_bytes, optimize.RANKING_OVERHEAD_MS)   # fixed 1.0
+scoring.seof(item.saved_bytes / size, optimize.RANKING_OVERHEAD)  # fixed 0.0
 ```
 
-The overhead term in ranking is a fixed nominal millisecond, not the measured
-elapsed time. Ranking on real timings made the winner depend on host load: two
+The saving and the overhead are both dimensionless. The overhead term is a
+fixed nominal ratio, not the measured elapsed time. Ranking on real timings made the winner depend on host load: two
 identical runs could pick two strategies of nearly equal size, and the
 determinism test caught exactly that under parallel test load. Measured
 `elapsed_ms` is still recorded on every evaluation and reported; it just does
@@ -160,11 +174,11 @@ The loop below is what the code runs, in the order it runs it:
 | Select the mode policy | `orchestrator.policy_for(cfg)` maps `SUTRA_MODE` (or the legacy `SUTRA_SEARCH`) to plans, passes and reuse policy |
 | Identify plausible opportunities | `engine._apply_search` runs after the deterministic head/tail pass and never for JSON or patches; `redundancy.classify` and `context.select` are the explicit entry points for call-level and context-level opportunities |
 | Generate candidates | `orchestrator` runs the mode's plans; `optimize.optimize` applies formatting passes, ordered pairs when `combine=True`, and triples when `triple=True` and no single or pair was accepted |
-| Rank candidates | `scoring.priority` orders plans before evaluation; `scoring.seof(saved_bytes, RANKING_OVERHEAD_MS)` ranks candidates — never a probability cutoff and never host-load dependent |
+| Rank candidates | `scoring.priority` orders plans before evaluation; `scoring.seof(fraction_saved, RANKING_OVERHEAD)` ranks candidates — never a probability cutoff and never host-load dependent |
 | Test cheap candidates first | strategies are evaluated in fixed order inside one pass; the cheapest timings surface in `Evaluation.elapsed_ms` |
 | Check preservation constraints | `preserve.preservation_ok` against the start-of-run text, for single candidates, pairs and triples alike |
 | Reject and try next | a rejected candidate returns an `Evaluation(accepted=False, reason=…)` and changes nothing |
-| Estimate net benefit | `scoring.net_benefit(saved, overhead)`; below `min_saved_bytes` is rejected |
+| Estimate net benefit | `scoring.net_benefit(fraction_saved, overhead)`; below `min_saved_bytes` is rejected |
 | Apply validated optimization | `Report.applied` records the winning name; the text is replaced only after acceptance |
 | Measure actual result | `Report.saved_bytes`, `Report.elapsed_ms`, per-candidate evaluations |
 | Search again for remaining opportunities | the next pass re-evaluates every strategy against the new text; `aggressive` also tries ordered pairs and `beast` tries triples when nothing shorter was accepted |
@@ -182,7 +196,7 @@ never the caller's text.
 |---|---|---|
 | SPC (exact part) | `preserve.preservation_ok` | every accepted search candidate |
 | SPC (confidence) | `scoring.seof(quality=…)`, `scoring.sace_select(min_quality=…)` | caller-supplied |
-| SROF | `scoring.net_benefit` | `orchestrator` rejects a plan with no net saving; `optimize.optimize` rejects a non-positive candidate |
+| SROF | `scoring.net_benefit` | `orchestrator` rejects a plan whose net benefit is not positive, using `SUTRA_SEARCH_OVERHEAD`; `optimize.optimize` rejects a non-positive candidate |
 | SEOF | `scoring.seof` | `optimize.optimize` candidate ranking and the orchestrator's recorded score |
 | SACE | `scoring.sace_select` | `orchestrator` final plan selection across admissible plans |
 | SMESP | `scoring.priority` | `orchestrator` orders plans before evaluation; budget, not probability, stops the loop |
