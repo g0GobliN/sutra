@@ -1,4 +1,4 @@
-# Local environments and caches
+# Local environments, caches and build output
 .venv/
 venv/
 env/
@@ -17,42 +17,11 @@ htmlcov/
 build/
 dist/
 
-# Local agent/tool state (never publish)
-.freebuff/
-.hermes/
-.claude/
-.cursor/
-
 # Secrets and local configuration
 .env
 .env.*
 !.env.example
 .pypirc
-
-# Internal working notes (kept on disk, not part of the public repo)
-AGENTS.md
-docs/mission-log.md
-docs/idea.md
-docs/baseline.md
-*.local.md
-docs/*.local.md
-
-# Local probes and one-off experiments (never publish)
-.probe_*
-probes/
-requests.jsonl
-hook_input.*
-
-# Generated benchmark data (reproduce with bench/benchmark.py / bench/retrieval.py).
-# The SVG charts are kept: README embeds them.
-bench/*.json
-
-# Generated evaluation results (reproduce with eval/replay.py). Raw reports are
-# private evaluation material; never publish.
-eval/results/
-
-# Local worktrees (never publish)
-.worktrees/
 
 # Editor and OS noise
 .idea/
@@ -66,43 +35,12 @@ Thumbs.db
 *.orig
 *.rej
 
-# Imported conversation cache (local only, never part of the repository)
-.cloud-attachments/
-
-# Internal agent instructions and working notes (kept on disk, never publish)
-SOUL.md
-soul.md
-goal.md
-goals.md
-goal1.md
-goal2.md
-goal3.md
-idea.md
-*.local.md
-docs/*.local.md
-STANDING-RULES.md
-
-# Runtime artifacts (never publish)
-compressed.json
-detect.txt
-doctor.json
-restored.json
-
-# Internal bench scripts
-bench/corpus.py
-bench/corpus_summary.md
-
-# Audit/release reports (internal working docs, never publish)
-SUTRA_V*_AUDIT_REPORT.md
-SUTRA_v*_ARCHITECTURE_AUDIT.md
-SUTRA_V*_RELEASE_REPORT.md
-
-# GitHub internal templates (never publish)
-.github/PR_DESCRIPTION.md
-
 # Logs and temp files
 *.log
 *.tmp
 
-# Private validation workspace (harness, corpus, recorded runs)
-bench/agent/
+# Runtime artifacts produced by local runs of the tools
+compressed.json
+detect.txt
+doctor.json
+restored.json
