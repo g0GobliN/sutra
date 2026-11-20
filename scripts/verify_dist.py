@@ -33,10 +33,9 @@ RUNTIME_MODULES = frozenset({
     "__init__", "cache", "claude_code", "cli", "codex", "config", "context",
     "core", "cost", "discovery", "engine", "failure", "hermes", "hook",
     "installer", "jsonc", "language", "mcp", "metrics", "opencode", "openclaw",
-    "optimize", "orchestrator", "parsers", "policy", "preserve", "providers",
-    "recovery",
-    "redundancy", "repomap", "reuse", "runner", "scoring", "store", "telemetry",
-    "ui", "update", "utf8",
+    "optimize", "orchestrator", "parsers", "policy", "preserve", "prompt",
+    "providers", "recovery", "redundancy", "replay", "repomap", "reuse",
+    "runner", "scoring", "store", "telemetry", "ui", "update", "utf8",
 })
 RUNTIME_SCRIPTS = frozenset({
     "_sutra.py", "sutra-cli.py", "sutra-mcp-server.py", "sutra-claude-code-hook.py",

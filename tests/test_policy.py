@@ -12,14 +12,18 @@ sutra = load_plugin()
 class FakeCtx:
     """The documented Hermes registration surface, recorded for assertions."""
 
-    def __init__(self, *, supports_sections=True, fail_sections=False):
+    def __init__(self, *, supports_sections=True, fail_sections=False,
+                 reject_middleware=()):
         self.sections = []
         self.middleware = []
         self.tools = []
         self.supports_sections = supports_sections
         self.fail_sections = fail_sections
+        self.reject_middleware = tuple(reject_middleware)
 
     def register_middleware(self, kind, callback):
+        if kind in self.reject_middleware:
+            raise ValueError(f"this host does not support the {kind} stage")
         self.middleware.append((kind, callback))
 
     def register_tool(self, **kwargs):
@@ -141,7 +145,7 @@ def test_a_rejecting_host_does_not_break_the_plugin(monkeypatch):
     ctx = FakeCtx(fail_sections=True)
     assert policy.register(ctx) is False
     assert sutra.register(ctx) is None
-    assert [kind for kind, _ in ctx.middleware] == ["tool_execution"]
+    assert [kind for kind, _ in ctx.middleware] == ["tool_execution", "llm_request"]
     assert [tool["name"] for tool in ctx.tools] == ["sutra_restore"]
 
 
@@ -180,6 +184,15 @@ def test_plugin_registers_middleware_tool_and_policy(monkeypatch):
     monkeypatch.setenv("SUTRA_POLICY", "balanced")
     ctx = FakeCtx()
     assert sutra.register(ctx) is None
-    assert [kind for kind, _ in ctx.middleware] == ["tool_execution"]
+    assert [kind for kind, _ in ctx.middleware] == ["tool_execution", "llm_request"]
     assert [tool["name"] for tool in ctx.tools] == ["sutra_restore"]
     assert [section[0] for section in ctx.sections] == [policy.SECTION_ID]
+
+
+def test_a_host_without_the_request_stage_still_gets_compression(monkeypatch):
+    """An older build has no `llm_request`; that must not cost the tool chain."""
+    monkeypatch.setenv("SUTRA_POLICY", "balanced")
+    ctx = FakeCtx(reject_middleware=("llm_request",))
+    assert sutra.register(ctx) is None
+    assert [kind for kind, _ in ctx.middleware] == ["tool_execution"]
+    assert [tool["name"] for tool in ctx.tools] == ["sutra_restore"]

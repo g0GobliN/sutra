@@ -39,6 +39,12 @@ DEFAULT_STORE_MAX_BYTES = 128 * 1024 * 1024
 DEFAULT_STORE_MAX_ENTRY_BYTES = 32 * 1024 * 1024
 DEFAULT_STORE_MAX_ENTRIES = 2_000
 DEFAULT_RECOVERY_MAX_BYTES = 8_192
+#: Bounded reuse of read-only tool results before the call runs (replay.py).
+#: Off in ``off`` mode; a host must also route calls through a pre-dispatch
+#: frame, which today only the Hermes middleware does.
+DEFAULT_REPLAY_TTL_SECONDS = 600
+DEFAULT_REPLAY_MAX_ENTRIES = 64
+DEFAULT_REPLAY_MAX_RESULT_BYTES = 256 * 1024
 DEFAULT_RECOVERY_MAX_MATCHES = 5
 RECOVERY_MAX_BYTES_FLOOR = 512
 HARD_RECOVERY_MAX_BYTES = 65_536
@@ -65,6 +71,18 @@ DEFAULT_SEARCH_BUDGET_MS = 50
 # Wording compression is a separate opt-in: it changes prose, not formatting,
 # so it is never enabled merely by choosing a search mode.
 DEFAULT_LANGUAGE = False
+# How SROF's overhead term ``O(a)`` is supplied. ``nominal`` (default) keeps
+# plan selection independent of host load; ``measured`` charges each plan the
+# share of the mode's processing budget it actually used, which lets a plan
+# that spends the whole budget for a sliver be refused. Both are dimensionless
+# ratios, so neither invents a bytes-to-milliseconds exchange rate.
+DEFAULT_SEARCH_OVERHEAD = "nominal"
+DEFAULT_PROMPT = False
+DEFAULT_PROMPT_KEEP_LAST = 6
+DEFAULT_PROMPT_MIN_MESSAGE_BYTES = 8_192
+DEFAULT_PROMPT_MIN_REQUEST_BYTES = 65_536
+DEFAULT_PROMPT_MAX_MESSAGES = 8
+SEARCH_OVERHEAD_SOURCES = ("nominal", "measured")
 
 # Unified optimization modes. ``SUTRA_MODE`` is the canonical switch; the
 # legacy ``SUTRA_SEARCH`` names above remain accepted and keep their old
@@ -191,6 +209,20 @@ _SEARCH_ALIASES = {
     # name it had during development and stays accepted.
     "maximum": "aggressive", "max": "aggressive",
 }
+
+
+def _search_overhead() -> str:
+    """Read ``SUTRA_SEARCH_OVERHEAD``; unknown values warn and use the default."""
+    raw = os.environ.get("SUTRA_SEARCH_OVERHEAD")
+    if raw is None or not str(raw).strip():
+        return DEFAULT_SEARCH_OVERHEAD
+    value = str(raw).strip().lower()
+    if value not in SEARCH_OVERHEAD_SOURCES:
+        _warn_once(f"SUTRA_SEARCH_OVERHEAD={raw!r} is not one of "
+                   f"{', '.join(SEARCH_OVERHEAD_SOURCES)}; "
+                   f"using {DEFAULT_SEARCH_OVERHEAD}")
+        return DEFAULT_SEARCH_OVERHEAD
+    return value
 
 
 def _search_mode() -> str:
@@ -398,6 +430,17 @@ class Config:
     search_budget_ms: int = DEFAULT_SEARCH_BUDGET_MS
     language: bool = DEFAULT_LANGUAGE
     ledger_path: str = ""
+    replay_enabled: bool = True
+    replay_path: str = ""
+    replay_ttl_seconds: int = DEFAULT_REPLAY_TTL_SECONDS
+    replay_max_entries: int = DEFAULT_REPLAY_MAX_ENTRIES
+    replay_max_result_bytes: int = DEFAULT_REPLAY_MAX_RESULT_BYTES
+    search_overhead: str = DEFAULT_SEARCH_OVERHEAD
+    prompt_enabled: bool = DEFAULT_PROMPT
+    prompt_keep_last: int = DEFAULT_PROMPT_KEEP_LAST
+    prompt_min_message_bytes: int = DEFAULT_PROMPT_MIN_MESSAGE_BYTES
+    prompt_min_request_bytes: int = DEFAULT_PROMPT_MIN_REQUEST_BYTES
+    prompt_max_messages: int = DEFAULT_PROMPT_MAX_MESSAGES
     mode: str = DEFAULT_MODE
     mode_source: str = "default"
 
@@ -484,6 +527,29 @@ def resolve() -> Config:
         ledger_path=os.path.abspath(os.path.expanduser(
             os.environ.get("SUTRA_LEDGER_FILE") or "")) if
         os.environ.get("SUTRA_LEDGER_FILE") else "",
+        replay_enabled=_flag("SUTRA_REPLAY", True),
+        replay_path=os.path.abspath(os.path.expanduser(
+            os.environ.get("SUTRA_REPLAY_FILE")
+            or os.path.join(cache, "sutra-replay.json"))),
+        replay_ttl_seconds=_int("SUTRA_REPLAY_TTL_SECONDS",
+                                DEFAULT_REPLAY_TTL_SECONDS),
+        replay_max_entries=_int("SUTRA_REPLAY_MAX_ENTRIES",
+                                DEFAULT_REPLAY_MAX_ENTRIES, minimum=1),
+        search_overhead=_search_overhead(),
+        prompt_enabled=_flag("SUTRA_PROMPT", DEFAULT_PROMPT),
+        prompt_keep_last=_int("SUTRA_PROMPT_KEEP_LAST",
+                              DEFAULT_PROMPT_KEEP_LAST, minimum=0),
+        prompt_min_message_bytes=_int("SUTRA_PROMPT_MIN_MESSAGE_BYTES",
+                                      DEFAULT_PROMPT_MIN_MESSAGE_BYTES,
+                                      minimum=0),
+        prompt_min_request_bytes=_int("SUTRA_PROMPT_MIN_REQUEST_BYTES",
+                                      DEFAULT_PROMPT_MIN_REQUEST_BYTES,
+                                      minimum=0),
+        prompt_max_messages=_int("SUTRA_PROMPT_MAX_MESSAGES",
+                                 DEFAULT_PROMPT_MAX_MESSAGES, minimum=1),
+        replay_max_result_bytes=_int("SUTRA_REPLAY_MAX_RESULT_BYTES",
+                                     DEFAULT_REPLAY_MAX_RESULT_BYTES,
+                                     minimum=1024),
         telemetry_sample_rate=_float("SUTRA_TELEMETRY_SAMPLE_RATE",
                                      DEFAULT_TELEMETRY_SAMPLE_RATE,
                                      minimum=0.0, maximum=1.0),

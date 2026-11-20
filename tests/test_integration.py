@@ -68,7 +68,7 @@ def test_recovery_schema_uses_the_deferred_tool_id_argument(sutra):
 def test_register_wires_middleware_and_recovery_tool(sutra):
     ctx = FakeCtx()
     sutra.register(ctx)
-    assert [kind for kind, _ in ctx.middleware] == ["tool_execution"]
+    assert [kind for kind, _ in ctx.middleware] == ["tool_execution", "llm_request"]
     assert len(ctx.tools) == 1
     tool = ctx.tools[0]
     assert tool["name"] == "sutra_restore"
@@ -85,7 +85,8 @@ def test_registration_matches_the_manifest(sutra):
     manifest = open(os.path.join(root, "plugin.yaml"), encoding="utf-8").read()
     ctx = FakeCtx()
     sutra.register(ctx)
-    assert "tool_execution" in manifest
+    for kind, _ in ctx.middleware:
+        assert f"- {kind}" in manifest, f"{kind} must be declared in plugin.yaml"
     for tool in ctx.tools:
         assert f"- {tool['name']}" in manifest
     version = re.search(r'^version:\s*"([^"]+)"', manifest, re.M).group(1)
