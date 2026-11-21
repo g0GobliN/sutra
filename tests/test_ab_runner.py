@@ -29,6 +29,10 @@ def _load(name, path):
 run = _load("sutra_ab_run", ROOT / "scripts" / "ab" / "run.py")
 report = _load("sutra_ab_report", ROOT / "scripts" / "ab" / "report.py")
 
+
+def _report_module():
+    return report
+
 BUILTIN = ("log-failure", "traceback", "assertion", "patch", "json-record",
            "buried", "boundary", "coding")
 EXTRA = ("eslint", "mypy", "pytest-fail", "cargo-fail", "go-fail",
@@ -191,6 +195,9 @@ def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
         "pass_index": 1,
         "scored": True, "timed_out": False, "duration_s": 1.5,
         "usage": {"total": {"input_tokens": 1000, "output_tokens": 500,
+                            "cache_read_tokens": 4000,
+                            "cache_write_tokens": 250,
+                            "total_prompt_tokens": 5250,
                             "actual_cost_usd": 0.0075}},
         "runner_tokens": {"input": 900, "output": 450},
         "tool_calls": 4, "sutra_evidence": None,
@@ -224,6 +231,51 @@ def test_report_renders_ci_cost_statistical_honesty_and_deviations(tmp_path):
     assert "- on/log-failure (seed 1): timed out" in text  # deviation listed, never dropped
     assert "Deterministic compression savings" in text
     assert "documented default rates for gpt-4o; estimates only, not provider bills" in text
+    # The uncached remainder is not the prompt: the table states both.
+    assert "| in tok (uncached) |" in text
+    assert "| cache read | cache write | prompt tok (total) |" in text
+    assert "| 1,000 | 500 | 4,000 | 250 | 5,250 |" in text
+    assert "Comparing the uncached column alone can make a" in text
+
+
+def test_prompt_tokens_sums_the_three_buckets():
+    """A prompt is uncached + cache read + cache write; the stated total wins."""
+    report = _report_module()
+    assert report.prompt_tokens(None) is None
+    assert report.prompt_tokens({"input_tokens": 10}) == 10
+    assert report.prompt_tokens(
+        {"input_tokens": 10, "cache_read_tokens": 90,
+         "cache_write_tokens": 5}) == 105
+    assert report.prompt_tokens(
+        {"input_tokens": 10, "cache_read_tokens": 90,
+         "total_prompt_tokens": 100}) == 100
+
+
+def test_a_cached_prompt_is_not_a_small_prompt(tmp_path):
+    """Two arms can differ 38% in uncached tokens while the prompt is the same
+    size; the report must show the total so that difference is visible."""
+    report = _report_module()
+    common = {"protocol": "v2", "task": "json-record", "seed": 1,
+              "pass_index": 1, "scored": True, "timed_out": False,
+              "duration_s": 40.0, "runner_tokens": None, "tool_calls": 4,
+              "sutra_evidence": None, "exit_code": 0, "stderr_tail": ""}
+    on = {**common, "arm": "on", "usage": {"total": {
+        "input_tokens": 18_129, "output_tokens": 389,
+        "cache_read_tokens": 98_176, "cache_write_tokens": 0,
+        "total_prompt_tokens": 116_305}}}
+    off = {**common, "arm": "off", "usage": {"total": {
+        "input_tokens": 29_515, "output_tokens": 721,
+        "cache_read_tokens": 85_376, "cache_write_tokens": 0,
+        "total_prompt_tokens": 114_891}}}
+    p_on = tmp_path / "results-v2-on-pass1.jsonl"
+    p_off = tmp_path / "results-v2-off-pass1.jsonl"
+    p_on.write_text(json.dumps(on) + "\n", encoding="utf-8")
+    p_off.write_text(json.dumps(off) + "\n", encoding="utf-8")
+    out = tmp_path / "report.md"
+    assert report.main([str(p_off), str(p_on), "--out", str(out)]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "| 18,129 | 389 | 98,176 | 0 | 116,305 |" in text
+    assert "| 29,515 | 721 | 85,376 | 0 | 114,891 |" in text
 
 
 def _write_record(path, protocol, arm, task):
