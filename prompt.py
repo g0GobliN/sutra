@@ -292,8 +292,9 @@ def _shorten(
     kept = sum(_size(part) for part in (head_part, salient, *markers, tail_part))
     trimmed = max(0, original - kept)
     notice = (
-        f"{NOTICE_PREFIX} {trimmed:,} bytes trimmed from this older tool "
-        f"result; the marker below carries the id that restores the original]"
+        f"{NOTICE_PREFIX} {trimmed:,} bytes were removed from the middle of "
+        "this older tool result; if the part you need may be the removed one, "
+        "call sutra_restore with the id below]"
     )
     parts = [notice, head_part, *(part for part in (salient,) if part), *markers]
     if tail_part:

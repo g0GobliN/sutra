@@ -4,6 +4,12 @@
 
 ### Changed
 
+- A shortened result's notice now says that the middle of the body was removed and that
+  `sutra_restore` with its id reads the original back, instead of only naming a marker. Two
+  paired runs on `trace-deep` showed why: the identifying frame sat in the removed middle while
+  the closing exception message stayed in the tail, and the agent answered from what it could
+  still see. The preview's size is unchanged.
+
 - A shortened result's preview now keeps the lines that point at a failure — `Traceback`,
   `FAILED`, `ERROR`, a `…Error:` name, `File "…", line N`, `assert` — taken from the middle of the
   body up to 2,048 bytes and paid for out of the head's own budget, so the request does not grow
