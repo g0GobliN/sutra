@@ -160,13 +160,39 @@ experiment.
   read`, `cache write`, and their sum `prompt tok (total)`. Compare arms on
   **`prompt tok (total)`**: a provider that serves most of a prompt from its
   cache reports a smaller uncached remainder without the prompt being smaller.
-  A paired run on 2026-11-21 made this concrete — the treatment arm reported
-  18,129 uncached tokens against the control's 29,515 (38.6% less) while its
-  total prompt was 116,305 against 114,891 (1.2% more), because 12,800 more
-  tokens were served from the prefix cache. The uncached column alone would
-  have read as a saving that did not exist.
+  Two paired runs on 2026-11-21 made this concrete; both are tabulated in
+  `Measured pairs` below. In the first, the treatment arm reported 18,129
+  uncached tokens against the control's 29,515 (38.6% less) while its total
+  prompt was 116,305 against 114,891 (1.2% more), because 12,800 more tokens
+  were served from the prefix cache. The uncached column alone would have read
+  as a saving that did not exist.
 - If the provider reports no usage, the experiment reports task success and
   recovery behavior only, and says so.
+
+### Measured pairs
+
+Two pairs ran the same task (`json-record`, protocol v2) on both arms on
+2026-11-21, switching only the plugin and one mode. Each arm finished the task,
+so the numbers describe cost, not quality.
+
+| pair | admission | arm | uncached | cache read | cache write | prompt total | output | wall |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| aggressive | 32,768 B | off | 29,515 | 85,376 | 0 | 114,891 | 721 | 58.8 s |
+| aggressive | 32,768 B | on | 18,129 | 98,176 | 0 | 116,305 | 389 | 38.9 s |
+| beast | 2,048 B | off | 18,241 | 67,840 | 0 | 86,081 | 321 | 41.5 s |
+| beast | 2,048 B | on | 19,176 | 98,816 | 0 | 117,992 | 325 | 46.0 s |
+
+The aggressive pair is flat on the whole prompt (+1.2%) while the uncached
+column falls 38.6% — a cache artefact, and the reason the report states the
+total.
+
+The beast pair is worse for the treatment arm on both columns. The sessions
+explain it rather than the bytes alone: the control used six messages and two
+tool results, the treatment nine messages and four tool results. With the
+marker-only preview, the agent re-read the file in smaller pieces, so more
+prompt was sent even though each individual request was shorter. Removing text
+a task still needs does not save tokens; it moves them into a second read. This
+is a property of the mode, and the report now shows it.
 
 ## Provider-token check across the four modes
 
