@@ -170,6 +170,27 @@ That is why the stage stays off by default and why
 can set a floor so a few kilobytes of removal — which still moves the cached
 prefix — never becomes a rewrite on its own.
 
+A floor of 25 refused every request trim on the same two seeds — each request
+would have removed 18–24% — and billed this:
+
+| arm | seed | input | cache read | prompt | restores | rewrites | result |
+|---|---|---|---|---|---|---|---|
+| off | 20261041 | 43,095 | 113,024 | 156,119 | 0 | 0 | FAIL |
+| floor 25 | 20261041 | 29,417 | 79,360 | 108,777 | 1 | 0 | PASS |
+| on | 20261041 | 45,852 | 122,624 | 168,476 | 1 | 3 | PASS |
+| off | 20261042 | 29,969 | 82,560 | 112,529 | 0 | 0 | PASS |
+| floor 25 | 20261042 | 39,970 | 97,408 | 137,378 | 0 | 0 | PASS |
+| on | 20261042 | 48,271 | 123,520 | 171,791 | 2 | 3 | PASS |
+
+The floor is cheaper than the same treatment without it on both seeds (by 36 KB
+and 34 KB of prompt tokens) and still answers the planted-frame question without
+the rewrites that bought nothing: the 26 KB result is trimmed by the tool stage
+either way. Against the control the floor is not consistently cheaper — one
+seed lands 47 KB below it, the other 25 KB above — so with two seeds the honest
+claim is that the floor removes the request stage's net cost, not that it turns
+the stage into a saving. A host that wants the lowest bill leaves the stage off;
+a host that wants the headroom enables it with a floor.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.
