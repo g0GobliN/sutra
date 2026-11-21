@@ -223,10 +223,16 @@ def host_retainer(*, session_id: str | None = None, store: Any = None):
 #: or the ``File "…", line N`` pointer makes the agent read the file again, and
 #: a second read costs more than the bytes the preview saved. These lines sit in
 #: the middle of a long result, where neither the head nor the tail reaches.
-_SALIENT = re.compile(
-    r"Traceback \(most recent call last\)|\bFAILED\b|\bERROR\b|\w+Error:|"
-    r'File "[^"]+", line \d+|^\s*assert '
+SALIENT_MARKERS = (
+    "Traceback (most recent call last)",
+    "FAILED",
+    "ERROR",
+    "Error:",
+    "assert ",
 )
+
+#: ``File "…", line N`` — bounded so a hostile body cannot make the scan slow.
+_FILE_LINE = re.compile(r'File "[^"\n]{1,256}", line \d{1,7}')
 
 #: How many bytes of those lines a shortened result keeps, at most.
 SALIENT_BYTES = 2_048
@@ -239,7 +245,9 @@ def _salient(body: str, *, limit: int) -> str:
     kept: list[str] = []
     total = 0
     for line in body.splitlines():
-        if not line or not _SALIENT.search(line):
+        if not line:
+            continue
+        if not any(marker in line for marker in SALIENT_MARKERS) and not _FILE_LINE.search(line):
             continue
         cost = _size(line) + 1
         if total + cost > limit:
