@@ -186,9 +186,11 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
     no byte leaves the request that no id can bring back.
 
     Returns ``None`` when nothing changed so the host keeps its own payload
-    byte-identical, and the middleware result dict otherwise. In ``beast`` mode
-    the preview is dropped: a trimmed result becomes its marker alone, which is
-    the deepest removal this stage performs without losing an id.
+    byte-identical, and the middleware result dict otherwise. Every mode keeps
+    a head/tail preview; ``beast`` keeps a smaller one (384/192 bytes against
+    1,536/768), because a result that shows nothing of itself invites the agent
+    to read the original again, and that second read costs more than the
+    preview it replaces.
     """
     if not isinstance(request, dict):
         return None
@@ -205,8 +207,8 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
             min_message_bytes=cfg.prompt_min_message_bytes,
             min_request_bytes=cfg.prompt_min_request_bytes,
             max_messages=cfg.prompt_max_messages,
-            head_bytes=_prompt.HEAD_BYTES if preview else 0,
-            tail_bytes=_prompt.TAIL_BYTES if preview else 0,
+            head_bytes=cfg.prompt_preview_head if preview else 0,
+            tail_bytes=cfg.prompt_preview_tail if preview else 0,
             retain=retain,
         )
     except Exception:  # fail open: a request rewrite is never worth a broken call

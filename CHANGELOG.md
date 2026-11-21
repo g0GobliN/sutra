@@ -2,9 +2,14 @@
 
 ## Unreleased
 
-### Security
+### Changed
 
-- `sutra proxy` refuses a request target that names another origin. `http.client` dials the host inside an absolute target, so a target that is not a plain rooted path (`http://elsewhere/`, `//elsewhere/`, a backslash or whitespace) is answered with `400` instead of being forwarded, and a header whose name or value carries a control character is dropped on both legs rather than forwarded or echoed.8a (Refuse a proxy target that names another origin)
+- Every mode now keeps a head and a tail beside a trimmed result's marker, and the size of that
+  preview follows the mode: `1536`/`768` bytes in `balanced` and `aggressive`, `384`/`192` in
+  `beast`. A marker-only `beast` trimmed 78.2% of the fixture but made a live session read the
+  file twice; with the smaller preview the same task used 3 model calls and 86,999 whole-prompt
+  tokens against 5 calls and 143,825 without SUTRA, and the fixture still removes 75.0%.
+
 ### Added
 
 - The generated OpenCode plugin now shortens the tool results already inside a conversation before the provider call, through `experimental.chat.messages.transform` and `sutra shorten-results`; only a string whose original the store kept is replaced, and the hook fails open.
