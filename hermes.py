@@ -14,6 +14,7 @@ failed install restores the previous directory.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pathlib
 import re
@@ -148,6 +149,7 @@ def _enabled() -> bool | None:
 
 def status() -> dict:
     path = plugin_dir()
+    report = deployment(path, source_dir())
     return {
         "client": "hermes",
         "binary": binary(),
@@ -156,9 +158,116 @@ def status() -> dict:
         "plugin": str(path),
         "installed": is_ours(path),
         "enabled": _enabled(),
-        "automatic": bool(is_ours(path) and _enabled()),
+        "current": report["current"],
+        "missing_stages": report["missing"],
+        "automatic": bool(is_ours(path) and _enabled() and report["current"] is not False),
         "tier": "automatic",
     }
+
+
+_DECLARED_KEYS = ("provides_middleware", "provides_hooks", "provides_tools")
+# The manifest is compared by its declared stages, not by bytes: two copies
+# that declare the same stages may still format the file differently.
+_COMPARED_FILES = ("prompt.py", "__init__.py", "store.py", "metrics.py")
+
+
+def _declared(path: pathlib.Path) -> dict[str, list[str]]:
+    """Return the stages a plugin.yaml in ``path`` declares.
+
+    The manifest is a short flat YAML file, so this reads it line by line
+    instead of adding a YAML dependency to a plugin that must install without
+    one. A missing or unreadable manifest yields an empty declaration, which the
+    caller reports as unknown rather than as current.
+    """
+    try:
+        text = (path / MANIFEST).read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    declared: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if not line[:1].isspace():
+            key, _, value = stripped.partition(":")
+            current = key if key in _DECLARED_KEYS and not value.strip() else None
+            if current:
+                declared[current] = []
+            continue
+        if current and stripped.startswith("-"):
+            item = stripped[1:].strip().strip("\"'")
+            if item:
+                declared[current].append(item)
+    return declared
+
+
+def _digest(path: pathlib.Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def deployment(installed: pathlib.Path | None = None,
+               source: pathlib.Path | None = None) -> dict:
+    """Compare the installed plugin copy with the package it came from.
+
+    A copy can be enabled, valid and still predate the code the user installed:
+    Hermes loads whatever the directory declares, so a copy that never declared
+    ``llm_request`` keeps running only the stages it has. This reports that
+    difference instead of letting ``sutra doctor`` call such a copy healthy.
+    """
+    target = installed or plugin_dir()
+    origin = source or source_dir()
+    report: dict = {
+        "installed": str(target), "source": str(origin),
+        "current": None, "missing": {}, "extra": {}, "changed_files": [],
+        "reason": "",
+    }
+    theirs = _declared(target)
+    ours = _declared(origin)
+    if not ours:
+        report["reason"] = "this package declares no plugin stages to compare against"
+        return report
+    if not theirs:
+        report["reason"] = f"{target} has no readable {MANIFEST}"
+        return report
+
+    missing = {
+        key: [stage for stage in ours.get(key, []) if stage not in theirs.get(key, [])]
+        for key in _DECLARED_KEYS
+    }
+    extra = {
+        key: [stage for stage in theirs.get(key, []) if stage not in ours.get(key, [])]
+        for key in _DECLARED_KEYS
+    }
+    report["missing"] = {key: value for key, value in missing.items() if value}
+    report["extra"] = {key: value for key, value in extra.items() if value}
+    changed = []
+    for name in _COMPARED_FILES:
+        mine, theirs_digest = _digest(origin / name), _digest(target / name)
+        if mine is None:
+            continue
+        if theirs_digest is None:
+            changed.append({"file": name, "state": "missing"})
+        elif mine != theirs_digest:
+            changed.append({"file": name, "state": "differs"})
+    report["changed_files"] = changed
+
+    if report["missing"]:
+        report["current"] = False
+        absent = ", ".join(stage for stages in report["missing"].values() for stage in stages)
+        report["reason"] = (
+            f"the installed copy predates this package: it does not declare {absent}")
+    elif changed:
+        report["current"] = False
+        report["reason"] = ("the installed copy declares the same stages but its files differ "
+                            "from this package")
+    else:
+        report["current"] = True
+        report["reason"] = "the installed copy matches this package"
+    return report
 
 
 def install(*, dry_run: bool = False) -> int:
@@ -269,11 +378,22 @@ def doctor() -> dict:
     if enabled is not True:
         report["probe"] = "the plugin is installed but not enabled in Hermes"
         return report
+    copy_report = deployment(target, source_dir())
+    report["copy"] = copy_report
+    if copy_report["current"] is False:
+        report.update({
+            "automatic": True,
+            "ok": False,
+            "status": "stale",
+            "probe": (copy_report["reason"]
+                      + "; run `sutra install --client hermes` and restart the gateway"),
+        })
+        return report
     report.update({
         "automatic": True,
         "ok": True,
         "status": "pass",
-        "probe": "Hermes validation passed and the plugin is enabled",
+        "probe": "Hermes validation passed, the plugin is enabled and the copy matches this package",
     })
     return report
 
@@ -281,7 +401,16 @@ def doctor() -> dict:
 def format_doctor(report: dict) -> str:
     if "error" in report:
         return f"hermes: error: {report['error']}"
-    return (f"hermes: plugin={'pass' if report.get('installed') else 'fail'} "
+    copy = report.get("copy") or {}
+    current = copy.get("current")
+    copy_text = "unknown" if current is None else ("current" if current else "stale")
+    line = (f"hermes: plugin={'pass' if report.get('installed') else 'fail'} "
             f"enabled={'yes' if report.get('enabled') is True else 'no'} "
+            f"copy={copy_text} "
             f"automatic={'yes' if report.get('ok') else 'no'} "
             f"status={report.get('status')} probe={report.get('probe')}")
+    missing = copy.get("missing") or {}
+    if missing:
+        stages = ", ".join(stage for stages in missing.values() for stage in stages)
+        line += f" missing_stages={stages}"
+    return line

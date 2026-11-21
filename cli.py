@@ -57,6 +57,12 @@ usage:
   sutra redundancy forget --key K [--file PATH]
   sutra context [--file PATH] [--budget N] [--unit tokens|bytes] [--near-duplicates] [--json]
   sutra cache [--json] [--write-cost W --read-cost R --miss-cost M --reuses N]
+  sutra stats [--file PATH] [--json]   (aggregate the durable savings log)
+  sutra proxy [--host H] [--port P] [--upstream URL] [--verbose]
+             (forward a host's requests through the request stage; point the host's
+              base URL at it, e.g. ANTHROPIC_BASE_URL=http://127.0.0.1:8787)
+  sutra shorten-results [--session ID]   (rewrite tool outputs handed over one by one;
+              JSON {{"texts": [...]}} on stdin, {{"texts": [...], "changed": N}} back)
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
              [--cached-price P] [--json]   (accounting with your own prices)
@@ -459,9 +465,11 @@ def _status(as_json: bool = False) -> int:
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"settings={row.get('settings')}")
         elif row["client"] == "hermes":
+            current = row.get("current")
             print(f"hermes: binary={'yes' if row.get('binary') else 'no'} "
                   f"plugin={'installed' if row.get('installed') else 'not installed'} "
                   f"enabled={'yes' if row.get('enabled') is True else 'no'} "
+                  f"copy={'unknown' if current is None else ('current' if current else 'stale')} "
                   f"automatic={'yes' if row.get('automatic') else 'no'} "
                   f"plugin_path={row.get('plugin')}")
         elif row["client"] == "codex":
@@ -899,6 +907,124 @@ def _cache(argv: list[str]) -> int:
     return 0
 
 
+def _stats(argv: list[str]) -> int:
+    """Aggregate the durable savings log; process counters are not readable here."""
+    import json as _json
+
+    from . import config as _config
+    from . import metrics as _metrics
+
+    parser = argparse.ArgumentParser(
+        prog="sutra stats",
+        description=("Aggregate the durable savings log: how many tool results were "
+                     "rewritten, how many bytes were saved, and by which rule and "
+                     "tool. Counters that live in a host process (restores, "
+                     "request-stage rewrites, observed provider usage) are not "
+                     "visible to this command."))
+    parser.add_argument("--file", default=None,
+                        help="savings log to read (default: the configured stats path)")
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+    args = parser.parse_args(argv)
+
+    path = (os.path.abspath(os.path.expanduser(args.file)) if args.file
+            else _config.resolve().stats_path)
+    try:
+        report = _metrics.read_savings_log(path)
+    except OSError as exc:
+        print_error(f"sutra stats: cannot read {path}: {exc}")
+        return 1
+    if args.json:
+        print(_json.dumps(report, indent=2, sort_keys=True))
+        return 0
+    if not report["records"]:
+        print(f"sutra stats: no rewrites recorded in {path}")
+        if report["unreadable"]:
+            print(f"unreadable lines: {report['unreadable']}")
+        print("The log is written when a tool result is rewritten; an untouched "
+              "installation legitimately has no records yet.")
+        return 0
+    print(f"sutra stats: {path}")
+    if len(report["files"]) > 1:
+        print(f"including the rotated log {report['files'][0]}")
+    print(f"  rewrites: {report['records']}")
+    print(f"  bytes: {report['original_bytes']:,} before "
+          f"→ {report['compressed_bytes']:,} after "
+          f"({report['saved_bytes']:,} saved, {report['saved_pct']}%)")
+    if report["partial"] or report["fail_open"] or report["unreadable"]:
+        print(f"  partial: {report['partial']}  fail open: {report['fail_open']}  "
+              f"unreadable lines: {report['unreadable']}")
+    if report["first_at"]:
+        print(f"  from {report['first_at']} to {report['last_at']}")
+    for title, key in (("rule", "by_rule"), ("tool", "by_tool")):
+        rows = sorted(report[key].items(),
+                      key=lambda item: (-item[1]["saved_bytes"], item[0]))
+        if not rows:
+            continue
+        print(f"  by {title}:")
+        for name, row in rows[:8]:
+            print(f"    {name}: {row['records']} rewrite(s), "
+                  f"{row['saved_bytes']:,} bytes saved")
+    print("Counters for restores, request-stage rewrites and observed provider "
+          "usage live in the host process (`sutra.metrics_snapshot()`); this log "
+          "holds rewritten tool results only.")
+    return 0
+
+
+def _shorten_results(argv: list[str]) -> int:
+    """Shorten tool outputs handed over one by one, JSON in and JSON out.
+
+    OpenCode's ``chat.messages.transform`` hook lets a plugin rewrite the
+    results already inside the assembled conversation, but it hands them over
+    as separate bodies rather than as one request. This command applies the
+    same policy to each body: an entry changes only when the store keeps a copy
+    first, and an entry the store refuses comes back unchanged.
+    """
+    from . import config as _config
+    from . import prompt as _prompt
+
+    parser = argparse.ArgumentParser(
+        prog="sutra shorten-results",
+        description="Rewrite tool outputs handed over one by one (JSON on stdin).",
+    )
+    parser.add_argument(
+        "--session",
+        default="",
+        help="Session id recorded with the stored copies (falls back to the payload).",
+    )
+    args = parser.parse_args(argv)
+    try:
+        payload = json.load(sys.stdin)
+    except (OSError, ValueError) as exc:
+        print_error(f"sutra shorten-results: cannot read the request: {type(exc).__name__}")
+        return 1
+    if not isinstance(payload, dict) or not isinstance(payload.get("texts"), list):
+        print_error("sutra shorten-results: expected {\"texts\": [...]} on stdin")
+        return 1
+    texts = payload["texts"]
+    cfg = _config.resolve()
+    if not cfg.prompt_enabled or cfg.mode == "off":
+        print(json.dumps({"texts": texts, "changed": 0}))
+        return 0
+    session_id = str(args.session or payload.get("session_id") or "")
+    retain = _prompt.host_retainer(session_id=session_id)
+    head = _prompt.HEAD_BYTES if cfg.prompt_preview else 0
+    tail = _prompt.TAIL_BYTES if cfg.prompt_preview else 0
+    rewritten = []
+    changed = 0
+    for text in texts:
+        if not isinstance(text, str):
+            rewritten.append(text)
+            continue
+        shorter = _prompt.shorten_result(text, head=head, tail=tail, retain=retain)
+        if shorter is None:
+            rewritten.append(text)
+        else:
+            rewritten.append(shorter)
+            changed += 1
+    print(json.dumps({"texts": rewritten, "changed": changed}))
+    return 0
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -1114,6 +1240,13 @@ def main(argv: list[str] | None = None) -> int:
         return _cache(argv[1:])
     if argv[:1] == ["cost"]:
         return _cost(argv[1:])
+    if argv[:1] == ["stats"]:
+        return _stats(argv[1:])
+    if argv[:1] == ["shorten-results"]:
+        return _shorten_results(argv[1:])
+    if argv[:1] == ["proxy"]:
+        from .proxy import run as run_proxy
+        return run_proxy(argv[1:])
     if argv[:1] == ["context"]:
         return _context(argv[1:])
     if argv[:1] == ["redundancy"]:

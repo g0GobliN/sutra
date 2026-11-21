@@ -75,14 +75,33 @@ path is not an optimization engine and is not disabled by `off`.
   `SUTRA_PROMPT=1`: older tool results in the outbound copy are shortened to a
   head, a tail and the recovery marker they already carry, so the removed bytes
   remain restorable by id. The stored conversation is not modified, the newest
-  messages are never touched, and a result SUTRA never compressed carries no
-  marker and is left byte-identical. Which older results go first is a context-value
+  messages are never touched, and a result SUTRA never compressed is retained in
+  the recovery store first and then shortened against the id that write returned;
+  when the store refuses, that result is left byte-identical. A payload that
+  appears repeatedly in the older window keeps its first copy and every later
+  copy becomes a pointer to that copy's id, so redundancy is removed before
+  size is. Which older results
+  go first is a context-value
   decision (`V = w_r R + w_i I + w_d D + w_u U + w_t T` over citation, overlap with
   the latest question, restorability and position), not an age order, and a result
-  that a later assistant or user message cites by its recovery id is never touched.
+  that a later assistant or user message cites by its recovery id — or refers to by
+  a distinctive name it contains, such as a path or a symbol — is never touched.
   A request rewrite changes what the model
   reads, so this stage is opt-in and off in `off` mode; see
   [integrations.md](integrations.md).
+
+  The depth of that trimming follows the mode. Three caps decide it — the size a
+  result must exceed, how many results one request may lose, and whether a
+  trimmed result keeps a head and tail beside its marker — and on one 539 KB
+  request carrying 40 recoverable results `tests/test_mode_policy.py` measures:
+  `balanced` leaves 453,615 bytes (15.8% removed, 8 results), `aggressive`
+  368,183 bytes (31.7%, 16 results), `beast` 117,383 bytes (78.2%, 32 results,
+  marker only). A result the request cites by its recovery id, or by a distinctive
+  name it contains, is still never touched in any mode, and an explicit
+  `SUTRA_PROMPT_*` variable replaces the mode default for that cap. Each rewrite
+  is counted for the mode that made it, so `sutra.metrics_snapshot()["prompt"]`
+  reports live `requests`, `rewritten`, `unchanged` and `saved_bytes` per mode
+  instead of only the fixture above.
 
 The nominal bound is not a deadline. The pass count and the payload size cap are
 the deterministic bounds, so the same input selects the same plan on an idle and

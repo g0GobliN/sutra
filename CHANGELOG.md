@@ -2,8 +2,109 @@
 
 ## Unreleased
 
+### Security
+
+- `sutra proxy` refuses a request target that names another origin. `http.client` dials the host inside an absolute target, so a target that is not a plain rooted path (`http://elsewhere/`, `//elsewhere/`, a backslash or whitespace) is answered with `400` instead of being forwarded, and a header whose name or value carries a control character is dropped on both legs rather than forwarded or echoed.8a (Refuse a proxy target that names another origin)
 ### Added
 
+- The generated OpenCode plugin now shortens the tool results already inside a conversation before the provider call, through `experimental.chat.messages.transform` and `sutra shorten-results`; only a string whose original the store kept is replaced, and the hook fails open.
+- `sutra proxy` now also counts what the provider charged: a `/v1/messages` answer's `usage` is read from JSON or from a stream's first event, its `cache_read_input_tokens` and `cache_creation_input_tokens` are mapped onto the counters' names, and an answer that reports no usage counts as not reported rather than as zero. The answer itself is relayed byte for byte — this is observation, not cache control.
+- `sutra proxy` gives the request stage a boundary on hosts that expose only a base URL: Claude Code honours `ANTHROPIC_BASE_URL`, so the client can send `/v1/messages` through SUTRA, where older recoverable tool results are shortened before the request continues upstream. Credentials, the path, the query and the response are left alone, and any rewrite failure forwards the original body. Streaming answers, `HEAD`, `OPTIONS`, `PUT`, `PATCH` and `DELETE` are forwarded unchanged. The Messages-API shape is read as its own: a `tool_result` block inside a user message is shortened in place and a 121,474-byte body with two identical results came out at 3,559 bytes (97.1% removed) with `tool_use_id`, `is_error` and `cache_control` intact.
+- `sutra doctor` compares the installed Hermes plugin with this package and reports `copy=stale` with the stages the installed copy does not declare, so a gateway running an older copy is no longer reported as healthy.
+- The request stage is exercised through Hermes' own dispatch, not only through
+  its admission check. `tests/test_hermes_dispatch.py` (opt-in:
+  `SUTRA_TEST_HERMES_DISPATCH=1`, `SUTRA_HERMES_SRC=<checkout>`) starts a host
+  plugin manager in a throwaway `HERMES_HOME`, lets it discover and load this
+  repository's plugin, submits a request through `hermes_cli.middleware`, and
+  asserts that 92,984 bytes go out as 3,297 with one marker whose stored copy is
+  byte-identical, that a second submission comes back unchanged, and that the
+  `post_api_request` hook records the usage it was handed.
+- The request stage keeps a stable prefix and a bounded store under parallel
+  sessions. A request already carrying the notice is returned unchanged, so a
+  provider prefix cache is not invalidated by re-trimming, and two sessions
+  retaining the same payload agree on one id. Retention now writes and enforces
+  its budget as one critical section: six threads writing 3 KB payloads into a
+  20,000-byte store stayed at or under both ceilings, where the unserialized
+  version reached 27,171 bytes.
+- `bench/replay_sessions.py` replays the host's own session store through the
+  request stage, so the policy is measured on ordinary sessions and not only
+  on saved or synthetic requests. It opens `state.db` read-only, rebuilds each
+  conversation, and checks that every touched result restores byte for byte and
+  every untouched message is unchanged. Two hundred sessions (9,086,662 bytes)
+  lose 4.1% in balanced, 6.8% in aggressive and 13.3% in beast at a median of
+  0.2 to 0.8 ms per conversation.
+- `bench/replay_requests.py` replays request bodies a host saved before
+  submission, so the stage is measured on recorded traffic as well as on a
+  synthetic conversation. It reports bytes removed per mode and checks two
+  safety properties on every file: each touched message still resolves to a
+  byte-identical stored copy, and each untouched message is byte-identical to
+  what was recorded. Twelve recorded Hermes request bodies (1,075,715 bytes, 197
+  tool results) removed 1.1% / 4.3% / 12.8% in balanced / aggressive / beast at a
+  median of 13–17 ms per call, with both checks passing; those results have a median
+  size of 662 bytes, which is why the balanced 8 KiB threshold rarely fires on
+  that corpus.
+- The request stage now costs about a tenth of what it did: a 513,592-byte
+  request with 40 recoverable results went from 207.6 ms to 21.7 ms median, with
+  the same bytes removed. Dependency protection consults one suffix token set per
+  request instead of scanning every candidate body per comparison, and the
+  shared retention memo is guarded so concurrent sessions cannot corrupt it.
+  `bench/request_stage.py` reproduces the measurement (bytes, median/p95 time,
+  peak allocation, and a multi-thread run).
+
+
+- `sutra stats` aggregates the durable savings log (`SUTRA_STATS_FILE` plus its
+  rotated `.1` file) into rewrites, before/after bytes, saved bytes, partial and
+  fail-open counts, and per-rule and per-tool breakdowns, with `--json` and
+  `--file` for machine use and alternate logs. It says plainly that counters
+  living in a host process (restores, request-stage rewrites, observed provider
+  usage) are not visible to it, and a line that does not parse — or parses but
+  carries a non-numeric value where a byte count belongs — is counted as
+  unreadable instead of hiding the rest of the file or aborting the report
+  (`tests/test_cli_stats.py`).
+- Request-stage decisions are now counted per mode. `sutra.metrics_snapshot()`
+  gained a `prompt` block with `requests`, `rewritten`, `unchanged`,
+  `original_bytes`, `trimmed_bytes`, `saved_bytes` and a `by_mode` table, so the
+  depth each mode reaches can be measured on real traffic rather than only on a
+  fixture. A counter failure is swallowed: it never breaks the request.
+- Request-stage trimming now protects what the conversation still depends on: a
+  tool result that a later assistant or user message cites by its recovery id, or
+  names through a distinctive token inside it (a path, a symbol, an id-like
+  name), is treated as mandatory and left byte-identical in every mode. Ordinary
+  words such as `error` do not qualify, so a noisy result merely mentioned in
+  passing is still shortened. On one 48 KB request with two 20 KB results, naming
+  the first in a later message leaves 26,893 bytes instead of 5,573 when neither
+  is named (`tests/test_prompt.py`).
+- Collapsing a repeated block payload keeps the payload's container: the pointer
+  replaces the text, a block list stays a block list, and non-text blocks such as
+  images stay where they were, so a request shape that expects blocks is never
+  handed a bare string (`tests/test_prompt.py`).
+- The request-stage caps now follow the mode: `balanced` trims 8 results per
+  request above 8 KiB, `aggressive` 16 above 4 KiB, and `beast` 32 above 2 KiB
+  with the preview dropped so a trimmed result becomes its marker alone. On one
+  539 KB request those settings remove 15.8%, 31.7% and 78.2% of the bytes
+  respectively (`tests/test_mode_policy.py`), and an explicit `SUTRA_PROMPT_*`
+  variable still overrides the default of the mode in force.
+- The Hermes `llm_request` stage can now shorten tool results SUTRA never produced.
+  A host-produced result is written to the recovery store first and then
+  trimmed against the id that write returned, so every removed byte stays
+  restorable through `sutra_restore`; when the store declines, the result is
+  sent byte-identical. `SUTRA_PROMPT_STORE_HOST=0` keeps the earlier
+  behaviour of touching only results that already carry a marker.
+- A tool result repeated in the older part of a request keeps its first copy and
+  every later copy becomes a pointer quoting that copy's recovery id, so the
+  redundant bytes leave without a second store write. Shortened and collapsed
+  messages share the per-request `SUTRA_PROMPT_MAX_MESSAGES` budget.
+- The request stage reads both payload shapes a host can send: `messages` for
+  chat and Anthropic modes, `input` for Responses and Codex modes, where a tool
+  result is a `function_call_output` item. A top-level system prompt (`system`,
+  `instructions`) is never trimmed. On a 68 KB Responses request holding one
+  large result and one repeat of it, the copy sent to the provider was 2.8 KB.
+- The Hermes `post_api_request` hook is now observed: provider usage summaries
+  are counted under `provider` in the stats snapshot, including cache-read and
+  cache-write tokens when the provider reports them, and summaries that did not
+  arrive are counted as unreported rather than as zero. This is measurement
+  only — SUTRA sets no cache flag and asks for no cache behaviour it cannot
+  control.
 - Four optimization modes behind one switch: `SUTRA_MODE=off|balanced|aggressive|beast`.
   A mode selects the deterministic plans, bounded passes, combination depth and
   repeated-call reuse policy; `sutra mode` shows or persists the choice in
@@ -43,6 +144,17 @@
   CLI-level tests for dead, malformed, and hanging OTLP endpoints. Those tests
   prove compression still exits 0, emits one parseable JSON object, and writes
   no exporter noise.
+
+### Fixed
+
+- The A/B runner reads the session id from either stream and can run a single
+  task. `hermes chat -q` prints `session_id:` on stderr while the interactive
+  form prints `Session:` on stdout, so a runner that read only stdout recorded
+  every live result as `session_id=None` and `usage=unreported` — the row the
+  experiment exists to read was silently missing. `--task NAME` (repeatable)
+  runs one task of the selected protocol; `docs/ab-benchmark.md` states both
+  and the balanced-mode admission limit that keeps small conversations
+  unrewritten.
 
 ## 0.6.3 - 2026-11-14
 

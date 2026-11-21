@@ -36,7 +36,9 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 HERMES_STATE = pathlib.Path.home() / ".hermes/state.db"
-SESSION_RE = re.compile(r"Session:\s+(\S+)")
+# ``hermes chat -q`` prints ``session_id: local-...``; the older
+# interactive form prints ``Session: ...``. Both name the same row.
+SESSION_RE = re.compile(r"(?:session_id|Session):\s+(\S+)")
 
 
 # --- fixtures (deterministic; identical bytes for both arms) ----------------
@@ -694,6 +696,12 @@ def _count_tokens(text: str) -> int:
         return max(1, len(text) // 4)
 
 
+def _text(value: object) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    return value or ""
+
+
 def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
                 timeout: int) -> dict:
     """One real `hermes chat` session in the workspace; returns its record."""
@@ -709,14 +717,16 @@ def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
         stdout = (exc.stdout or "")
         if isinstance(stdout, bytes):
             stdout = stdout.decode("utf-8", "replace")
-        match = SESSION_RE.search(stdout)
+        match = SESSION_RE.search(stdout + "\n" + _text(exc.stderr))
         return {"final_answer": stdout.strip()[-4_000:],
                 "session_id": match.group(1) if match else None,
                 "exit_code": None, "timed_out": True,
                 "duration_s": round(time.time() - started, 1),
                 "stderr_tail": "timed out after %ss" % timeout}
     duration = time.time() - started
-    match = SESSION_RE.search(proc.stdout or "")
+    # ``hermes chat`` prints ``session_id:`` on stderr; a run that only read
+    # stdout recorded ``session_id=None`` and lost its usage row.
+    match = SESSION_RE.search((proc.stdout or "") + "\n" + (proc.stderr or ""))
     return {"final_answer": (proc.stdout or "").strip()[-4_000:],
             "session_id": match.group(1) if match else None,
             "exit_code": proc.returncode, "timed_out": False,
@@ -727,7 +737,11 @@ def run_session(task_name: str, prompt: str, workspace: pathlib.Path,
 # --- the runner -------------------------------------------------------------
 
 def execute(args: argparse.Namespace) -> int:
-    tasks = PROTOCOLS[args.protocol]
+    tasks = [task for task in PROTOCOLS[args.protocol]
+             if not args.task or task[0] in args.task]
+    if not tasks:
+        print(f"ABORT: no task in protocol {args.protocol} matches {args.task}")
+        return 2
     expected_enabled = args.arm == "on"
     if args.dry_run:
         # Mechanics only: a dry run must not depend on the operator's host (the
@@ -872,6 +886,9 @@ def main() -> int:
                         default=HOST_PROBE_TIMEOUT_S,
                         help="seconds allowed for `hermes plugins list` "
                              f"(default: {HOST_PROBE_TIMEOUT_S:g})")
+    parser.add_argument("--task", action="append", default=None,
+                        help="only this task name (repeatable); the "
+                             "protocol default runs every task")
     parser.add_argument("--dry-run", action="store_true",
                         help="generate fixtures and records; run no sessions")
     parser.add_argument("--selfcheck", action="store_true",

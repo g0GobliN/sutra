@@ -82,6 +82,27 @@ DEFAULT_PROMPT_KEEP_LAST = 6
 DEFAULT_PROMPT_MIN_MESSAGE_BYTES = 8_192
 DEFAULT_PROMPT_MIN_REQUEST_BYTES = 65_536
 DEFAULT_PROMPT_MAX_MESSAGES = 8
+# The request stage may retain a host-produced tool result in the store and
+# quote the new id, which is what lets it shorten results SUTRA never saw. The
+# write is fail-open: if the store declines, the message is left untouched.
+DEFAULT_PROMPT_STORE_HOST = True
+# How much of the request stage each mode may do. A deeper mode looks at
+# smaller results, touches more of them per request and accepts a lower
+# request-size floor; ``beast`` also drops the head/tail preview so a trimmed
+# result is nothing but its recovery marker. The numbers are the settings
+# ``tests/test_mode_policy.py`` measures, and they are mode *defaults*: an
+# explicit ``SUTRA_PROMPT_*`` variable still wins, so a deployment can pin one
+# dimension without giving up the mode's others.
+DEFAULT_PROMPT_PREVIEW = True
+PROMPT_CAPS_BY_MODE = {
+    "balanced": {"min_message_bytes": DEFAULT_PROMPT_MIN_MESSAGE_BYTES,
+                 "min_request_bytes": DEFAULT_PROMPT_MIN_REQUEST_BYTES,
+                 "max_messages": DEFAULT_PROMPT_MAX_MESSAGES, "preview": True},
+    "aggressive": {"min_message_bytes": 4_096, "min_request_bytes": 32_768,
+                   "max_messages": 16, "preview": True},
+    "beast": {"min_message_bytes": 2_048, "min_request_bytes": 16_384,
+              "max_messages": 32, "preview": False},
+}
 SEARCH_OVERHEAD_SOURCES = ("nominal", "measured")
 
 # Unified optimization modes. ``SUTRA_MODE`` is the canonical switch; the
@@ -441,6 +462,8 @@ class Config:
     prompt_min_message_bytes: int = DEFAULT_PROMPT_MIN_MESSAGE_BYTES
     prompt_min_request_bytes: int = DEFAULT_PROMPT_MIN_REQUEST_BYTES
     prompt_max_messages: int = DEFAULT_PROMPT_MAX_MESSAGES
+    prompt_store_host: bool = DEFAULT_PROMPT_STORE_HOST
+    prompt_preview: bool = DEFAULT_PROMPT_PREVIEW
     mode: str = DEFAULT_MODE
     mode_source: str = "default"
 
@@ -474,6 +497,9 @@ def resolve() -> Config:
     if not enabled:
         # A disabled plugin must not advertise a mode that cannot act.
         mode, mode_source = "off", mode_source
+    # ``off`` never runs the request stage, so it gets the balanced caps: the
+    # values only matter when something could act on them.
+    caps = PROMPT_CAPS_BY_MODE.get(mode, PROMPT_CAPS_BY_MODE["balanced"])
     return Config(
         enabled=enabled,
         max_bytes=_int("SUTRA_MAX_BYTES", DEFAULT_MAX_BYTES),
@@ -540,13 +566,15 @@ def resolve() -> Config:
         prompt_keep_last=_int("SUTRA_PROMPT_KEEP_LAST",
                               DEFAULT_PROMPT_KEEP_LAST, minimum=0),
         prompt_min_message_bytes=_int("SUTRA_PROMPT_MIN_MESSAGE_BYTES",
-                                      DEFAULT_PROMPT_MIN_MESSAGE_BYTES,
+                                      caps["min_message_bytes"],
                                       minimum=0),
         prompt_min_request_bytes=_int("SUTRA_PROMPT_MIN_REQUEST_BYTES",
-                                      DEFAULT_PROMPT_MIN_REQUEST_BYTES,
+                                      caps["min_request_bytes"],
                                       minimum=0),
+        prompt_store_host=_flag("SUTRA_PROMPT_STORE_HOST", DEFAULT_PROMPT_STORE_HOST),
         prompt_max_messages=_int("SUTRA_PROMPT_MAX_MESSAGES",
-                                 DEFAULT_PROMPT_MAX_MESSAGES, minimum=1),
+                                 caps["max_messages"], minimum=1),
+        prompt_preview=_flag("SUTRA_PROMPT_PREVIEW", caps["preview"]),
         replay_max_result_bytes=_int("SUTRA_REPLAY_MAX_RESULT_BYTES",
                                      DEFAULT_REPLAY_MAX_RESULT_BYTES,
                                      minimum=1024),

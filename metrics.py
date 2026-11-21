@@ -62,6 +62,96 @@ _REUSE: dict[str, int] = {
     "suppressed_bytes": 0,
     "original_bytes": 0,
 }
+# Provider usage is observed, never controlled: these are the buckets the
+# response reported, so a cache hit that did not happen cannot be counted here.
+_PROVIDER: dict[str, int] = {
+    "requests": 0,
+    "reported": 0,
+    "unreported": 0,
+    "cached_requests": 0,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "cache_read_tokens": 0,
+    "cache_write_tokens": 0,
+}
+_USAGE_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens",
+                 "cache_write_tokens")
+
+# Request-stage rewrites are counted per mode, so the depth a mode reaches can
+# be measured on real traffic instead of only on a fixture.
+_PROMPT: dict[str, Any] = {
+    "requests": 0,
+    "rewritten": 0,
+    "unchanged": 0,
+    "original_bytes": 0,
+    "trimmed_bytes": 0,
+    "saved_bytes": 0,
+    "by_mode": {},
+}
+
+
+def record_request_rewrite(decision: Any, *, mode: str = "") -> None:
+    """Count one request-stage decision for its mode. Never raises."""
+    try:
+        changed = bool(getattr(decision, "changed", False))
+        before = _token(getattr(decision, "bytes_before", 0))
+        after = _token(getattr(decision, "bytes_after", 0))
+        saved = max(0, before - after)
+        name = str(mode or "unknown")[:24]
+        with _LOCK:
+            _PROMPT["requests"] += 1
+            _PROMPT["rewritten" if changed else "unchanged"] += 1
+            _PROMPT["original_bytes"] += before
+            _PROMPT["trimmed_bytes"] += after
+            _PROMPT["saved_bytes"] += saved
+            row = _PROMPT["by_mode"].get(name)
+            if row is None:
+                row = {"requests": 0, "rewritten": 0, "saved_bytes": 0}
+                _PROMPT["by_mode"][name] = row
+            row["requests"] += 1
+            row["rewritten"] += int(changed)
+            row["saved_bytes"] += saved
+    except Exception:  # a metric must never break the request path
+        logger.debug("sutra: could not record the request rewrite metric",
+                     exc_info=True)
+
+
+def _token(value: Any) -> int:
+    """Read one reported token count without trusting its type."""
+    if isinstance(value, bool) or value is None:
+        return 0
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, number)
+
+
+def record_provider_usage(usage: Any) -> None:
+    """Count one provider-reported usage summary, cache buckets included.
+
+    The summary comes from the response the host already received, so this is
+    observation only. A missing or malformed summary counts as unreported
+    rather than as zero tokens, because "the provider did not say" and "the
+    provider said zero" are different facts. Never raises.
+    """
+    try:
+        if not isinstance(usage, dict) or not usage:
+            with _LOCK:
+                _PROVIDER["requests"] += 1
+                _PROVIDER["unreported"] += 1
+            return
+        counts = {name: _token(usage.get(name)) for name in _USAGE_FIELDS}
+        with _LOCK:
+            _PROVIDER["requests"] += 1
+            _PROVIDER["reported"] += 1
+            if counts["cache_read_tokens"] or counts["cache_write_tokens"]:
+                _PROVIDER["cached_requests"] += 1
+            for name, count in counts.items():
+                _PROVIDER[name] += count
+    except Exception:  # a metric must never break the hook
+        logger.debug("sutra: could not record the provider usage metric",
+                     exc_info=True)
 
 
 def _reason(response: dict[str, Any]) -> str:
@@ -229,6 +319,91 @@ def record_compression(stats: dict[str, Any], cfg: Any) -> None:
         logger.debug("sutra: could not append the compression record", exc_info=True)
 
 
+def read_savings_log(path: str) -> dict[str, Any]:
+    """Aggregate the durable savings log written by :func:`record_compression`.
+
+    The log holds rewritten results only, so ``records`` counts rewrites rather
+    than every decision. Rotation keeps one previous file beside the current one
+    and both are read, oldest first. A line that does not parse is counted in
+    ``unreadable`` instead of raising: a half-written tail must still produce an
+    honest number for the rest of the file.
+    """
+    report: dict[str, Any] = {
+        "path": path,
+        "files": [],
+        "records": 0,
+        "original_bytes": 0,
+        "compressed_bytes": 0,
+        "saved_bytes": 0,
+        "saved_pct": 0.0,
+        "omitted_bytes": 0,
+        "partial": 0,
+        "fail_open": 0,
+        "unreadable": 0,
+        "first_at": "",
+        "last_at": "",
+        "by_rule": {},
+        "by_tool": {},
+    }
+    for candidate in (path + ".1", path):
+        try:
+            with open(candidate, "rb") as handle:
+                lines = handle.read().splitlines()
+        except FileNotFoundError:
+            continue
+        except OSError:
+            report["unreadable_files"] = report.get("unreadable_files", []) + [candidate]
+            continue
+        report["files"].append(candidate)
+        for raw in lines:
+            if not raw.strip():
+                continue
+            try:
+                record = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                report["unreadable"] += 1
+                continue
+            if not isinstance(record, dict):
+                report["unreadable"] += 1
+                continue
+            try:
+                original, compressed, saved, omitted = (
+                    max(0, int(record.get(name) or 0))
+                    for name in ("original_bytes", "compressed_bytes",
+                                 "saved_bytes", "omitted_bytes")
+                )
+                partial = int(bool(record.get("partial")))
+                fail_open = int(bool(record.get("fail_open")))
+            except (TypeError, ValueError):
+                # Parsed JSON whose numbers are not numbers: the line cannot be
+                # counted honestly, so it is one more unreadable record rather
+                # than an exception out of a report.
+                report["unreadable"] += 1
+                continue
+            report["records"] += 1
+            report["original_bytes"] += original
+            report["compressed_bytes"] += compressed
+            report["saved_bytes"] += saved
+            report["omitted_bytes"] += omitted
+            report["partial"] += partial
+            report["fail_open"] += fail_open
+            at = str(record.get("at") or "")
+            if at:
+                if not report["first_at"] or at < report["first_at"]:
+                    report["first_at"] = at
+                if at > report["last_at"]:
+                    report["last_at"] = at
+            for key, name in (("by_rule", "rule"), ("by_tool", "tool")):
+                label = str(record.get(name) or "unknown")[:64]
+                row = report[key].setdefault(label, {"records": 0, "saved_bytes": 0})
+                row["records"] += 1
+                row["saved_bytes"] += saved
+    if report["original_bytes"] > 0:
+        report["saved_pct"] = round(
+            100.0 * report["saved_bytes"] / report["original_bytes"], 1)
+    return report
+
+
 def snapshot(store: Any = None) -> dict[str, Any]:
     """One process-scoped surface for compression, restores, cleanup and store size."""
     try:
@@ -238,6 +413,10 @@ def snapshot(store: Any = None) -> dict[str, Any]:
             compression = dict(_COMPRESSION)
             compression["rules"] = dict(_COMPRESSION["rules"])
             reuse = dict(_REUSE)
+            provider = dict(_PROVIDER)
+            prompt = dict(_PROMPT)
+            prompt["by_mode"] = {name: dict(row)
+                                 for name, row in _PROMPT["by_mode"].items()}
     except Exception:
         compression = {"total": 0, "changed": 0, "unchanged": 0, "rules": {},
                        "original_bytes": 0, "compressed_bytes": 0, "saved_bytes": 0,
@@ -245,7 +424,7 @@ def snapshot(store: Any = None) -> dict[str, Any]:
                        "duration_ms_total": 0.0}
         return {"scope": "process", "scope_note": _SCOPE_NOTE,
                 "compression": compression, "restores": {"total": 0},
-                "cleanup": {}, "reuse": {}}
+                "cleanup": {}, "reuse": {}, "provider": {}, "prompt": {}}
     compression["duration_ms_total"] = round(float(compression["duration_ms_total"]), 2)
     data: dict[str, Any] = {
         "scope": "process",
@@ -254,6 +433,8 @@ def snapshot(store: Any = None) -> dict[str, Any]:
         "cleanup": cleanup,
         "compression": compression,
         "reuse": reuse,
+        "provider": provider,
+        "prompt": prompt,
     }
     if store is not None:
         try:

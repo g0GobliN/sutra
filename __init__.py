@@ -177,13 +177,18 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
     The request the host is about to send is the only place where SUTRA can
     influence what the model reads before it reads it. The policy is
     deliberately narrow (``prompt.py`` documents it): only older ``role: "tool"``
-    messages that already carry a recovery marker are candidates, the last few
-    messages are never touched, and the stored conversation is not modified. A
-    host that sends a shape this adapter does not model gets the request back
-    unchanged rather than a guess.
+    messages are candidates, the last few messages are never touched, and the
+    stored conversation is not modified. A result that SUTRA already compressed
+    carries a marker and is trimmed against that id. A host-produced result is
+    retained in the store first and trimmed against the new id, so the adapter
+    reaches the whole conversation rather than only SUTRA's own output; if the
+    store declines the write, that message goes out byte-identical. Either way
+    no byte leaves the request that no id can bring back.
 
     Returns ``None`` when nothing changed so the host keeps its own payload
-    byte-identical, and the middleware result dict otherwise.
+    byte-identical, and the middleware result dict otherwise. In ``beast`` mode
+    the preview is dropped: a trimmed result becomes its marker alone, which is
+    the deepest removal this stage performs without losing an id.
     """
     if not isinstance(request, dict):
         return None
@@ -191,15 +196,22 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
         cfg = _config.resolve()
         if not cfg.prompt_enabled or cfg.mode == "off":
             return None
+        retain = (_prompt.host_retainer(session_id=session_id)
+                  if cfg.prompt_store_host else None)
+        preview = bool(cfg.prompt_preview)
         decision = _prompt.prepare(
             request,
             keep_last=cfg.prompt_keep_last,
             min_message_bytes=cfg.prompt_min_message_bytes,
             min_request_bytes=cfg.prompt_min_request_bytes,
             max_messages=cfg.prompt_max_messages,
+            head_bytes=_prompt.HEAD_BYTES if preview else 0,
+            tail_bytes=_prompt.TAIL_BYTES if preview else 0,
+            retain=retain,
         )
     except Exception:  # fail open: a request rewrite is never worth a broken call
         return None
+    metrics.record_request_rewrite(decision, mode=cfg.mode)
     if not decision.changed:
         return None
     return {
@@ -207,6 +219,25 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
         "source": "sutra",
         "reason": decision.reason,
     }
+
+
+def api_usage(**payload: Any) -> None:
+    """Observe one provider usage summary after the response arrived.
+
+    The host reports what the provider actually billed: input and output tokens
+    plus the cache-read and cache-write buckets when the provider has them.
+    SUTRA only counts them — it never sets a cache flag, never rewrites a cache
+    breakpoint and never asks the provider to cache anything, because a cache
+    the request cannot control would be a claim rather than a measurement.
+
+    The hook returns ``None`` and swallows every failure: a missing usage block
+    must not disturb a completed call.
+    """
+    try:
+        metrics.record_provider_usage(payload.get("usage"))
+    except Exception:  # observation must never break the turn
+        logger.debug("sutra: provider usage observation failed", exc_info=True)
+    return None
 
 
 def register(ctx) -> None:
@@ -224,6 +255,10 @@ def register(ctx) -> None:
         # Compression and recovery must survive a host without the request
         # frame, so this registration never propagates.
         logger.warning("sutra: request optimization unavailable: %s", exc)
+    try:
+        ctx.register_hook("post_api_request", api_usage)
+    except Exception as exc:  # older hosts expose no lifecycle hooks
+        logger.debug("sutra: provider usage observation unavailable: %s", exc)
     ctx.register_tool(
         name=recovery.TOOL_NAME,
         toolset="sutra",
@@ -244,6 +279,7 @@ __all__ = [
     "collapse_repeats",
     "compress",
     "compress_result",
+    "api_usage",
     "config_from_env",
     "configuration",
     "enabled",

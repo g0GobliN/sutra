@@ -104,7 +104,7 @@ SUTRA uses a shared core with small host-specific adapters. Automatic replacemen
 
 | Client | Integration | Behaviour |
 |---|---|---|
-| Hermes Agent | Native `tool_execution` middleware | Automatic result processing; enable the `sutra` toolset for recovery |
+| Hermes Agent | Native `tool_execution` and `llm_request` middleware | Automatic result processing, plus request-stage trimming of older recoverable results before submission; enable the `sutra` toolset for recovery |
 | Claude Code | `PostToolUse` hook + MCP recovery | Automatic replacement when the hook is installed; hook and MCP server must share a store |
 | OpenCode | `tool.execute.after` plugin + MCP recovery | Automatic replacement of supported string results |
 | OpenClaw | Generated plugin + MCP recovery | Automatic result processing |
@@ -194,7 +194,7 @@ For benchmark reproduction, install the benchmark extras listed in [bench/requir
 - **Recovery is bounded.** The store has entry, total-size, count and TTL limits; each restore response is capped.
 - **The store is not encrypted.** Use filesystem permissions appropriately or disable retention.
 - **JSON formatting can change.** A re-encoded JSON document can have normalised whitespace; the original remains recoverable when stored.
-- **Context selection is explicit.** The context selector is a library and CLI, not automatically connected to post-tool hooks because those hooks do not receive the full conversation context.
+- **Request-stage trimming is implemented for one host.** The context selector is a library and CLI. Hermes Agent also exposes a request stage that receives the assembled conversation before submission, and SUTRA uses it to shorten older tool results that it can keep restorable — both results it produced earlier and results the host produced, which are retained first. That path is covered by unit tests and by the host's own plugin admission check; it has not been measured on a live gateway, and hosts whose hooks receive one tool result at a time (Claude Code, Codex CLI, OpenCode, OpenClaw) are not connected to it.
 - **Larger modes are not guaranteed to save more.** They explore more bounded candidates; only validated, smaller candidates are accepted.
 
 ## License
