@@ -1,9 +1,9 @@
 {
   "metadata": {
     "version": "v0.6.3",
-    "generated_at": "2026-11-20T06:08:56+00:00",
+    "generated_at": "2026-11-21T13:48:27+00:00",
     "python_version": "3.13.18",
-    "platform": "Linux-7.0.0-1019-azure-x86_64-with-glibc2.43"
+    "platform": "Linux-7.0.0-1020-azure-x86_64-with-glibc2.43"
   },
   "summary": {
     "total_fixtures": 47,
@@ -39,9 +39,9 @@
           "tokens_after": 66,
           "tokens_saved": 1,
           "tokens_saved_pct": 1.5,
-          "latency_ms": 0.992,
-          "latency_min_ms": 0.9758780000055367,
-          "latency_max_ms": 1.0379539999973986
+          "latency_ms": 1.008,
+          "latency_min_ms": 1.0012660000029427,
+          "latency_max_ms": 1.0293590000287622
         }
       ]
     },
@@ -67,9 +67,9 @@
           "tokens_after": 56,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.104,
-          "latency_min_ms": 0.10068899999993164,
-          "latency_max_ms": 0.12343299999884039
+          "latency_ms": 0.129,
+          "latency_min_ms": 0.10609000003114488,
+          "latency_max_ms": 0.2265149999516325
         },
         {
           "case": "general/git_diff/git_diff_unstaged.txt",
@@ -86,8 +86,8 @@
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
           "latency_ms": 0.105,
-          "latency_min_ms": 0.10023900000533104,
-          "latency_max_ms": 0.11688000000020793
+          "latency_min_ms": 0.10334400002420807,
+          "latency_max_ms": 0.1113779999855069
         },
         {
           "case": "general/git_status/git_log.txt",
@@ -103,9 +103,9 @@
           "tokens_after": 12,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.296,
-          "latency_min_ms": 0.2874309999967295,
-          "latency_max_ms": 0.31235899999870753
+          "latency_ms": 0.306,
+          "latency_min_ms": 0.2887310000119214,
+          "latency_max_ms": 0.3215819999695668
         },
         {
           "case": "general/git_status/git_status_clean.txt",
@@ -121,9 +121,9 @@
           "tokens_after": 12,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.308,
-          "latency_min_ms": 0.30295100000188313,
-          "latency_max_ms": 0.3341689999984965
+          "latency_ms": 0.312,
+          "latency_min_ms": 0.30066400000805515,
+          "latency_max_ms": 0.3227650000212634
         },
         {
           "case": "general/git_status/git_status_mixed.txt",
@@ -139,9 +139,9 @@
           "tokens_after": 15,
           "tokens_saved": 1,
           "tokens_saved_pct": 6.2,
-          "latency_ms": 0.552,
-          "latency_min_ms": 0.5350480000032576,
-          "latency_max_ms": 0.5581499999962602
+          "latency_ms": 0.551,
+          "latency_min_ms": 0.529111999981069,
+          "latency_max_ms": 0.5730039999889414
         },
         {
           "case": "general/git_status/git_status_verbose.txt",
@@ -157,9 +157,9 @@
           "tokens_after": 108,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.427,
-          "latency_min_ms": 0.4044820000004279,
-          "latency_max_ms": 0.4407400000019379
+          "latency_ms": 0.418,
+          "latency_min_ms": 0.40503899998611814,
+          "latency_max_ms": 0.4476889999978084
         }
       ]
     },
@@ -185,9 +185,9 @@
           "tokens_after": 127771,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 95.287,
-          "latency_min_ms": 93.18533700000131,
-          "latency_max_ms": 95.69620500000298
+          "latency_ms": 98.344,
+          "latency_min_ms": 97.0343879999973,
+          "latency_max_ms": 98.59469200000603
         }
       ]
     },
@@ -213,9 +213,9 @@
           "tokens_after": 139,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.633,
-          "latency_min_ms": 0.6250270000052183,
-          "latency_max_ms": 0.7243339999973841
+          "latency_ms": 0.699,
+          "latency_min_ms": 0.6863059999773213,
+          "latency_max_ms": 0.8725459999823215
         },
         {
           "case": "javascript/node/node_reference_error.txt",
@@ -286,9 +286,9 @@
           "tokens_after": 124,
           "tokens_saved": 0,
           "tokens_saved_pct": 0.0,
-          "latency_ms": 0.345,
-          "latency_min_ms": 0.333648000001574,
-          "latency_max_ms": 0.38415299999883246
+          "latency_ms": 0.379,
+          "latency_min_ms": 0.3721470000073168,
+          "latency_max_ms": 0.38387899996905617
         },
         {
           "case": "python/traceback/python_importerror.txt",
@@ -918,9 +918,9 @@
       "tokens_after": 66,
       "tokens_saved": 1,
       "tokens_saved_pct": 1.5,
-      "latency_ms": 0.992,
-      "latency_min_ms": 0.9758780000055367,
-      "latency_max_ms": 1.0379539999973986
+      "latency_ms": 1.008,
+      "latency_min_ms": 1.0012660000029427,
+      "latency_max_ms": 1.0293590000287622
     },
     {
       "case": "general/git_diff/git_diff_staged.txt",
@@ -936,9 +936,9 @@
       "tokens_after": 56,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.104,
-      "latency_min_ms": 0.10068899999993164,
-      "latency_max_ms": 0.12343299999884039
+      "latency_ms": 0.129,
+      "latency_min_ms": 0.10609000003114488,
+      "latency_max_ms": 0.2265149999516325
     },
     {
       "case": "general/git_diff/git_diff_unstaged.txt",
@@ -955,8 +955,8 @@
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
       "latency_ms": 0.105,
-      "latency_min_ms": 0.10023900000533104,
-      "latency_max_ms": 0.11688000000020793
+      "latency_min_ms": 0.10334400002420807,
+      "latency_max_ms": 0.1113779999855069
     },
     {
       "case": "general/git_status/git_log.txt",
@@ -972,9 +972,9 @@
       "tokens_after": 12,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.296,
-      "latency_min_ms": 0.2874309999967295,
-      "latency_max_ms": 0.31235899999870753
+      "latency_ms": 0.306,
+      "latency_min_ms": 0.2887310000119214,
+      "latency_max_ms": 0.3215819999695668
     },
     {
       "case": "general/git_status/git_status_clean.txt",
@@ -990,9 +990,9 @@
       "tokens_after": 12,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.308,
-      "latency_min_ms": 0.30295100000188313,
-      "latency_max_ms": 0.3341689999984965
+      "latency_ms": 0.312,
+      "latency_min_ms": 0.30066400000805515,
+      "latency_max_ms": 0.3227650000212634
     },
     {
       "case": "general/git_status/git_status_mixed.txt",
@@ -1008,9 +1008,9 @@
       "tokens_after": 15,
       "tokens_saved": 1,
       "tokens_saved_pct": 6.2,
-      "latency_ms": 0.552,
-      "latency_min_ms": 0.5350480000032576,
-      "latency_max_ms": 0.5581499999962602
+      "latency_ms": 0.551,
+      "latency_min_ms": 0.529111999981069,
+      "latency_max_ms": 0.5730039999889414
     },
     {
       "case": "general/git_status/git_status_verbose.txt",
@@ -1026,9 +1026,9 @@
       "tokens_after": 108,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.427,
-      "latency_min_ms": 0.4044820000004279,
-      "latency_max_ms": 0.4407400000019379
+      "latency_ms": 0.418,
+      "latency_min_ms": 0.40503899998611814,
+      "latency_max_ms": 0.4476889999978084
     },
     {
       "case": "general/large_json/large_json_api_response.txt",
@@ -1044,9 +1044,9 @@
       "tokens_after": 127771,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 95.287,
-      "latency_min_ms": 93.18533700000131,
-      "latency_max_ms": 95.69620500000298
+      "latency_ms": 98.344,
+      "latency_min_ms": 97.0343879999973,
+      "latency_max_ms": 98.59469200000603
     },
     {
       "case": "general/long_stack_trace/node_async_stack.txt",
@@ -1062,9 +1062,9 @@
       "tokens_after": 139,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.633,
-      "latency_min_ms": 0.6250270000052183,
-      "latency_max_ms": 0.7243339999973841
+      "latency_ms": 0.699,
+      "latency_min_ms": 0.6863059999773213,
+      "latency_max_ms": 0.8725459999823215
     },
     {
       "case": "general/long_stack_trace/python_recursion_error.txt",
@@ -1080,9 +1080,9 @@
       "tokens_after": 124,
       "tokens_saved": 0,
       "tokens_saved_pct": 0.0,
-      "latency_ms": 0.345,
-      "latency_min_ms": 0.333648000001574,
-      "latency_max_ms": 0.38415299999883246
+      "latency_ms": 0.379,
+      "latency_min_ms": 0.3721470000073168,
+      "latency_max_ms": 0.38387899996905617
     },
     {
       "case": "general/repeated_test_output/repeated_pytest_output.txt",
