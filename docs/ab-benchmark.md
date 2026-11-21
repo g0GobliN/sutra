@@ -156,6 +156,15 @@ experiment.
 - Token savings are stated only from provider-reported usage deltas, per task,
   with the caveat that prompt caching makes re-sent context cheaper than raw
   token counts suggest.
+- The report separates the three prompt buckets: `in tok (uncached)`, `cache
+  read`, `cache write`, and their sum `prompt tok (total)`. Compare arms on
+  **`prompt tok (total)`**: a provider that serves most of a prompt from its
+  cache reports a smaller uncached remainder without the prompt being smaller.
+  A paired run on 2026-11-21 made this concrete — the treatment arm reported
+  18,129 uncached tokens against the control's 29,515 (38.6% less) while its
+  total prompt was 116,305 against 114,891 (1.2% more), because 12,800 more
+  tokens were served from the prefix cache. The uncached column alone would
+  have read as a saving that did not exist.
 - If the provider reports no usage, the experiment reports task success and
   recovery behavior only, and says so.
 

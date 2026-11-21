@@ -612,6 +612,13 @@ def session_usage(session_id: str) -> dict | None:
                     out[key] += float(row[keys.index(key)] or 0)
                 else:
                     out[key] += int(row[keys.index(key)] or 0)
+        # A prompt is paid for in three buckets, and ``input_tokens`` counts
+        # only the part the provider could not serve from its cache. Reporting
+        # that number alone lets a smaller uncached remainder look like a
+        # smaller prompt, so the total is stated explicitly.
+        out["total_prompt_tokens"] = int(out["input_tokens"]
+                                         + out["cache_read_tokens"]
+                                         + out["cache_write_tokens"])
         return out
 
     main = [row for row in rows if not row[0]] or rows
