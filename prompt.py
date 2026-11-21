@@ -219,6 +219,36 @@ def host_retainer(*, session_id: str | None = None, store: Any = None):
     return retain
 
 
+#: Lines that answer "what failed". A preview that drops the failing test's name
+#: or the ``File "…", line N`` pointer makes the agent read the file again, and
+#: a second read costs more than the bytes the preview saved. These lines sit in
+#: the middle of a long result, where neither the head nor the tail reaches.
+_SALIENT = re.compile(
+    r"Traceback \(most recent call last\)|\bFAILED\b|\bERROR\b|\w+Error:|"
+    r'File "[^"]+", line \d+|^\s*assert '
+)
+
+#: How many bytes of those lines a shortened result keeps, at most.
+SALIENT_BYTES = 2_048
+
+
+def _salient(body: str, *, limit: int) -> str:
+    """Failure-pointing lines from the part of a result the preview drops."""
+    if limit <= 0 or not body:
+        return ""
+    kept: list[str] = []
+    total = 0
+    for line in body.splitlines():
+        if not line or not _SALIENT.search(line):
+            continue
+        cost = _size(line) + 1
+        if total + cost > limit:
+            break
+        kept.append(line)
+        total += cost
+    return "\n".join(kept)
+
+
 def _shorten(
     text: str,
     *,
@@ -244,13 +274,20 @@ def _shorten(
         return None
     head_part = text[:head]
     tail_part = text[-tail:] if tail else ""
-    kept = sum(_size(part) for part in (head_part, *markers, tail_part))
+    middle = text[len(head_part):len(text) - len(tail_part) if tail_part else len(text)]
+    # The failure lines are paid for out of the head's own budget rather than
+    # added to it: the preview the request carries keeps the same size, and a
+    # line that says what failed replaces a line that says nothing.
+    salient = _salient(middle, limit=min(SALIENT_BYTES, head // 2))
+    if salient:
+        head_part = text[:max(0, head - len(salient) - 1)]
+    kept = sum(_size(part) for part in (head_part, salient, *markers, tail_part))
     trimmed = max(0, original - kept)
     notice = (
         f"{NOTICE_PREFIX} {trimmed:,} bytes trimmed from this older tool "
         f"result; the marker below carries the id that restores the original]"
     )
-    parts = [notice, head_part, *markers]
+    parts = [notice, head_part, *(part for part in (salient,) if part), *markers]
     if tail_part:
         parts.append(tail_part)
     candidate = "\n".join(parts)

@@ -147,6 +147,15 @@ is scanned once and dependency protection consults a suffix token set built once
 per request, so the cost follows request size rather than results multiplied by
 body size.
 
+A shortened result also keeps the lines that say what failed. From the stretch
+that neither the head nor the tail reaches, a body whose text carries
+`Traceback`, `FAILED`, `ERROR`, a `…Error:` name, `File "…", line N` or an
+`assert` line contributes up to 2,048 bytes of those lines to the preview, and
+they are paid for out of the head's own budget: the request does not grow by a
+byte, a failure line simply replaces a line of context that said nothing. The
+idea comes from a paired `pytest-fail` session in which the trim removed the
+failure text, the agent re-ran the suite, and the pair cost more than it saved.
+
 Synthetic requests say what the stage costs; recorded ones say what it finds.
 `bench/replay_requests.py` reads request bodies a host saved before submission,
 rebuilds the message list the middleware would see, and reports the same
