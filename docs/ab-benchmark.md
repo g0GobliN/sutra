@@ -124,6 +124,26 @@ a request above the size floor whose older tool results sit outside the
 protected window, and a session that reads one file and answers never clears
 either.
 
+`total_prompt_tokens` is the sum of two differently priced columns, and that
+split decides whether a saving is a saving. `input_tokens` is billed at the
+full rate and `cache_read_tokens` at the provider's cached rate, so a session
+that keeps a long stable prefix can spend more raw prompt tokens for less
+money. The `trace-deep` sessions recorded so far make the point:
+
+| arm | calls | input | cache read | raw prompt |
+|---|---|---|---|---|
+| off | 3 | 30,449 | 82,304 | 112,753 |
+| on | 3 | 40,149 | 58,880 | 99,029 |
+| on | 4 | 44,235 | 89,856 | 134,091 |
+
+The on arms removed bytes from the request and still billed more uncached
+input, because the extra restore turn and the rewritten prefix change what the
+provider can serve from cache. Three sessions with different trajectories are
+far too few to attribute the difference to trimming alone, and the report
+therefore prints both columns rather than one total: a run that claims a
+saving from `total_prompt_tokens` alone is claiming something the billing does
+not confirm.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.
