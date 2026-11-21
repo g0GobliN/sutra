@@ -128,3 +128,10 @@ def test_the_preview_budget_is_mode_specific_and_matches_the_module():
         (prompt.HEAD_BYTES, prompt.TAIL_BYTES)
     for mode in MODES:
         assert caps[mode]["preview_head"] >= 0 and caps[mode]["preview_tail"] >= 0
+
+
+def test_the_savings_floor_defaults_to_zero_and_follows_the_environment(monkeypatch):
+    assert _resolve_with(monkeypatch).prompt_min_saving_percent == 0
+    assert _resolve_with(
+        monkeypatch, SUTRA_PROMPT_MIN_SAVING_PERCENT="25",
+    ).prompt_min_saving_percent == 25

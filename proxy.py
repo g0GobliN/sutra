@@ -208,6 +208,7 @@ def rewrite_body(body: bytes, cfg: Any, retain: Callable[[str], str | None],
             max_messages=cfg.prompt_max_messages,
             head_bytes=_prompt.HEAD_BYTES if cfg.prompt_preview else 0,
             tail_bytes=_prompt.TAIL_BYTES if cfg.prompt_preview else 0,
+            min_saving_percent=cfg.prompt_min_saving_percent,
             retain=retain,
         )
     except Exception:  # a policy failure must not break the client's request

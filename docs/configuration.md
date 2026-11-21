@@ -38,6 +38,7 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_PROMPT_KEEP_LAST` | `6` | how many of the newest messages are never touched |
 | `SUTRA_PROMPT_MIN_MESSAGE_BYTES` | by mode | a tool result smaller than this is not worth trimming: `8192` in `balanced`, `4096` in `aggressive`, `2048` in `beast` |
 | `SUTRA_PROMPT_MIN_REQUEST_BYTES` | by mode | a request smaller than this is left alone entirely: `65536` in `balanced`, `32768` in `aggressive`, `16384` in `beast` |
+| `SUTRA_PROMPT_MIN_SAVING_PERCENT` | `0` | refuse a rewrite that would remove less than this share of the request; a host that pays for prompt tokens can set a floor, because a small trim still moves the cached prefix. See [ab-benchmark.md](ab-benchmark.md#the-cost-of-the-request-stage) |
 | `SUTRA_PROMPT_MAX_MESSAGES` | by mode | most tool results trimmed from one request: `8` in `balanced`, `16` in `aggressive`, `32` in `beast` |
 | `SUTRA_PROMPT_STORE_HOST` | `1` | keep a copy of a host-produced tool result before shortening it, so the trimmed bytes stay restorable; when the store refuses (disabled, full, too large) that result goes out byte-identical |
 | `SUTRA_PROMPT_PREVIEW` | `1` | keep a head and a tail of a trimmed result beside its marker, so the model keeps the shape it already read |

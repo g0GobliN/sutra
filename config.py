@@ -81,6 +81,7 @@ DEFAULT_PROMPT = False
 DEFAULT_PROMPT_KEEP_LAST = 6
 DEFAULT_PROMPT_MIN_MESSAGE_BYTES = 8_192
 DEFAULT_PROMPT_MIN_REQUEST_BYTES = 65_536
+DEFAULT_PROMPT_MIN_SAVING_PERCENT = 0
 DEFAULT_PROMPT_MAX_MESSAGES = 8
 # The request stage may retain a host-produced tool result in the store and
 # quote the new id, which is what lets it shorten results SUTRA never saw. The
@@ -470,6 +471,7 @@ class Config:
     prompt_keep_last: int = DEFAULT_PROMPT_KEEP_LAST
     prompt_min_message_bytes: int = DEFAULT_PROMPT_MIN_MESSAGE_BYTES
     prompt_min_request_bytes: int = DEFAULT_PROMPT_MIN_REQUEST_BYTES
+    prompt_min_saving_percent: int = DEFAULT_PROMPT_MIN_SAVING_PERCENT
     prompt_max_messages: int = DEFAULT_PROMPT_MAX_MESSAGES
     prompt_store_host: bool = DEFAULT_PROMPT_STORE_HOST
     prompt_preview: bool = DEFAULT_PROMPT_PREVIEW
@@ -582,6 +584,9 @@ def resolve() -> Config:
         prompt_min_request_bytes=_int("SUTRA_PROMPT_MIN_REQUEST_BYTES",
                                       caps["min_request_bytes"],
                                       minimum=0),
+        prompt_min_saving_percent=_int("SUTRA_PROMPT_MIN_SAVING_PERCENT",
+                                       DEFAULT_PROMPT_MIN_SAVING_PERCENT,
+                                       minimum=0, maximum=100),
         prompt_store_host=_flag("SUTRA_PROMPT_STORE_HOST", DEFAULT_PROMPT_STORE_HOST),
         prompt_max_messages=_int("SUTRA_PROMPT_MAX_MESSAGES",
                                  caps["max_messages"], minimum=1),

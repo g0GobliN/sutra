@@ -843,9 +843,16 @@ def prepare(
     max_messages: int = DEFAULT_MAX_MESSAGES,
     head_bytes: int = HEAD_BYTES,
     tail_bytes: int = TAIL_BYTES,
+    min_saving_percent: int = 0,
     retain: Any = None,
 ) -> Decision:
-    """Trim recoverable older tool results in one request; never raise."""
+    """Trim recoverable older tool results in one request; never raise.
+
+    ``min_saving_percent`` refuses a rewrite that would remove less than that
+    share of the request. A short preview saves bytes on paper while costing a
+    cache-miss every time the prefix moves, so a host that pays for prompt
+    tokens can ask for a floor instead of accepting every small win.
+    """
     reason = _refusal(request, keep_last=keep_last,
                       min_request_bytes=min_request_bytes, retain=retain)
     if reason:
@@ -912,6 +919,16 @@ def prepare(
         if retain is not None:
             return Decision(reason="no older tool result could be retained and shortened")
         return Decision(reason="no older tool result carried a recoverable marker")
+
+    if min_saving_percent > 0:
+        saved_percent = (100.0 * saved_total / total_before) if total_before else 0.0
+        if saved_percent < min_saving_percent:
+            return Decision(
+                reason=(
+                    f"only {saved_percent:.1f}% of this request could be removed, "
+                    f"below the {min_saving_percent}% floor"
+                )
+            )
 
     new_request = dict(request)
     new_request[shape] = updated
