@@ -103,7 +103,7 @@ def _request_record(decision: Any, mode: str, session_id: str) -> dict[str, Any]
     return {
         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "mode": str(mode or "unknown")[:24],
-        "session": str(session_id or "")[:64],
+        "session": str(session_id or "")[:128],
         "before": before,
         "after": after,
         "saved": max(0, before - after),
@@ -395,7 +395,7 @@ def read_request_log(path: str) -> dict[str, Any]:
                 after = max(0, int(record.get("after") or 0))
                 saved = max(0, int(record.get("saved") or 0))
                 mode = str(record.get("mode") or "unknown")[:24]
-                session = str(record.get("session") or "")[:64]
+                session = str(record.get("session") or "")[:128]
                 at = str(record.get("at") or "")
             except (TypeError, ValueError):
                 report["unreadable"] += 1

@@ -38,6 +38,17 @@
   file twice; with the smaller preview the same task used 3 model calls and 86,999 whole-prompt
   tokens against 5 calls and 143,825 without SUTRA, and the fixture still removes 75.0%.
 
+### Fixed
+
+- `sutra install --client hermes` keeps the previous plugin in
+  `<HERMES_HOME>/plugin-backups` instead of `sutra.bak-<stamp>` beside it. The backup was itself a
+  plugin directory with the same manifest name, so the host could load the stale copy while
+  `sutra doctor` compared the installed path and reported `copy=current`: the gateway then ran the
+  previous build and every request-stage rewrite stayed invisible. A recorded live session now
+  shows `request_rewrites: 1` and `request_saved_bytes: 3020` for the first time.
+- The request-stage log keeps the whole session id, and the A/B runner matches a record whose id an
+  older writer had shortened, so a rewrite is attributed to the session that sent it.
+
 ### Added
 
 - The generated OpenCode plugin now shortens the tool results already inside a conversation before the provider call, through `experimental.chat.messages.transform` and `sutra shorten-results`; only a string whose original the store kept is replaced, and the hook fails open.
