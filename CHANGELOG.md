@@ -144,7 +144,6 @@
 
 ### Fixed
 
-- The A/B report states the whole prompt instead of its uncached remainder: `in tok (uncached)`, `cache read`, `cache write` and their sum are now separate columns, provider-reported token and cost columns read the row the runner actually writes, and a paired run whose uncached tokens fell 38.6% while its total prompt rose 1.2% is documented as the case the old table would have misread as a saving.
 - The A/B runner reads the session id from either stream and can run a single
   task. `hermes chat -q` prints `session_id:` on stderr while the interactive
   form prints `Session:` on stdout, so a runner that read only stdout recorded
