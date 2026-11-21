@@ -234,11 +234,27 @@ read the whole trace, recognised the message as a decoy, and wrote it.
 
 The preview now spends its budget on the lines that are least like their
 neighbours: numbers are blanked so identical frames share one shape, and lines
-whose shape appears once are kept before the repeated ones. On the
-`trace-deep` fixture that puts the frame naming `/app/handle_3890.py` first in a
-733-byte preview instead of the forty ordinary frames that came before it. The
-live pair has not been rerun with that ordering yet, so the table above still
-describes the first version.
+whose shape appears once are kept before the repeated ones. Ordering alone did
+not fix `trace-deep`: with the rare frame first the treatment passed once and
+failed twice, because the tool-result stage — not the request stage — is what
+elides a 26 KB traceback, and it dropped the whole middle. The elision now quotes
+the frame lines from that middle that occur nowhere else, paid for out of the
+head's own budget, so the frame naming `/app/handle_3890.py` reaches the model
+beside the marker instead of disappearing. Two treatment runs with that build
+passed at 99,029 and 131,951 prompt tokens against the control's 112,753: the
+information is back, the byte count is not uniformly lower because one run took
+an extra call.
+
+| task | arm | calls | prompt total | result |
+|---|---:|---:|---:|---|
+| `trace-deep` | off | 3 | 112,753 | pass |
+| `trace-deep` | on | 3 | 99,029 | pass |
+| `trace-deep` | on (repeat) | 4 | 131,951 | pass |
+
+Three earlier treatment runs recorded the same elision without the quoted frame
+and scored 0 for 3; the run-to-run spread of the model's own tool use is larger
+than the saving, so the honest claim is the one the scorer measures: the frame
+that differs survives, and the preview still elides 24 KB of 26 KB.
 
 A bounded preview cannot guarantee a needle that only exists in the removed
 middle, and the old notice did not say that a middle had been removed at all.

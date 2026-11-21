@@ -1150,6 +1150,35 @@ def test_the_salient_lines_are_bounded(tmp_path):
     assert kept < prompt.SALIENT_BYTES + 2_000
 
 
+def test_a_repeated_body_is_collapsed_in_place(tmp_path):
+    """A body that repeats itself keeps its shape instead of a head and a tail.
+
+    The lines are walked once, in order: a run of same-shape lines becomes one
+    line and a count, so the neighbour of the line that differs is still visible.
+    """
+    body = "\n".join(f'  File "/app/m{i}.py", line {i}, in h{i}' for i in range(400))
+    body += '\n  File "/app/planted.py", line 400, in planted'
+    messages = [
+        {"role": "system", "content": "You are a coding agent."},
+        {"role": "user", "content": "Which frame was planted?"},
+        {"role": "assistant", "content": None,
+         "tool_calls": [{"id": "c1", "type": "function",
+                         "function": {"name": "read_file", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": body},
+    ] + [{"role": "user", "content": f"step {index}"} for index in range(8)]
+    decision = prompt.prepare({"messages": messages}, keep_last=6,
+                              min_request_bytes=1024, min_message_bytes=512,
+                              retain=prompt.host_retainer(store=store_at(tmp_path)))
+
+    assert decision.request is not None, decision.reason
+    trimmed = decision.request["messages"][3]["content"]
+    assert "collapsed in place" in trimmed, trimmed[:200]
+    assert 'File "/app/m0.py"' in trimmed
+    assert 'File "/app/planted.py"' in trimmed
+    assert "shaped the same omitted in place" in trimmed
+    assert len(trimmed) < len(body) // 2
+
+
 @pytest.mark.parametrize("position", [5, 300, 590])
 def test_a_frame_that_differs_survives_a_deep_traceback(tmp_path, position):
     """One interesting frame among hundreds of identical ones is what a preview should keep."""

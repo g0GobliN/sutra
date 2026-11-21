@@ -58,6 +58,19 @@ _MAX_INPUT_BYTES = 64 * 1024 * 1024  # refuse to rewrite anything larger
 _TRACEBACK_TAIL_MIN = 8_192
 _TRACEBACK_HEAD_MAX = 2_048
 _MARKER_BUDGET = 1_024  # bytes reserved for markers inside max_bytes
+# Lines from an elided middle that are kept because their shape occurs nowhere
+# else: a 600-frame traceback differs from itself in exactly one frame, and the
+# head and the tail alone cannot show it.
+_SALIENT_MAX_BYTES = 1_024
+_SALIENT_LINE_BYTES = 400
+_SALIENT_LABEL = "[sutra: lines from the elided middle that differ from their neighbours]"
+_SHAPE_RE = re.compile(r"\d+")
+# A line is worth quoting from an elided middle only when it locates a failure:
+# a frame, a traceback header or an error. Arbitrary prose stays elided, so a
+# unique line does not leak merely because it is unique.
+_SALIENT_LINE_RE = re.compile(
+    r'(?:File "[^"\n]{1,256}", line \d{1,7}|^\s*at .*\(.*:\d+\)$)',
+)
 _MAX_FIELD_PATH = config.MAX_FIELD_POINTER  # UTF-8 bytes, shared with recovery
 # Characters that cannot be quoted in a marker attribute or the suggested call
 # without changing its meaning (quote/backslash), breaking the line or the
@@ -307,9 +320,13 @@ def _traceback_limits(max_bytes: int, head_bytes: int, tail_bytes: int,
     budget = max_bytes - max(0, reserve)
     if budget < 64:
         return 0, 0
-    tail = min(max(tail_bytes, _TRACEBACK_TAIL_MIN), budget)
+    # Leave a slice for the head: the lines quoted from the elided middle are
+    # paid out of it, and a traceback whose head is empty has nowhere to show
+    # the frame that differs from its neighbours.
+    reserve_head = min(512, budget // 4)
+    tail = min(max(tail_bytes, _TRACEBACK_TAIL_MIN), budget - reserve_head)
     if tail < 1_024:
-        tail = min(1_024, budget)
+        tail = min(1_024, max(0, budget - reserve_head))
     head = max(0, min(head_bytes, _TRACEBACK_HEAD_MAX, budget - tail))
     return head, tail
 
@@ -441,6 +458,42 @@ def collapse_repeats(text: str, keep: int = 2, ref: Ref | None = None,
     return "".join(out)
 
 
+def _shape(line: str) -> str:
+    """The line with its numbers blanked, so repeated frames share one key."""
+    return _SHAPE_RE.sub("#", line.strip())[:160]
+
+
+def _salient_middle(body: str, *, limit: int) -> str:
+    """Lines from an elided middle whose shape occurs nowhere else, best first.
+
+    Only lines that look like a frame or a failure are candidates; a middle made
+    of prose stays unquoted. The caller pays for these bytes out of the head, so
+    the rewrite keeps the size it would have had.
+    """
+    if limit <= 0 or not body:
+        return ""
+    matched = [line[:_SALIENT_LINE_BYTES] for line in body.splitlines()
+               if line.strip() and _SALIENT_LINE_RE.search(line)]
+    if not matched:
+        return ""
+    counts: dict[str, int] = {}
+    for line in matched:
+        key = _shape(line)
+        counts[key] = counts.get(key, 0) + 1
+    rare = [line for line in matched if counts[_shape(line)] == 1]
+    if not rare:
+        return ""
+    kept: list[str] = []
+    total = 0
+    for line in rare:
+        cost = len(line.encode("utf-8", "replace")) + 1
+        if total + cost > limit:
+            break
+        kept.append(line)
+        total += cost
+    return "\n".join(kept)
+
+
 def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
                   ref: Ref | None = None) -> tuple[str, int, bool]:
     """Keep the start and the end, replace the middle with an explicit marker.
@@ -471,6 +524,23 @@ def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
         first_newline = tail_raw.find(b"\n")
         if 0 < first_newline <= len(tail_raw) // 2:
             tail_raw = tail_raw[first_newline + 1:]
+    salient = _salient_middle(
+        raw[len(head_raw):len(raw) - len(tail_raw) if tail_raw else len(raw)].decode(
+            "utf-8", "replace"),
+        limit=min(_SALIENT_MAX_BYTES, max(0, len(head_raw) // 2)),
+    )
+    salient_part = ""
+    if salient:
+        paid = len(salient.encode("utf-8", "replace")) + len(_SALIENT_LABEL) + 1
+        shrunk = head_raw[:utf8.end_at_or_before(head_raw, max(0, len(head_raw) - paid))]
+        line_cut = shrunk.rfind(b"\n")
+        if line_cut > 0:
+            shrunk = shrunk[:line_cut + 1]
+        if shrunk:
+            head_raw = shrunk
+            salient_part = f"{_SALIENT_LABEL}\n{salient}\n"
+        else:
+            salient = ""
     omitted = len(raw) - len(head_raw) - len(tail_raw)
     if omitted <= 0:
         return text, 0, False
@@ -496,7 +566,8 @@ def _elide_middle(text: str, head_bytes: int, tail_bytes: int, reason: str,
     line = _marker_line(omitted, reason, ref, total=len(raw), start=start, end=end)
     sep_before = "" if not clean_head or clean_head.endswith("\n") else nl
     sep_after = "" if not clean_tail or clean_tail.startswith("\n") else nl
-    return f"{clean_head}{sep_before}{line}{sep_after}{clean_tail}", omitted, deduped
+    return (f"{clean_head}{sep_before}{line}{sep_after}{salient_part}{clean_tail}",
+            omitted, deduped)
 
 
 # --- JSON documents --------------------------------------------------------
