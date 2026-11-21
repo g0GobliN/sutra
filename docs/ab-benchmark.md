@@ -144,6 +144,32 @@ therefore prints both columns rather than one total: a run that claims a
 saving from `total_prompt_tokens` alone is claiming something the billing does
 not confirm.
 
+## The cost of the request stage
+
+A 2×2 trial on `trace-deep` (protocol v2, seeds `20261041` and `20261042`,
+gateway restarted between arms so the plugin state is real) priced both arms on
+the same task:
+
+| arm | seed | calls | input | cache read | prompt | restores | rewrites | result |
+|---|---|---|---|---|---|---|---|---|
+| off | 20261041 | 3 | 43,095 | 113,024 | 156,119 | 0 | 0 | FAIL |
+| off | 20261042 | 3 | 29,969 | 82,560 | 112,529 | 0 | 0 | PASS |
+| on | 20261041 | 4 | 45,852 | 122,624 | 168,476 | 1 | 3 | PASS |
+| on | 20261042 | 5 | 48,271 | 123,520 | 171,791 | 2 | 3 | PASS |
+
+The treatment removed 63 KB across three rewrites per session and still billed
+50–52% more prompt tokens than the cheaper control, because every extra turn
+re-sends the whole conversation and the rewritten prefix is no longer served
+from cache. Both treatment runs answered the planted-frame question; one of the
+two control runs did not. Two runs per arm cannot turn that into a quality
+claim, and the honest reading of this trial is that the stage currently buys
+context headroom and answer quality on this task at a token cost.
+
+That is why the stage stays off by default and why
+`SUTRA_PROMPT_MIN_SAVING_PERCENT` exists: a host that pays for prompt tokens
+can set a floor so a few kilobytes of removal — which still moves the cached
+prefix — never becomes a rewrite on its own.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.

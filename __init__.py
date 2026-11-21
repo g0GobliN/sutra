@@ -209,6 +209,7 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
             max_messages=cfg.prompt_max_messages,
             head_bytes=cfg.prompt_preview_head if preview else 0,
             tail_bytes=cfg.prompt_preview_tail if preview else 0,
+            min_saving_percent=cfg.prompt_min_saving_percent,
             retain=retain,
         )
     except Exception:  # fail open: a request rewrite is never worth a broken call

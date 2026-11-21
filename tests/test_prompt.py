@@ -1206,3 +1206,23 @@ def test_a_frame_that_differs_survives_a_deep_traceback(tmp_path, position):
     # The preview keeps the anomaly, not the 599 identical frames around it.
     assert trimmed.count('File "/app/m') < 100  # 600 frames in the body, far fewer in the preview
     assert decision.bytes_after < decision.bytes_before
+
+
+def test_a_trim_below_the_savings_floor_is_refused(tmp_path):
+    """A host that pays for prompt tokens can refuse a small win.
+
+    Removing a few kilobytes from a large request still moves the cached
+    prefix, so the saving has to justify the cache miss it causes.
+    """
+    messages = conversation(body(60_000), tail_messages=6)
+    messages.append({"role": "user", "content": "context without markers " * 20_000})
+    retain = prompt.host_retainer(store=store_at(tmp_path))
+
+    refused = prepare(messages, retain=retain, min_saving_percent=90)
+    assert refused.request is None and refused.elided == 0
+    assert "below the 90% floor" in refused.reason
+
+    accepted = prepare(messages, retain=retain, min_saving_percent=1)
+    assert accepted.changed is True
+    assert accepted.elided == 1
+    assert accepted.bytes_after < accepted.bytes_before

@@ -4,6 +4,12 @@
 
 ### Added
 
+- `SUTRA_PROMPT_MIN_SAVING_PERCENT` refuses a request rewrite that would remove less than the
+  configured share of the request (default `0`, every trim allowed). A 2×2 `trace-deep` trial
+  showed the treated arms removing 63 KB per session and still billing 50–52% more prompt
+  tokens, because each extra restore turn re-sends the conversation and the rewritten prefix
+  leaves the cache; the floor lets a host keep only the trims that pay for that move.
+
 - A shortened request now leaves a durable, content-free record in
   `<stats>-request.jsonl` beside the savings log: the time, the mode, the host session, and the
   before, after and saved byte counts. `sutra stats` reports the aggregate and says when the log is
