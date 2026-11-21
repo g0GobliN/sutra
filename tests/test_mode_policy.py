@@ -16,6 +16,7 @@ import pytest
 import sutra_plugin
 
 config = sutra_plugin._config
+prompt = sutra_plugin._prompt
 _RESOLVE = config.resolve          # the real resolver, kept out of the patch
 MODES = ("balanced", "aggressive", "beast")
 
@@ -106,12 +107,24 @@ def test_each_mode_spends_its_own_message_budget(monkeypatch):
         assert len(_touched(sent)) == caps["max_messages"]
 
 
-def test_balanced_keeps_a_preview_and_beast_keeps_only_the_marker(monkeypatch):
+def test_every_mode_keeps_a_preview_and_beast_keeps_a_smaller_one(monkeypatch):
     balanced = _touched(_sent(monkeypatch, "balanced", _conversation()))
     beast = _touched(_sent(monkeypatch, "beast", _conversation()))
 
     assert balanced and beast
-    assert any("output line" in text for text in balanced)
     for text in beast:
-        assert "output line" not in text
-        assert re.search(r'id="old\d{4}"', text)
+        assert re.search(r'id="old\d{4}"', text), "the id must survive"
+        # 384 + 192 bytes of preview plus the notice and the marker.
+        assert len(text.encode()) < 1_200
+    assert min(len(text.encode()) for text in balanced) > \
+        max(len(text.encode()) for text in beast)
+
+
+def test_the_preview_budget_is_mode_specific_and_matches_the_module():
+    caps = config.PROMPT_CAPS_BY_MODE
+    assert caps["beast"]["preview"] is True
+    assert caps["beast"]["preview_head"] < caps["balanced"]["preview_head"]
+    assert (caps["balanced"]["preview_head"], caps["balanced"]["preview_tail"]) == \
+        (prompt.HEAD_BYTES, prompt.TAIL_BYTES)
+    for mode in MODES:
+        assert caps[mode]["preview_head"] >= 0 and caps[mode]["preview_tail"] >= 0

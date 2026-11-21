@@ -90,13 +90,15 @@ path is not an optimization engine and is not disabled by `off`.
   reads, so this stage is opt-in and off in `off` mode; see
   [integrations.md](integrations.md).
 
-  The depth of that trimming follows the mode. Three caps decide it — the size a
-  result must exceed, how many results one request may lose, and whether a
-  trimmed result keeps a head and tail beside its marker — and on one 539 KB
-  request carrying 40 recoverable results `tests/test_mode_policy.py` measures:
-  `balanced` leaves 453,615 bytes (15.8% removed, 8 results), `aggressive`
-  368,183 bytes (31.7%, 16 results), `beast` 117,383 bytes (78.2%, 32 results,
-  marker only). A result the request cites by its recovery id, or by a distinctive
+  The depth of that trimming follows the mode. Four caps decide it — the size a
+  result must exceed, how many results one request may lose, and how large the
+  head and tail kept beside the marker are — and on one 539 KB request carrying
+  40 recoverable results `bench/request_stage.py` measures: `balanced` leaves
+  405,119 bytes (15.9% removed, 8 results), `aggressive` 328,639 bytes (31.8%, 16
+  results), `beast` 120,415 bytes (75.0%, 32 results). Every mode keeps a preview
+  beside the marker; `beast` keeps a smaller one (384 bytes of head, 192 of tail)
+  because a marker alone made an agent re-read the file in pieces, which cost more
+  than the removed bytes saved. A result the request cites by its recovery id, or by a distinctive
   name it contains, is still never touched in any mode, and an explicit
   `SUTRA_PROMPT_*` variable replaces the mode default for that cap. Each rewrite
   is counted for the mode that made it, so `sutra.metrics_snapshot()["prompt"]`

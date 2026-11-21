@@ -88,20 +88,29 @@ DEFAULT_PROMPT_MAX_MESSAGES = 8
 DEFAULT_PROMPT_STORE_HOST = True
 # How much of the request stage each mode may do. A deeper mode looks at
 # smaller results, touches more of them per request and accepts a lower
-# request-size floor; ``beast`` also drops the head/tail preview so a trimmed
-# result is nothing but its recovery marker. The numbers are the settings
-# ``tests/test_mode_policy.py`` measures, and they are mode *defaults*: an
-# explicit ``SUTRA_PROMPT_*`` variable still wins, so a deployment can pin one
-# dimension without giving up the mode's others.
+# request-size floor; it also keeps a smaller head/tail preview, because a
+# result that shows nothing of itself invites the agent to read it again, and
+# a second read of the original costs far more than the preview it replaces.
+# The numbers are the settings ``tests/test_mode_policy.py`` measures, and they
+# are mode *defaults*: an explicit ``SUTRA_PROMPT_*`` variable still wins, so a
+# deployment can pin one dimension without giving up the mode's others.
 DEFAULT_PROMPT_PREVIEW = True
+DEFAULT_PROMPT_PREVIEW_HEAD = 1_536
+DEFAULT_PROMPT_PREVIEW_TAIL = 768
 PROMPT_CAPS_BY_MODE = {
     "balanced": {"min_message_bytes": DEFAULT_PROMPT_MIN_MESSAGE_BYTES,
                  "min_request_bytes": DEFAULT_PROMPT_MIN_REQUEST_BYTES,
-                 "max_messages": DEFAULT_PROMPT_MAX_MESSAGES, "preview": True},
+                 "max_messages": DEFAULT_PROMPT_MAX_MESSAGES,
+                 "preview": True,
+                 "preview_head": DEFAULT_PROMPT_PREVIEW_HEAD,
+                 "preview_tail": DEFAULT_PROMPT_PREVIEW_TAIL},
     "aggressive": {"min_message_bytes": 4_096, "min_request_bytes": 32_768,
-                   "max_messages": 16, "preview": True},
+                   "max_messages": 16, "preview": True,
+                   "preview_head": DEFAULT_PROMPT_PREVIEW_HEAD,
+                   "preview_tail": DEFAULT_PROMPT_PREVIEW_TAIL},
     "beast": {"min_message_bytes": 2_048, "min_request_bytes": 16_384,
-              "max_messages": 32, "preview": False},
+              "max_messages": 32, "preview": True,
+              "preview_head": 384, "preview_tail": 192},
 }
 SEARCH_OVERHEAD_SOURCES = ("nominal", "measured")
 
@@ -464,6 +473,8 @@ class Config:
     prompt_max_messages: int = DEFAULT_PROMPT_MAX_MESSAGES
     prompt_store_host: bool = DEFAULT_PROMPT_STORE_HOST
     prompt_preview: bool = DEFAULT_PROMPT_PREVIEW
+    prompt_preview_head: int = DEFAULT_PROMPT_PREVIEW_HEAD
+    prompt_preview_tail: int = DEFAULT_PROMPT_PREVIEW_TAIL
     mode: str = DEFAULT_MODE
     mode_source: str = "default"
 
@@ -575,6 +586,10 @@ def resolve() -> Config:
         prompt_max_messages=_int("SUTRA_PROMPT_MAX_MESSAGES",
                                  caps["max_messages"], minimum=1),
         prompt_preview=_flag("SUTRA_PROMPT_PREVIEW", caps["preview"]),
+        prompt_preview_head=_int("SUTRA_PROMPT_PREVIEW_HEAD",
+                                  caps["preview_head"], minimum=0),
+        prompt_preview_tail=_int("SUTRA_PROMPT_PREVIEW_TAIL",
+                                  caps["preview_tail"], minimum=0),
         replay_max_result_bytes=_int("SUTRA_REPLAY_MAX_RESULT_BYTES",
                                      DEFAULT_REPLAY_MAX_RESULT_BYTES,
                                      minimum=1024),

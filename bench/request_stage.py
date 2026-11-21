@@ -84,8 +84,8 @@ def one(prompt, config, request: dict, mode: str, *, retain=None) -> dict:
         min_message_bytes=caps["min_message_bytes"],
         min_request_bytes=caps["min_request_bytes"],
         max_messages=caps["max_messages"],
-        head_bytes=prompt.HEAD_BYTES if caps["preview"] else 0,
-        tail_bytes=prompt.TAIL_BYTES if caps["preview"] else 0,
+        head_bytes=caps["preview_head"] if caps["preview"] else 0,
+        tail_bytes=caps["preview_tail"] if caps["preview"] else 0,
         retain=retain,
     )
     elapsed = (time.perf_counter() - started) * 1000.0

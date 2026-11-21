@@ -40,7 +40,9 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_PROMPT_MIN_REQUEST_BYTES` | by mode | a request smaller than this is left alone entirely: `65536` in `balanced`, `32768` in `aggressive`, `16384` in `beast` |
 | `SUTRA_PROMPT_MAX_MESSAGES` | by mode | most tool results trimmed from one request: `8` in `balanced`, `16` in `aggressive`, `32` in `beast` |
 | `SUTRA_PROMPT_STORE_HOST` | `1` | keep a copy of a host-produced tool result before shortening it, so the trimmed bytes stay restorable; when the store refuses (disabled, full, too large) that result goes out byte-identical |
-| `SUTRA_PROMPT_PREVIEW` | by mode | keep a head and a tail of a trimmed result beside its marker: on in `balanced` and `aggressive`, off in `beast`, which leaves the marker alone |
+| `SUTRA_PROMPT_PREVIEW` | `1` | keep a head and a tail of a trimmed result beside its marker, so the model keeps the shape it already read |
+| `SUTRA_PROMPT_PREVIEW_HEAD` | by mode | bytes kept from the start of a trimmed result: `1536` in `balanced` and `aggressive`, `384` in `beast` |
+| `SUTRA_PROMPT_PREVIEW_TAIL` | by mode | bytes kept from the end of a trimmed result: `768` in `balanced` and `aggressive`, `192` in `beast` |
 | `SUTRA_LANGUAGE` | `0` | advanced legacy Caveman gate for `SUTRA_SEARCH`; modes enable wording themselves and never apply it to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
