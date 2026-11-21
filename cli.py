@@ -61,6 +61,8 @@ usage:
   sutra proxy [--host H] [--port P] [--upstream URL] [--verbose]
              (forward a host's requests through the request stage; point the host's
               base URL at it, e.g. ANTHROPIC_BASE_URL=http://127.0.0.1:8787)
+  sutra shorten-results [--session ID]   (rewrite tool outputs handed over one by one;
+              JSON {{"texts": [...]}} on stdin, {{"texts": [...], "changed": N}} back)
   sutra cost [--baseline-input N] [--baseline-output N] [--optimized-input N] [--optimized-output N]
              [--baseline-cached N] [--optimized-cached N] [--input-price P] [--output-price P]
              [--cached-price P] [--json]   (accounting with your own prices)
@@ -968,6 +970,61 @@ def _stats(argv: list[str]) -> int:
     return 0
 
 
+def _shorten_results(argv: list[str]) -> int:
+    """Shorten tool outputs handed over one by one, JSON in and JSON out.
+
+    OpenCode's ``chat.messages.transform`` hook lets a plugin rewrite the
+    results already inside the assembled conversation, but it hands them over
+    as separate bodies rather than as one request. This command applies the
+    same policy to each body: an entry changes only when the store keeps a copy
+    first, and an entry the store refuses comes back unchanged.
+    """
+    from . import config as _config
+    from . import prompt as _prompt
+
+    parser = argparse.ArgumentParser(
+        prog="sutra shorten-results",
+        description="Rewrite tool outputs handed over one by one (JSON on stdin).",
+    )
+    parser.add_argument(
+        "--session",
+        default="",
+        help="Session id recorded with the stored copies (falls back to the payload).",
+    )
+    args = parser.parse_args(argv)
+    try:
+        payload = json.load(sys.stdin)
+    except (OSError, ValueError) as exc:
+        print_error(f"sutra shorten-results: cannot read the request: {type(exc).__name__}")
+        return 1
+    if not isinstance(payload, dict) or not isinstance(payload.get("texts"), list):
+        print_error("sutra shorten-results: expected {\"texts\": [...]} on stdin")
+        return 1
+    texts = payload["texts"]
+    cfg = _config.resolve()
+    if not cfg.prompt_enabled or cfg.mode == "off":
+        print(json.dumps({"texts": texts, "changed": 0}))
+        return 0
+    session_id = str(args.session or payload.get("session_id") or "")
+    retain = _prompt.host_retainer(session_id=session_id)
+    head = _prompt.HEAD_BYTES if cfg.prompt_preview else 0
+    tail = _prompt.TAIL_BYTES if cfg.prompt_preview else 0
+    rewritten = []
+    changed = 0
+    for text in texts:
+        if not isinstance(text, str):
+            rewritten.append(text)
+            continue
+        shorter = _prompt.shorten_result(text, head=head, tail=tail, retain=retain)
+        if shorter is None:
+            rewritten.append(text)
+        else:
+            rewritten.append(shorter)
+            changed += 1
+    print(json.dumps({"texts": rewritten, "changed": changed}))
+    return 0
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -1185,6 +1242,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cost(argv[1:])
     if argv[:1] == ["stats"]:
         return _stats(argv[1:])
+    if argv[:1] == ["shorten-results"]:
+        return _shorten_results(argv[1:])
     if argv[:1] == ["proxy"]:
         from .proxy import run as run_proxy
         return run_proxy(argv[1:])

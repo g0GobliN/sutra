@@ -259,6 +259,24 @@ def _shorten(
     return candidate
 
 
+def shorten_result(
+    text: str,
+    *,
+    head: int = HEAD_BYTES,
+    tail: int = TAIL_BYTES,
+    retain: Any = None,
+) -> str | None:
+    """Shorten one tool result for a host that hands results over one by one.
+
+    Some hosts expose a request hook that carries the assembled conversation
+    (OpenCode's ``chat.messages.transform`` does), but let a plugin rewrite a
+    result only where that result already sits. This is the same policy as
+    :func:`prepare` for one body: the text changes only when a marker can
+    restore it, and ``None`` means "leave the text exactly as it is".
+    """
+    return _shorten(text, head=head, tail=tail, retain=retain)
+
+
 def _content_size(content: Any) -> int:
     if isinstance(content, str):
         return _size(content)
