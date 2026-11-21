@@ -1148,3 +1148,32 @@ def test_the_salient_lines_are_bounded(tmp_path):
     assert trimmed is not None
     kept = len(trimmed) - (prompt.HEAD_BYTES + prompt.TAIL_BYTES)
     assert kept < prompt.SALIENT_BYTES + 2_000
+
+
+@pytest.mark.parametrize("position", [5, 300, 590])
+def test_a_frame_that_differs_survives_a_deep_traceback(tmp_path, position):
+    """One interesting frame among hundreds of identical ones is what a preview should keep."""
+    lines = [f'  File "/app/m{i}.py", line {i}, in h{i}' for i in range(600)]
+    lines[position] = f'  File "/app/handle_3890.py", line {position}, in handle_3890'
+    body = "\n".join(["Traceback (most recent call last):"] + lines +
+                     ["ValueError: aborting because handle_3890 did not resolve"])
+    conversation = [
+        {"role": "system", "content": "You are a coding agent."},
+        {"role": "user", "content": "Which function and file raised the final error?"},
+        {"role": "assistant", "content": None,
+         "tool_calls": [{"id": "c1", "type": "function",
+                         "function": {"name": "read_file", "arguments": "{}"}}]},
+        {"role": "tool", "tool_call_id": "c1", "content": body},
+    ] + [{"role": "assistant" if index % 2 else "user", "content": f"step {index}"}
+         for index in range(8)]
+    decision = prompt.prepare({"messages": conversation}, keep_last=6,
+                              min_request_bytes=1024, min_message_bytes=512,
+                              retain=prompt.host_retainer(store=store_at(tmp_path)))
+
+    assert decision.request is not None
+    trimmed = decision.request["messages"][3]["content"]
+
+    assert '"/app/handle_3890.py"' in trimmed
+    # The preview keeps the anomaly, not the 599 identical frames around it.
+    assert trimmed.count('File "/app/m') < 100  # 600 frames in the body, far fewer in the preview
+    assert decision.bytes_after < decision.bytes_before

@@ -238,17 +238,46 @@ _FILE_LINE = re.compile(r'File "[^"\n]{1,256}", line \d{1,7}')
 SALIENT_BYTES = 2_048
 
 
+#: A line is kept whole up to this many characters; a longer one is cut, because
+#: one enormous line would otherwise consume the whole preview budget.
+SALIENT_LINE_BYTES = 400
+
+_SHAPE = re.compile(r"\d+")
+
+
+def _shape(line: str) -> str:
+    """The line with its numbers blanked, so repeated frames share one key."""
+    return _SHAPE.sub("#", line.strip())[:160]
+
+
 def _salient(body: str, *, limit: int) -> str:
-    """Failure-pointing lines from the part of a result the preview drops."""
+    """Lines from the dropped middle that carry information, rare ones first.
+
+    A traceback names one interesting frame among hundreds of identical ones, and
+    a preview that spends its budget on the first matches shows only the pattern.
+    Lines whose shape appears once in the middle are kept before the rest, so the
+    frame that differs survives even when it sits deep in the body.
+    """
     if limit <= 0 or not body:
         return ""
-    kept: list[str] = []
-    total = 0
+    matched: list[str] = []
     for line in body.splitlines():
         if not line:
             continue
         if not any(marker in line for marker in SALIENT_MARKERS) and not _FILE_LINE.search(line):
             continue
+        matched.append(line[:SALIENT_LINE_BYTES])
+    if not matched:
+        return ""
+    counts: dict[str, int] = {}
+    for line in matched:
+        key = _shape(line)
+        counts[key] = counts.get(key, 0) + 1
+    ordered = [line for line in matched if counts[_shape(line)] == 1]
+    ordered += [line for line in matched if counts[_shape(line)] > 1]
+    kept: list[str] = []
+    total = 0
+    for line in ordered:
         cost = _size(line) + 1
         if total + cost > limit:
             break

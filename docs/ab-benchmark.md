@@ -232,6 +232,14 @@ message still named `handle_3890`. Both treatment runs answered `h599` — the
 last visible frame — and never created the file the scorer needs; the control
 read the whole trace, recognised the message as a decoy, and wrote it.
 
+The preview now spends its budget on the lines that are least like their
+neighbours: numbers are blanked so identical frames share one shape, and lines
+whose shape appears once are kept before the repeated ones. On the
+`trace-deep` fixture that puts the frame naming `/app/handle_3890.py` first in a
+733-byte preview instead of the forty ordinary frames that came before it. The
+live pair has not been rerun with that ordering yet, so the table above still
+describes the first version.
+
 A bounded preview cannot guarantee a needle that only exists in the removed
 middle, and the old notice did not say that a middle had been removed at all.
 The notice now reads "N bytes were removed from the middle of this older tool
