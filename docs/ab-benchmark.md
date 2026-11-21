@@ -194,6 +194,38 @@ prompt was sent even though each individual request was shorter. Removing text
 a task still needs does not save tokens; it moves them into a second read. This
 is a property of the mode, and the report now shows it.
 
+### Failure lines and the removed middle (2026-11-22)
+
+Three pairs on protocol v2 with the failure-line preview in place, same seed,
+arms switched by plugin state:
+
+| task | arm | calls | prompt total | result |
+|---|---:|---:|---:|---|
+| `pytest-fail` | off | 2 | 73,045 | pass |
+| `pytest-fail` | on | 2 | 59,241 | pass |
+| `oom-killer` | off | 4 | 118,468 | pass |
+| `oom-killer` | on | 3 | 103,891 | pass |
+| `trace-deep` | off | 3 | 112,828 | pass |
+| `trace-deep` | on | 3 | 105,534 | fail |
+| `trace-deep` | on (repeat) | 2 | 67,061 | fail |
+
+`pytest-fail` fell 18.9% and `oom-killer` 12.3% with the task still finished,
+which is why the failure-line preview was kept. `trace-deep` is the honest
+counter-example: its fixture is 600 frames of the same shape with the
+identifying frame at line 300, and the closing exception message repeats that
+name as a decoy. The trim kept the head, the first matching lines of the middle,
+the closing message and the tail, so the frame naming `/app/handle_3890.py` was
+not in the request at all (24,387 B went out as 2,594 B) while the closing
+message still named `handle_3890`. Both treatment runs answered `h599` — the
+last visible frame — and never created the file the scorer needs; the control
+read the whole trace, recognised the message as a decoy, and wrote it.
+
+A bounded preview cannot guarantee a needle that only exists in the removed
+middle, and the old notice did not say that a middle had been removed at all.
+The notice now reads "N bytes were removed from the middle of this older tool
+result; if the part you need may be the removed one, call sutra_restore with the
+id below", so a model that suspects a gap has an explicit way to close it.
+
 ## Provider-token check across the four modes
 
 The protocol above runs whole Hermes sessions and is the only thing allowed to
