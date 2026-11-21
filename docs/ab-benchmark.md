@@ -116,6 +116,14 @@ session that sent it and records `request_rewrites`, `request_saved_bytes` and
 `request_modes`. A pair whose treatment rows carry no `request_rewrites` is a
 pair where the stage did not run, whatever the token columns say.
 
+The log also shows what the stage does in practice. On this machine it holds
+thirteen live requests across three sessions: 1,057,397 bytes before and
+874,612 after, 17.3% removed, with individual requests between 2.2% and 20.5%,
+all in `balanced`. The spread is the honest shape of the stage — it only touches
+a request above the size floor whose older tool results sit outside the
+protected window, and a session that reads one file and answers never clears
+either.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.
