@@ -135,6 +135,22 @@ def runner_tokens(record: dict):
     return rt.get("input"), rt.get("output")
 
 
+def prompt_tokens(total_usage: dict | None) -> int | None:
+    """Every token the prompt was paid for.
+
+    ``input_tokens`` counts only the part the provider could not serve from its
+    cache, so a small uncached remainder is not a small prompt. The buckets are
+    summed here for records written before the runner stated the total."""
+    if not total_usage:
+        return None
+    stated = total_usage.get("total_prompt_tokens")
+    if stated is not None:
+        return int(stated)
+    return int(total_usage.get("input_tokens") or 0) + \
+        int(total_usage.get("cache_read_tokens") or 0) + \
+        int(total_usage.get("cache_write_tokens") or 0)
+
+
 def fmt_usd(value) -> str:
     if value is None:
         return "unreported"
@@ -221,10 +237,11 @@ def main(argv: list[str] | None = None) -> int:
 
     lines.append("## 2. Tokens, tool calls, recovery calls, time and cost")
     lines.append(
-        "| task | arm | in tok (runner) | out tok (runner) | in tok (provider) | "
-        "out tok (provider) | tool calls | recovery calls | duration (s) | "
+        "| task | arm | in tok (runner) | out tok (runner) | in tok (uncached) | "
+        "out tok (provider) | cache read | cache write | prompt tok (total) | "
+        "tool calls | recovery calls | duration (s) | "
         "est. cost ($) | provider-usage cost ($) | actual cost ($) | reported? |")
-    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
+    lines.append("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|")
     for task in tasks:
         for arm in ARMS:
             for record in by_task[task].get(arm, []):
@@ -232,22 +249,32 @@ def main(argv: list[str] | None = None) -> int:
                 total_usage = usage.get("total")
                 rin, rout = runner_tokens(record)
                 est = cost_usd(rin, rout)
-                prov_cost = (cost_usd(usage.get("input_tokens"),
-                                      usage.get("output_tokens")))
+                prov_cost = (cost_usd((total_usage or {}).get("input_tokens"),
+                                      (total_usage or {}).get("output_tokens")))
                 actual = total_usage.get("actual_cost_usd") if total_usage else None
                 tool_calls = record.get("tool_calls", "—")
                 if not total_usage:
                     lines.append(f"| {task} | {arm} | {fmt_int(rin)} | {fmt_int(rout)} | — | — | "
+                                 f"— | — | — | "
                                  f"{tool_calls} | {recovery_calls(record)} | "
                                  f"{record.get('duration_s', '—')} | {fmt_usd(est)} | "
                                  f"not reported | not reported | not reported |")
                     continue
                 lines.append(f"| {task} | {arm} | {fmt_int(rin)} | {fmt_int(rout)} | "
-                             f"{fmt_int(usage.get('input_tokens'))} | "
-                             f"{fmt_int(usage.get('output_tokens'))} | "
+                             f"{fmt_int(total_usage.get('input_tokens'))} | "
+                             f"{fmt_int(total_usage.get('output_tokens'))} | "
+                             f"{fmt_int(total_usage.get('cache_read_tokens'))} | "
+                             f"{fmt_int(total_usage.get('cache_write_tokens'))} | "
+                             f"{fmt_int(prompt_tokens(total_usage))} | "
                              f"{tool_calls} | {recovery_calls(record)} | "
                              f"{record.get('duration_s', '—')} | {fmt_usd(est)} | "
                              f"{fmt_usd(prov_cost)} | {fmt_usd(actual)} | yes |")
+    lines.append("")
+    lines.append("The provider columns are exact: `in tok (uncached)` is only the "
+                 "part the provider did not serve from its prompt cache, while "
+                 "`prompt tok (total)` is uncached + cache read + cache write, i.e. "
+                 "the whole prompt. Comparing the uncached column alone can make a "
+                 "smaller remainder look like a smaller prompt.")
     lines.append("")
     lines.append("Estimated cost prices runner-counted tokens at documented default rates "
                  "(not a provider bill). Provider-usage cost prices provider-reported "

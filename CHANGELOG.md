@@ -161,6 +161,8 @@
   and the balanced-mode admission limit that keeps small conversations
   unrewritten.
 
+
+- The A/B report states the whole prompt instead of its uncached remainder: `in tok (uncached)`, `cache read`, `cache write` and their sum are now separate columns, provider-reported token and cost columns read the row the runner actually writes, and a paired run whose uncached tokens fell 38.6% while its total prompt rose 1.2% is documented as the case the old table would have misread as a saving.
 ## 0.6.3 - 2026-11-14
 
 ### Fixed
