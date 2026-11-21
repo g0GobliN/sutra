@@ -114,6 +114,37 @@ def test_dict_tool_response_keeps_its_shape_and_recovers(sutra):
         assert session.close() == 0
 
 
+def test_a_read_result_is_trimmed_inside_its_file_slot(sutra):
+    result = run_hook({
+        "hook_event_name": "PostToolUse", "session_id": "s-read",
+        "tool_name": "Read",
+        "tool_response": {"type": "text", "file": {
+            "filePath": "/app/big.txt", "content": big(),
+            "numLines": 3000, "startLine": 1, "totalLines": 3000}},
+    })
+    assert result.returncode == 0, result.stderr
+    output = updated(result)
+    assert isinstance(output, dict) and output["type"] == "text"
+    assert output["file"]["filePath"] == "/app/big.txt"
+    assert output["file"]["numLines"] == 3000
+    assert output["file"]["content"] != big()
+    assert "[sutra:" in output["file"]["content"]
+    assert "CLUE: hook-token-5K" not in output["file"]["content"]
+    match = ID_RE.search(output["file"]["content"])
+    assert match, output["file"]["content"][:500]
+
+    session = McpSession()
+    try:
+        session.request("initialize", request_id=1)
+        response = tool_text(session.call_tool(
+            "sutra_restore",
+            {"id": match.group(1), "mode": "search", "query": "hook-token-5K"}))
+        assert response["status"] == "ok"
+        assert "hook-token-5K" in response["content"]
+    finally:
+        assert session.close() == 0
+
+
 @pytest.mark.parametrize("tool_response", [
     "tiny output",
     "diff --git a/x b/x\n@@ -1 +1 @@\n" + "+line\n" * 3000,

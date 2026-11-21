@@ -53,6 +53,7 @@
 
 ### Fixed
 
+- A Claude Code `Read` result is trimmed in place. The result carries its text one level down, under `file.content`, and the seam only looked at the top-level keys of a dict, so the host's largest tool-result producer was never a candidate and the hook answered `{}` for every file read: a 26,001-byte traceback now leaves 10,401 bytes with a recovery id, the other `file` keys unchanged, and the caller's object untouched.
 - `sutra install --client hermes` keeps the previous plugin in
   `<HERMES_HOME>/plugin-backups` instead of `sutra.bak-<stamp>` beside it. The backup was itself a
   plugin directory with the same manifest name, so the host could load the stale copy while

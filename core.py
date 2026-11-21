@@ -27,9 +27,14 @@ from .engine import CompressionStats, Limits, Ref
 
 logger = logging.getLogger(__name__)
 
-# Only top-level string fields of a dict result are candidates. A nested
-# structure or an unknown key is never rewritten.
+# Only named string fields of a dict result are candidates. A nested structure
+# or an unknown key is never rewritten.
 TEXT_KEYS = ("output", "stdout", "stderr", "content", "text", "result", "data")
+# A Claude Code `Read` result carries its text one level down, as
+# ``{"file": {"filePath": …, "content": …}}``. The response shape has to come
+# back unchanged, so only that slot is rewritten and the nested dict is copied
+# before it is edited.
+NESTED_TEXT_KEYS = {"file": "content"}
 # Reading or producing SUTRA evidence must never be compressed again: a second
 # pass would hide the bytes the agent just asked for and mint a new id.
 NO_COMPRESS_TOOLS = frozenset({recovery.TOOL_NAME, "sutra_compress"})
@@ -283,6 +288,25 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
     )
 
 
+def _text_slots(result: dict) -> list[tuple[dict, str]]:
+    """Every ``(container, key)`` pair holding text this module may rewrite.
+
+    The containers are already copies owned by the caller, so writing through
+    them never touches the caller's object. A nested shape is only entered when
+    its named key really holds a string.
+    """
+    slots = [(result, key) for key in TEXT_KEYS
+             if isinstance(result.get(key), str)]
+    for key, inner in NESTED_TEXT_KEYS.items():
+        nested = result.get(key)
+        if isinstance(nested, dict):
+            copy = dict(nested)
+            result[key] = copy
+            if isinstance(copy.get(inner), str):
+                slots.append((copy, inner))
+    return slots
+
+
 def process_result(result: Any, *, tool_name: str | None = None,
                    session_id: str | None = None) -> Any:
     """Compress a tool result of any common shape without changing its type.
@@ -303,15 +327,13 @@ def process_result(result: Any, *, tool_name: str | None = None,
         if isinstance(result, dict):
             changed = False
             new = dict(result)
-            for key in TEXT_KEYS:
-                value = new.get(key)
-                if isinstance(value, str):
-                    outcome = process_text(
-                        value, cfg=cfg, tool_name=tool_name or "",
-                        session_id=session_id or "")
-                    if outcome.changed:
-                        new[key] = outcome.output
-                        changed = True
+            for container, key in _text_slots(new):
+                outcome = process_text(
+                    container[key], cfg=cfg, tool_name=tool_name or "",
+                    session_id=session_id or "")
+                if outcome.changed:
+                    container[key] = outcome.output
+                    changed = True
             return new if changed else result
     except Exception:  # an exotic result shape is never worth a broken tool call
         logger.exception("sutra: compression failed; returning the original result")
