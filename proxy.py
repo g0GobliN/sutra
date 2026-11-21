@@ -35,10 +35,18 @@ from typing import Any, Callable
 from . import config as _config
 from . import metrics, prompt as _prompt
 
-#: Paths whose body carries a conversation this adapter models. Everything else
-#: is forwarded byte for byte, including ``/v1/messages/count_tokens`` and any
-#: endpoint a future client adds.
-REWRITE_PATHS = frozenset({"/v1/messages"})
+#: Path suffixes whose body carries a conversation this package models: the
+#: Anthropic Messages endpoint and the OpenAI chat endpoint. A host's base URL
+#: may add a prefix (``/provider/v1/chat/completions``), and that prefix belongs
+#: to the upstream rather than to the shape, so the match is on the suffix.
+#: Everything else is forwarded byte for byte, including
+#: ``/v1/messages/count_tokens`` and any endpoint a client adds later.
+REWRITE_SUFFIXES = ("/v1/messages", "/chat/completions")
+
+
+def _rewritable(path: str) -> bool:
+    """Whether a request path carries a conversation this package can shorten."""
+    return path.endswith(REWRITE_SUFFIXES)
 
 #: Headers that describe one hop rather than the message. They are recomputed
 #: (or dropped) instead of being copied, so the upstream sees a valid request.
@@ -97,9 +105,15 @@ Usage sits either in a small JSON document or near the start of a stream, so a
 bounded prefix covers it without holding a whole answer in memory.
 """
 
+#: Both providers report the same quantities under different names: Anthropic
+#: sends ``input_tokens`` and the two cache buckets, OpenAI sends
+#: ``prompt_tokens``/``completion_tokens`` and nests the cache hit under
+#: ``prompt_tokens_details.cached_tokens``. The counters keep one set of names.
 _USAGE_ALIASES = {
     "cache_read_input_tokens": "cache_read_tokens",
     "cache_creation_input_tokens": "cache_write_tokens",
+    "prompt_tokens": "input_tokens",
+    "completion_tokens": "output_tokens",
 }
 
 
@@ -139,11 +153,18 @@ def _usage_from_stream(body: bytes) -> dict[str, Any] | None:
 
 
 def _normalize_usage(usage: dict[str, Any]) -> dict[str, Any]:
-    """Anthropic's bucket names to the ones the counters already use."""
-    return {
+    """Map a provider's bucket names onto the ones the counters already use."""
+    normalized = {
         _USAGE_ALIASES.get(str(name), str(name)): value
         for name, value in usage.items()
+        if isinstance(value, int) and not isinstance(value, bool)
     }
+    details = usage.get("prompt_tokens_details")
+    if isinstance(details, dict) and "cache_read_tokens" not in normalized:
+        cached = details.get("cached_tokens")
+        if isinstance(cached, int) and not isinstance(cached, bool):
+            normalized["cache_read_tokens"] = cached
+    return normalized
 
 
 def _observe(content_type: str, body: bytes) -> None:
@@ -313,7 +334,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         body = self._read_body() if read_body else b""
         rewritten = False
-        observe = urllib.parse.urlsplit(target).path in REWRITE_PATHS
+        observe = _rewritable(urllib.parse.urlsplit(target).path)
         if rewrite and observe:
             new_body, reason = rewrite_body(body, self.config, self.retain)
             if reason is not None:

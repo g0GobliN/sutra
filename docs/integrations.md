@@ -400,6 +400,33 @@ sutra proxy --port 8787 --upstream https://api.anthropic.com
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 claude
 ```
 
-It binds `127.0.0.1` only and answers `GET`, `HEAD`, `OPTIONS`, `PUT`, `PATCH` and `DELETE` by forwarding them unchanged; only a `POST` to `/v1/messages` is read. It never reads, logs or rewrites a credential header, never changes the model, the path or the query, and never stores the request itself — only the tool results the policy chose to shorten, under the same recovery ids the rest of SUTRA uses. `GET` requests and every path other than `/v1/messages` are forwarded unchanged, so a host that calls other endpoints keeps working. Stopping the proxy puts the client back on the direct path as soon as it points at the provider again. A target that names another origin — `http://…`, `//…`, a backslash or whitespace — is answered with `400` instead of being forwarded, and a header whose name or value carries a control character is dropped on both legs rather than relayed.
+It binds `127.0.0.1` only and answers `GET`, `HEAD`, `OPTIONS`, `PUT`, `PATCH` and `DELETE` by forwarding them unchanged; only a `POST` whose path ends in `/v1/messages` (Anthropic Messages) or `/chat/completions` (OpenAI Chat Completions) is read. It never reads, logs or rewrites a credential header, never changes the model, the path or the query, and never stores the request itself — only the tool results the policy chose to shorten, under the same recovery ids the rest of SUTRA uses. `GET` requests and every other path are forwarded unchanged, so a host that calls other endpoints keeps working. Stopping the proxy puts the client back on the direct path as soon as it points at the provider again. A target that names another origin — `http://…`, `//…`, a backslash or whitespace — is answered with `400` instead of being forwarded, and a header whose name or value carries a control character is dropped on both legs rather than relayed.
 
-The answer is the one place where a Claude Code session reports what the provider charged for: `usage` carries `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens`. The proxy reads at most the first 256 KiB of each `/v1/messages` answer — a streamed answer's `message_start` event too — maps the two cache buckets onto the names the rest of SUTRA counts, and records them through `metrics.record_provider_usage()`. The bytes the client receives are the provider's, unchanged; an answer that reports no usage is counted as not reported rather than as zero.
+The answer is the one place where a session reports what the provider charged for. Anthropic sends `input_tokens`, `output_tokens`, `cache_read_input_tokens` and `cache_creation_input_tokens`; OpenAI sends `prompt_tokens`, `completion_tokens` and `prompt_tokens_details.cached_tokens`. The proxy reads at most the first 256 KiB of each modelled answer — a streamed answer's `message_start` event too — maps the two cache buckets onto the names the rest of SUTRA counts, and records them through `metrics.record_provider_usage()`. The bytes the client receives are the provider's, unchanged; an answer that reports no usage is counted as not reported rather than as zero.
+
+### Pointing a host at the proxy
+
+A host connects through the proxy by pointing its OpenAI- or Anthropic-compatible base URL at the loopback port. Nothing else about the host changes: its model, credentials, headers and responses stay its own, and only the body of a tool-heavy request is rewritten.
+
+DeepSeek Harness reads its providers from the `llm-pi-ai` entry in `~/.dsh/profiles/desktop/cordis.patch.yml`. Adding a provider whose `baseURL` names the proxy routes that provider's traffic through the policy, while the key stays where the entry already keeps it:
+
+```yaml
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      sutra:
+        displayName: SUTRA proxy
+        apiKeyEnv: COMMANDCODE_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:8787
+        models:
+          - id: deepseek/deepseek-v4.1-flash
+            name: DeepSeek V4.1 Flash
+            contextWindow: 1000000
+            maxTokens: 65536
+```
+
+The matching upstream is the origin the provider entry used before — `sutra proxy --upstream https://api.commandcode.ai` for a `commandcode` base URL of `https://api.commandcode.ai/provider/v1`. The client's own path, `/provider/v1/chat/completions`, arrives at the proxy unchanged and is forwarded to the same path on that origin, because the rewrite matches a path suffix rather than a fixed path.
+
+OpenCode takes the same base URL under `provider.<id>.options.baseURL` in `opencode.json`, and Codex CLI honours `OPENAI_BASE_URL` for an API-key login. Claude Code uses `ANTHROPIC_BASE_URL`, shown above. Each of these hosts keeps its own native integration where one exists — Hermes uses its middleware, OpenCode its transform hook — and the base URL is the fallback for a host that exposes no hook at all.

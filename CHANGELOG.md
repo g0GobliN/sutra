@@ -4,6 +4,14 @@
 
 ### Changed
 
+- The proxy now shortens either request shape a host can send: a `POST` whose path ends in
+  `/v1/messages` (Anthropic Messages) or `/chat/completions` (OpenAI Chat Completions). Because the
+  match is on the suffix, a provider whose base URL carries a path — DeepSeek Harness sends
+  `/provider/v1/chat/completions` — is rewritten too, which is what lets any host that accepts a
+  base URL sit behind SUTRA. The answer's usage is mapped from either provider's bucket names
+  (`prompt_tokens`/`completion_tokens`/`prompt_tokens_details.cached_tokens` as well as the
+  Anthropic fields).
+
 - Every mode now keeps a head and a tail beside a trimmed result's marker, and the size of that
   preview follows the mode: `1536`/`768` bytes in `balanced` and `aggressive`, `384`/`192` in
   `beast`. A marker-only `beast` trimmed 78.2% of the fixture but made a live session read the
