@@ -14,6 +14,7 @@ import http.server
 import json
 import pathlib
 import re
+import socket
 import threading
 
 import pytest
@@ -488,3 +489,50 @@ def test_the_counters_never_change_what_the_client_receives(pair):
         Upstream.answer_payload = b'{"id": "msg_1", "type": "message"}'
     assert payload == answer
     assert headers.get("X-Sutra-Rewritten") == "1"
+
+
+# --- targets and headers ----------------------------------------------------
+
+
+def test_a_target_that_names_another_origin_is_never_sent():
+    # ``http.client`` dials the host inside an absolute target, so the guard has
+    # to reject these before the connection exists.
+    assert proxy._target("/v1/messages") == "/v1/messages"
+    assert proxy._target("/v1/messages?beta=true") == "/v1/messages?beta=true"
+    assert proxy._target("http://example.invalid/steal") is None
+    assert proxy._target("//example.invalid/steal") is None
+    assert proxy._target("/a\\b") is None
+    assert proxy._target("/a b") is None
+
+
+def test_a_protocol_relative_request_line_reaches_only_the_configured_upstream(pair):
+    # ``BaseHTTPRequestHandler`` parses the request line with ``urlsplit``, so the
+    # authority in ``//elsewhere/x`` is consumed there and only ``/x`` survives.
+    # This pins that the remaining path goes to the upstream the operator chose.
+    request = (b"GET //example.invalid/steal HTTP/1.1\r\n"
+               b"Host: 127.0.0.1\r\n\r\n")
+    with socket.create_connection(("127.0.0.1", pair["port"]), timeout=10) as sock:
+        sock.sendall(request)
+        answer = sock.recv(65_536)
+    assert answer.split(b"\r\n", 1)[0].endswith(b"200 OK")
+    seen = Upstream.seen[-1]["path"]
+    assert seen.startswith("/example.invalid/")
+    assert "//" not in seen
+
+
+def test_a_backslash_in_the_target_is_refused(pair):
+    request = (b"GET /\\example.invalid/x HTTP/1.1\r\n"
+               b"Host: 127.0.0.1\r\n\r\n")
+    with socket.create_connection(("127.0.0.1", pair["port"]), timeout=10) as sock:
+        sock.sendall(request)
+        answer = sock.recv(65_536)
+    assert b"400" in answer.split(b"\r\n", 1)[0]
+    assert Upstream.seen == []
+
+
+def test_a_header_value_with_a_control_character_is_dropped():
+    assert proxy._header_ok("x-api-key", SECRET)
+    assert not proxy._header_ok("x-api-key", "value\r\nX-Evil: 1")
+    assert not proxy._header_ok("x-api-key", "value\nX-Evil: 1")
+    assert not proxy._header_ok("x-api-key\r\n", "value")
+    assert not proxy._header_ok("", "value")

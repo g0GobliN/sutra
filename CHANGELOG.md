@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Security
+
+- `sutra proxy` refuses a request target that names another origin. `http.client` dials the host inside an absolute target, so a target that is not a plain rooted path (`http://elsewhere/`, `//elsewhere/`, a backslash or whitespace) is answered with `400` instead of being forwarded, and a header whose name or value carries a control character is dropped on both legs rather than forwarded or echoed.8a (Refuse a proxy target that names another origin)
 ### Added
 
 - The generated OpenCode plugin now shortens the tool results already inside a conversation before the provider call, through `experimental.chat.messages.transform` and `sutra shorten-results`; only a string whose original the store kept is replaced, and the hook fails open.

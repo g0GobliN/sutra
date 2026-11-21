@@ -26,6 +26,7 @@ from __future__ import annotations
 import http.client
 import http.server
 import json
+import re
 import ssl
 import sys
 import urllib.parse
@@ -51,6 +52,32 @@ DEFAULT_PORT = 8787
 DEFAULT_UPSTREAM = "https://api.anthropic.com"
 DEFAULT_TIMEOUT = 300.0
 CHUNK = 65_536
+
+#: A request target ``http.client`` will send to the upstream the operator chose:
+#: rooted, not protocol-relative, and free of backslashes, whitespace and control
+#: characters. ``//host/path`` and ``http://host/path`` both name another origin,
+#: which is why they are refused rather than forwarded.
+_SAFE_TARGET = re.compile(r"^/(?!/)[^\\\x00-\x20\x7f]*$")
+
+#: Control characters never belong in a header name or value. A field carrying one
+#: is dropped: forwarding it upstream or echoing it back is exactly the splitting
+#: the validation exists to prevent.
+_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _target(path: str) -> str | None:
+    """The target to send upstream, or ``None`` when it is not a plain path.
+
+    ``http.client`` treats a target that starts with a scheme as an absolute URL
+    and dials *that* host, so a client of this loopback proxy could otherwise make
+    SUTRA open a connection to an origin neither the operator nor the client chose.
+    """
+    return path if _SAFE_TARGET.match(path) else None
+
+
+def _header_ok(name: str, value: str) -> bool:
+    """Whether a header may cross this proxy without risking a split."""
+    return bool(name) and not _CONTROL.search(name) and not _CONTROL.search(value)
 
 
 def _upstream_parts(upstream: str) -> tuple[str, int, str, bool]:
@@ -213,16 +240,16 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _headers_for_upstream(self, body: bytes) -> dict[str, str]:
         headers: dict[str, str] = {}
         for name, value in self.headers.items():
-            if name.lower() in HOP_HEADERS:
+            if name.lower() in HOP_HEADERS or not _header_ok(name, value):
                 continue
             headers[name] = value
         headers["Content-Length"] = str(len(body))
         return headers
 
-    def _forward(self, body: bytes, rewritten: bool, *,
+    def _forward(self, body: bytes, rewritten: bool, *, target: str,
                  send_body: bool = True, observe: bool = False) -> None:
         host, port, base, secure = _upstream_parts(self.upstream)
-        path = base + self.path
+        path = base + target
         connection: http.client.HTTPConnection
         if secure:
             connection = http.client.HTTPSConnection(
@@ -246,6 +273,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                *, send_body: bool = True, observe: bool = False) -> None:
         self.send_response(response.status, response.reason)
         for name, value in response.getheaders():
+            if not _header_ok(name, value):
+                continue
             lowered = name.lower()
             if lowered in ("transfer-encoding", "connection"):
                 continue
@@ -278,16 +307,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
     def _serve(self, *, rewrite: bool = False, read_body: bool = False) -> None:
         """Forward one request, rewriting the body only on a modelled path."""
+        target = _target(self.path)
+        if target is None:
+            self._reject("the request target is not a plain path")
+            return
         body = self._read_body() if read_body else b""
         rewritten = False
-        observe = urllib.parse.urlsplit(self.path).path in REWRITE_PATHS
+        observe = urllib.parse.urlsplit(target).path in REWRITE_PATHS
         if rewrite and observe:
             new_body, reason = rewrite_body(body, self.config, self.retain)
             if reason is not None:
                 body, rewritten = new_body, True
         try:
-            self._forward(body, rewritten, send_body=self.command != "HEAD",
-                          observe=observe)
+            self._forward(body, rewritten, target=target,
+                          send_body=self.command != "HEAD", observe=observe)
         except (OSError, http.client.HTTPException, ValueError) as exc:
             self._fail(exc)
 
@@ -315,13 +348,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def _fail(self, exc: Exception) -> None:
         # The message names the failure class only: an exception text can carry
         # a URL with a token in a query string.
+        self._answer(http.client.BAD_GATEWAY,
+                     f"the upstream request failed: {type(exc).__name__}")
+
+    def _reject(self, message: str) -> None:
+        self._answer(http.client.BAD_REQUEST, message)
+
+    def _answer(self, status: int, message: str) -> None:
         payload = json.dumps({
             "type": "error",
-            "error": {"type": "sutra_proxy_error",
-                      "message": f"the upstream request failed: {type(exc).__name__}"},
+            "error": {"type": "sutra_proxy_error", "message": message},
         }).encode("utf-8")
         try:
-            self.send_response(http.client.BAD_GATEWAY)
+            self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(payload)))
             self.send_header("Connection", "close")
