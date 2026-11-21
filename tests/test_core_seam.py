@@ -113,6 +113,25 @@ def test_process_result_keeps_the_dict_shape_and_compresses_only_text(sutra):
     assert "CLUE: seam-token-3M" not in out["stdout"]
 
 
+def test_process_result_reaches_a_nested_read_result(sutra):
+    """A Claude Code Read result carries its text one level down."""
+    payload = {"type": "text", "file": {
+        "filePath": "/app/big.txt", "content": big(),
+        "numLines": 3000, "startLine": 1, "totalLines": 3000}}
+    out = sutra.process_result(payload, tool_name="Read")
+    assert out is not payload
+    assert sorted(out) == ["file", "type"] and out["type"] == "text"
+    assert sorted(out["file"]) == [
+        "content", "filePath", "numLines", "startLine", "totalLines"]
+    assert out["file"]["filePath"] == "/app/big.txt"
+    assert out["file"]["numLines"] == 3000 and out["file"]["totalLines"] == 3000
+    assert "[sutra:" in out["file"]["content"]
+    assert "CLUE: seam-token-3M" not in out["file"]["content"]
+    assert payload["file"]["content"] == big()
+    weird = {"weird": {"content": big()}}
+    assert sutra.process_result(weird, tool_name="Read") == weird
+
+
 def test_disabled_returns_the_same_object(sutra, monkeypatch):
     monkeypatch.setenv("SUTRA_ENABLED", "0")
     payload = {"output": big()}
