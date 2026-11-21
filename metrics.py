@@ -90,8 +90,48 @@ _PROMPT: dict[str, Any] = {
 }
 
 
-def record_request_rewrite(decision: Any, *, mode: str = "") -> None:
-    """Count one request-stage decision for its mode. Never raises."""
+def request_log_path(stats_path: str) -> str:
+    """The request-stage log that sits beside the tool-result savings log."""
+    stem, _ = os.path.splitext(str(stats_path))
+    return stem + "-request.jsonl"
+
+
+def _request_record(decision: Any, mode: str, session_id: str) -> dict[str, Any]:
+    """One durable request-stage record; content-free by construction."""
+    before = _token(getattr(decision, "bytes_before", 0))
+    after = _token(getattr(decision, "bytes_after", 0))
+    return {
+        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "mode": str(mode or "unknown")[:24],
+        "session": str(session_id or "")[:64],
+        "before": before,
+        "after": after,
+        "saved": max(0, before - after),
+    }
+
+
+def _append_request_record(path: str, record: dict[str, Any], *, limit: int = 0) -> None:
+    """Append one rewrite to the durable request log, rotating at ``limit``."""
+    target = request_log_path(path)
+    os.makedirs(os.path.dirname(target) or ".", exist_ok=True)
+    _rotate_stats(target, int(limit or 0))
+    payload = (json.dumps(record, sort_keys=True) + "\n").encode("utf-8")
+    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_APPEND | _O_NOFOLLOW, 0o600)
+    try:
+        os.write(fd, payload)
+    finally:
+        os.close(fd)
+
+
+def record_request_rewrite(decision: Any, *, mode: str = "",
+                           session_id: str = "", config: Any = None) -> None:
+    """Count one request-stage decision; append a rewrite to its durable log.
+
+    The in-memory counters carry every decision, so the depth a mode reaches is
+    visible while the process lives. The durable log keeps only the requests that
+    were actually shortened, each with the host session that sent it, because
+    that is what a later A/B run or ``sutra stats`` can attribute to a session it
+    did not observe. Never raises."""
     try:
         changed = bool(getattr(decision, "changed", False))
         before = _token(getattr(decision, "bytes_before", 0))
@@ -111,6 +151,11 @@ def record_request_rewrite(decision: Any, *, mode: str = "") -> None:
             row["requests"] += 1
             row["rewritten"] += int(changed)
             row["saved_bytes"] += saved
+        path = getattr(config, "stats_path", "") if config is not None else ""
+        if changed and path:
+            _append_request_record(
+                path, _request_record(decision, mode, session_id),
+                limit=int(getattr(config, "stats_max_bytes", 0) or 0))
     except Exception:  # a metric must never break the request path
         logger.debug("sutra: could not record the request rewrite metric",
                      exc_info=True)
@@ -317,6 +362,61 @@ def record_compression(stats: dict[str, Any], cfg: Any) -> None:
         pass
     except Exception:
         logger.debug("sutra: could not append the compression record", exc_info=True)
+
+
+def read_request_log(path: str) -> dict[str, Any]:
+    """Aggregate the durable request-stage log (rewrites only, content-free)."""
+    target = request_log_path(path)
+    report: dict[str, Any] = {
+        "path": target, "files": [], "records": 0, "before": 0, "after": 0,
+        "saved": 0, "saved_pct": 0.0, "unreadable": 0, "first_at": "",
+        "last_at": "", "by_mode": {}, "by_session": {},
+    }
+    for candidate in (target + ".1", target):
+        try:
+            with open(candidate, "rb") as handle:
+                lines = handle.read().splitlines()
+        except OSError:
+            continue
+        report["files"].append(candidate)
+        for raw in lines:
+            if not raw.strip():
+                continue
+            try:
+                record = json.loads(raw)
+            except (ValueError, UnicodeDecodeError):
+                report["unreadable"] += 1
+                continue
+            if not isinstance(record, dict):
+                report["unreadable"] += 1
+                continue
+            try:
+                before = max(0, int(record.get("before") or 0))
+                after = max(0, int(record.get("after") or 0))
+                saved = max(0, int(record.get("saved") or 0))
+                mode = str(record.get("mode") or "unknown")[:24]
+                session = str(record.get("session") or "")[:64]
+                at = str(record.get("at") or "")
+            except (TypeError, ValueError):
+                report["unreadable"] += 1
+                continue
+            report["records"] += 1
+            report["before"] += before
+            report["after"] += after
+            report["saved"] += saved
+            if at:
+                report["first_at"] = report["first_at"] or at
+                report["last_at"] = at
+            for table, key in ((report["by_mode"], mode), (report["by_session"], session)):
+                row = table.get(key)
+                if row is None:
+                    row = {"records": 0, "saved": 0}
+                    table[key] = row
+                row["records"] += 1
+                row["saved"] += saved
+    if report["before"] > 0:
+        report["saved_pct"] = round(100 * report["saved"] / report["before"], 1)
+    return report
 
 
 def read_savings_log(path: str) -> dict[str, Any]:

@@ -104,6 +104,18 @@ read from either stream, because `hermes chat -q` prints `session_id:` on
 stderr while the interactive form prints `Session:` on stdout; a runner that
 read only stdout recorded every session as unreported.
 
+Each row's `sutra_evidence` separates two questions that a transcript alone
+cannot answer. `tool_results_with_marker` and `restore_calls` come from the
+session store, which keeps the tool result the host received — the full text,
+because the marker only ever exists in the request SUTRA assembled. So a zero
+there means "no marker in the stored transcript", not "the stage did nothing".
+The request stage's own effect is read from the durable request log beside
+`SUTRA_STATS_FILE` (`<stem>-request.jsonl`, described in
+[accounting.md](accounting.md)): the runner attributes each rewrite to the
+session that sent it and records `request_rewrites`, `request_saved_bytes` and
+`request_modes`. A pair whose treatment rows carry no `request_rewrites` is a
+pair where the stage did not run, whatever the token columns say.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.

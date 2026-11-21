@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import pathlib
 import random
 import re
@@ -645,11 +646,46 @@ def _restore_status(content: str) -> str:
     return "unparseable"
 
 
+def _request_log_path() -> pathlib.Path:
+    """The request-stage log beside the configured savings log."""
+    stats = pathlib.Path(os.environ.get("SUTRA_STATS_FILE")
+                         or pathlib.Path.home() / ".hermes" / "cache" / "sutra-stats.jsonl")
+    return stats.with_name(stats.stem + "-request.jsonl")
+
+
+def session_request_evidence(session_id: str) -> dict:
+    """Request-stage rewrites the durable log attributes to this session."""
+    evidence = {"request_rewrites": 0, "request_saved_bytes": 0, "request_modes": []}
+    if not session_id:
+        return evidence
+    path = _request_log_path()
+    for candidate in (path.with_name(path.name + ".1"), path):
+        try:
+            lines = candidate.read_bytes().splitlines()
+        except OSError:
+            continue
+        for raw in lines:
+            try:
+                record = json.loads(raw)
+            except (ValueError, UnicodeDecodeError):
+                continue
+            if not isinstance(record, dict) or record.get("session") != session_id:
+                continue
+            evidence["request_rewrites"] += 1
+            evidence["request_saved_bytes"] += max(0, int(record.get("saved") or 0))
+            mode = str(record.get("mode") or "")
+            if mode and mode not in evidence["request_modes"]:
+                evidence["request_modes"].append(mode)
+    return evidence
+
+
 def session_sutra_evidence(session_id: str) -> dict:
-    """Markers seen by the model and sutra_restore calls, from the session store.
+    """Markers seen by the model, sutra_restore calls and request rewrites.
 
     The messages table records the serving tool in ``tool_name``; assistant
     ``content`` does not carry the tool call, so the tool rows are the source.
+    The request log is where a rewrite appears, because a trimmed request never
+    reaches the session store: the transcript keeps the full tool result.
     """
     evidence = {"tool_results_with_marker": 0, "restore_calls": 0,
                 "restore_statuses": []}
@@ -670,6 +706,7 @@ def session_sutra_evidence(session_id: str) -> dict:
         db.close()
     except sqlite3.Error:
         pass
+    evidence.update(session_request_evidence(session_id))
     return evidence
 
 

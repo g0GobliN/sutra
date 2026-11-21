@@ -316,3 +316,20 @@ def test_a_session_id_is_read_from_either_stream():
     match = module.SESSION_RE.search(stdout + "\n" + stderr)
     assert match and match.group(1) == "local-abc123"
     assert module.SESSION_RE.search("Session: local-def456\n").group(1) == "local-def456"
+
+
+def test_a_request_rewrite_is_attributed_to_its_session(tmp_path, monkeypatch):
+    stats = tmp_path / "sutra-stats.jsonl"
+    monkeypatch.setenv("SUTRA_STATS_FILE", str(stats))
+    log = stats.with_name(stats.stem + "-request.jsonl")
+    log.write_text(
+        '{"at": "2026-11-22T00:00:00Z", "mode": "aggressive", "session": "local-a",'
+        ' "before": 1000, "after": 400, "saved": 600}\n'
+        '{"at": "2026-11-22T00:00:01Z", "mode": "beast", "session": "local-b",'
+        ' "before": 900, "after": 300, "saved": 600}\n',
+        encoding="utf-8")
+    evidence = run.session_request_evidence("local-a")
+    assert evidence["request_rewrites"] == 1
+    assert evidence["request_saved_bytes"] == 600
+    assert evidence["request_modes"] == ["aggressive"]
+    assert run.session_request_evidence("nobody")["request_rewrites"] == 0

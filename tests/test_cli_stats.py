@@ -121,7 +121,7 @@ def test_the_cli_explains_a_missing_log(tmp_path, monkeypatch, capsys):
     assert cli.main(["stats"]) == 0
 
     out = capsys.readouterr().out
-    assert "no rewrites recorded" in out
+    assert "no tool-result rewrites in" in out
     assert "no records yet" in out
 
 
@@ -135,7 +135,7 @@ def test_the_human_report_states_what_it_cannot_see(tmp_path, monkeypatch, capsy
     assert "1 rewrite" in out or "rewrites: 1" in out
     assert "900 saved" in out
     assert "host process" in out
-    assert "rewritten tool results only" in out
+    assert "the request-stage rewrites beside it" in out
 
 
 def test_the_file_flag_wins_over_the_environment(tmp_path, monkeypatch, capsys):
