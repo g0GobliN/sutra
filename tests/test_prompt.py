@@ -1113,3 +1113,38 @@ def test_the_shared_cache_evicts_old_payloads(tmp_path, monkeypatch):
         assert entry_ids(retain(host_body() + f"\nunique {index}\n"))
 
     assert len(prompt._RETAINED) <= 3
+
+# --- the preview keeps the lines that say what failed --------------------
+#
+# A trimmed result that loses the failing test's name or the `File "…", line N`
+# pointer makes the agent read the file again, which costs more than the bytes
+# the preview saved. Salient lines come from the middle, where neither the head
+# nor the tail reaches.
+
+
+def test_a_trimmed_result_keeps_the_lines_that_say_what_failed(tmp_path):
+    noise = "".join(f"collected line {index}\n" for index in range(400))
+    failure = (
+        "FAILED tests/test_app.py::test_login - AssertionError: 401 != 200\n"
+        '  File "src/app/auth.py", line 42, in handle_login\n'
+    )
+    text = noise + failure + noise
+    retain = prompt.host_retainer(store=store_at(tmp_path))
+
+    trimmed = prompt.shorten_result(text, retain=retain)
+
+    assert trimmed is not None and len(trimmed) < len(text)
+    assert "FAILED tests/test_app.py::test_login" in trimmed
+    assert 'File "src/app/auth.py", line 42' in trimmed
+
+
+def test_the_salient_lines_are_bounded(tmp_path):
+    failures = "".join(f"FAILED tests/test_app.py::test_{index} - boom\n" for index in range(400))
+    text = ("noise\n" * 2000) + failures + ("noise\n" * 2000)
+    retain = prompt.host_retainer(store=store_at(tmp_path))
+
+    trimmed = prompt.shorten_result(text, retain=retain)
+
+    assert trimmed is not None
+    kept = len(trimmed) - (prompt.HEAD_BYTES + prompt.TAIL_BYTES)
+    assert kept < prompt.SALIENT_BYTES + 2_000

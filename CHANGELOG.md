@@ -4,6 +4,11 @@
 
 ### Changed
 
+- A shortened result's preview now keeps the lines that point at a failure — `Traceback`,
+  `FAILED`, `ERROR`, a `…Error:` name, `File "…", line N`, `assert` — taken from the middle of the
+  body up to 2,048 bytes and paid for out of the head's own budget, so the request does not grow
+  and the fixture's 15.9%/31.8%/75.0% removal is unchanged while the preview says what broke.
+
 - The proxy now shortens either request shape a host can send: a `POST` whose path ends in
   `/v1/messages` (Anthropic Messages) or `/chat/completions` (OpenAI Chat Completions). Because the
   match is on the suffix, a provider whose base URL carries a path — DeepSeek Harness sends
