@@ -141,6 +141,11 @@ class Store:
         self.config = config
         self.dir = config.directory
         self._telemetry = get_telemetry(telemetry_config)
+        # Retention is one write plus a budget sweep; without a lock two
+        # sessions can both write, both find the budget satisfied, and leave
+        # the store above its ceiling. The lock is per instance and re-entrant
+        # because ``put`` enforces the budget by calling ``prune``.
+        self._write_lock = threading.RLock()
 
     # -- paths --------------------------------------------------------------
 
@@ -248,6 +253,13 @@ class Store:
 
     def put(self, text: str, *, tool_name: str = "", session_id: str = "",
             now: float | None = None) -> Entry | None:
+        """Retain ``text`` and keep the store inside its budget, atomically."""
+        with self._write_lock:
+            return self._put(text, tool_name=tool_name, session_id=session_id,
+                             now=now)
+
+    def _put(self, text: str, *, tool_name: str = "", session_id: str = "",
+             now: float | None = None) -> Entry | None:
         """Retain ``text`` byte-for-byte, or return None (disabled/failed/too big)."""
         if not self.config.enabled:
             return None

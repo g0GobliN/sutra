@@ -129,6 +129,44 @@ python3 -m pip install -r bench/requirements.txt
 python3 bench/tokens.py
 ```
 
+### Recorded requests
+
+`bench/replay_requests.py` measures the request-stage policy on traffic a host
+actually sent rather than on generated payloads. It reads request bodies the
+host saved before submission (Hermes writes them under `$HERMES_HOME/sessions`
+when a request fails), rebuilds the `messages` list the middleware would see,
+and reports bytes removed per mode alongside two safety checks: every touched
+message must resolve to a byte-identical stored copy, and every untouched
+message must be byte-identical to what was recorded. The report contains counts
+and byte sizes only, never message text, and the recorded bodies are not part of
+this repository.
+
+```bash
+python3 bench/replay_requests.py --source ~/.hermes/sessions
+python3 bench/replay_requests.py --source request.json --json
+```
+
+### Session stores
+
+`bench/replay_sessions.py` answers the same question for ordinary sessions — the
+ones that never failed and were never saved as a request dump. It opens a Hermes
+`state.db` read-only, rebuilds each conversation from its active messages and
+runs every mode through the policy. A touched message whose id was retained by
+this run is restored and compared byte for byte; a message that arrived already
+carrying an id is reported as `already marked` rather than failed, because its
+original lives in the host's store, which the benchmark does not open.
+
+```bash
+python3 bench/replay_sessions.py --limit 200 --min-messages 6
+python3 bench/replay_sessions.py --db ~/.hermes/state.db --json
+```
+
+Measured on 200 sessions (9,086,662 bytes of conversation, 5,698 stored tool
+results, median result 464 bytes, 348 at or above 8,192 bytes): balanced removes
+372,474 bytes (4.1%), aggressive 619,354 (6.8%), beast 1,204,572 (13.3%), at a
+median of 0.2–0.8 ms per conversation. Every run reported `recovered=yes` and
+`untouched=yes`.
+
 ### Bytes
 
 | payload | rule | before | after | saved |

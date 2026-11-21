@@ -86,3 +86,37 @@ shapes in [provider-matrix.md](provider-matrix.md)). The project's measured, mod
 [benchmark.md](benchmark.md) and
 [phase2-hermes-cost-report.md](phase2-hermes-cost-report.md); the frozen live
 A/B protocols in [ab-benchmark.md](ab-benchmark.md) have not been run.
+
+## The savings log
+
+Every rewritten tool result appends one record to `SUTRA_STATS_FILE`
+(`$XDG_CACHE_HOME/sutra/sutra-stats.jsonl` by default, rotated once to `.1`).
+The record holds the rule and tool that produced it, the before/after byte
+counts and whether the result was partial or failed open; it never holds the
+content that was removed.
+
+`sutra stats` aggregates the current file and its rotated predecessor, so the
+numbers are the same from any process:
+
+```console
+$ sutra stats
+sutra stats: /home/me/.cache/sutra/sutra-stats.jsonl
+  rewrites: 12
+  bytes: 1,204,881 before → 200,114 after (1,004,767 saved, 83.4%)
+  from 2026-11-19T10:04:11+0900 to 2026-11-21T09:52:03+0900
+  by rule:
+    traceback: 8 rewrite(s), 940,220 bytes saved
+    head-tail: 4 rewrite(s), 64,547 bytes saved
+Counters for restores, request-stage rewrites and observed provider usage live
+in the host process (`sutra.metrics_snapshot()`); this log holds rewritten tool
+results only.
+```
+
+`--json` prints the same report as an object; `--file` reads a different log.
+The log counts rewrites, not decisions: an unchanged result is counted only in
+the host process, because a savings log that recorded every no-op would stop
+being about savings. A line that does not parse is counted as `unreadable` and
+the rest of the file is still reported; so is a line that parses as JSON but
+carries a value where a byte count belongs, because counting it as zero would
+report a saving the log does not contain.
+

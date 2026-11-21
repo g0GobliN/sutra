@@ -5,5 +5,7 @@ description: "Cost optimization middleware for Hermes Agent: deterministic tool-
 provides_middleware:
   - tool_execution
   - llm_request
+provides_hooks:
+  - post_api_request
 provides_tools:
   - sutra_restore

@@ -36,9 +36,11 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_REPLAY_MAX_RESULT_BYTES` | `262144` | largest result worth storing (256 KiB) |
 | `SUTRA_PROMPT` | `0` | trim older recoverable tool results out of the outbound request (Hermes `llm_request` stage); also off in `off` mode. See [integrations.md](integrations.md) |
 | `SUTRA_PROMPT_KEEP_LAST` | `6` | how many of the newest messages are never touched |
-| `SUTRA_PROMPT_MIN_MESSAGE_BYTES` | `8192` | a tool result smaller than this is not worth trimming |
-| `SUTRA_PROMPT_MIN_REQUEST_BYTES` | `65536` | a request smaller than this is left alone entirely |
-| `SUTRA_PROMPT_MAX_MESSAGES` | `8` | most tool results trimmed from one request |
+| `SUTRA_PROMPT_MIN_MESSAGE_BYTES` | by mode | a tool result smaller than this is not worth trimming: `8192` in `balanced`, `4096` in `aggressive`, `2048` in `beast` |
+| `SUTRA_PROMPT_MIN_REQUEST_BYTES` | by mode | a request smaller than this is left alone entirely: `65536` in `balanced`, `32768` in `aggressive`, `16384` in `beast` |
+| `SUTRA_PROMPT_MAX_MESSAGES` | by mode | most tool results trimmed from one request: `8` in `balanced`, `16` in `aggressive`, `32` in `beast` |
+| `SUTRA_PROMPT_STORE_HOST` | `1` | keep a copy of a host-produced tool result before shortening it, so the trimmed bytes stay restorable; when the store refuses (disabled, full, too large) that result goes out byte-identical |
+| `SUTRA_PROMPT_PREVIEW` | by mode | keep a head and a tail of a trimmed result beside its marker: on in `balanced` and `aggressive`, off in `beast`, which leaves the marker alone |
 | `SUTRA_LANGUAGE` | `0` | advanced legacy Caveman gate for `SUTRA_SEARCH`; modes enable wording themselves and never apply it to code, quotes or fenced blocks |
 | `SUTRA_MAX_TOKENS` | unset | advisory token ceiling per result; unset means no token budget |
 | `SUTRA_TOKENIZER` | `byte-estimate` | `byte-estimate` or `tiktoken` (falls back when unavailable) |
@@ -46,6 +48,11 @@ the process. Defaults are a disk and context commitment, not just tuning knobs.
 | `SUTRA_TELEMETRY_ENDPOINT` | `http://localhost:4318/v1/metrics` | OTLP HTTP metrics endpoint |
 | `SUTRA_TELEMETRY_SAMPLE_RATE` | `1.0` | trace sampling ratio from `0.0` to `1.0`; metrics are not downsampled, and `0.0` disables both metric recording and spans |
 | `SUTRA_JSON_ITEMS` | retired | ignored; a warning is logged if set |
+
+A `by mode` default is a starting point, not a fixed value: setting any
+`SUTRA_PROMPT_*` variable overrides the default for the mode in force, so an
+installation can deepen one cap without adopting the rest of that mode. `off`
+resolves the `balanced` caps because the stage never runs in that mode.
 
 ## Optimization modes
 
