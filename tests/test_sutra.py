@@ -107,6 +107,23 @@ def test_traceback_keeps_the_error_end(sutra):
     assert stats["rule"] == "traceback"
 
 
+def test_a_frame_that_differs_survives_the_elided_middle(sutra):
+    """A deep traceback is one frame repeated; the frame that differs must survive.
+
+    The head and the tail show only the repetition, so the single anomalous frame
+    deep in the middle is quoted beside the marker instead of disappearing.
+    """
+    frames = [f'  File "m{i}.py", line {i}, in h{i}' for i in range(600)]
+    frames[300] = '  File "handle_3890.py", line 300, in handle_3890'
+    text = "Traceback (most recent call last):\n" + "\n".join(frames) + \
+        "\nValueError: aborting because handle_3890 did not resolve\n"
+    out, stats = sutra.compress(text, max_bytes=8_000)
+    assert stats["rule"] == "traceback"
+    assert "handle_3890.py" in out
+    assert "differ from their neighbours" in out
+    assert len(out.encode("utf-8")) < len(text.encode("utf-8")) // 2
+
+
 def test_traceback_respects_max_bytes(sutra):
     """Regression: the traceback path used a hard-coded 2 KiB + 8 KiB budget."""
     text = "".join(f'  File "m{i}.py", line {i}, in f\n' for i in range(2000)) + \

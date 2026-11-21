@@ -286,6 +286,41 @@ def _salient(body: str, *, limit: int) -> str:
     return "\n".join(kept)
 
 
+#: A run of at least this many same-shape lines is collapsed where it stands.
+RUN_MIN = 8
+
+
+def _collapse_runs(text: str) -> str:
+    """Collapse long runs of lines that share a shape, keeping the ones that differ.
+
+    A six hundred frame traceback is one line repeated, and a preview that must
+    choose between its start, its end and one middle line buries the frame that
+    matters. Collapsing the repeated runs leaves every distinct line exactly
+    where it was, so the reading agent sees the anomaly among its neighbours.
+    """
+    lines = text.splitlines()
+    out: list[str] = []
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if not line.strip():
+            out.append(line)
+            index += 1
+            continue
+        shape = _shape(line)
+        end = index + 1
+        while end < len(lines) and _shape(lines[end]) == shape:
+            end += 1
+        run = end - index
+        if run >= RUN_MIN:
+            out.append(line[:SALIENT_LINE_BYTES])
+            out.append(f"[sutra: {run - 1} more line(s) shaped the same omitted in place]")
+        else:
+            out.extend(item[:SALIENT_LINE_BYTES] for item in lines[index:end])
+        index = end
+    return "\n".join(out)
+
+
 def _shorten(
     text: str,
     *,
@@ -312,6 +347,25 @@ def _shorten(
     head_part = text[:head]
     tail_part = text[-tail:] if tail else ""
     middle = text[len(head_part):len(text) - len(tail_part) if tail_part else len(text)]
+    collapsed_middle = _collapse_runs(middle)
+    excess = max(0, original - head - tail)
+    if excess and _size(collapsed_middle) <= len(middle) - excess // 2:
+        # The body repeats itself, so collapse the repeats where they stand: the
+        # head and the tail still arrive verbatim, every line that differs in the
+        # middle survives at its own position, and no restore is needed.
+        removed = len(middle) - _size(collapsed_middle)
+        collapsed_notice = (
+            f"{NOTICE_PREFIX} {removed:,} bytes of repeated lines were collapsed "
+            "in place; every line that differs is still shown, and sutra_restore "
+            "with the id below returns the original]"
+        )
+        parts = [collapsed_notice, head_part, collapsed_middle]
+        if tail_part:
+            parts.append(tail_part)
+        parts.extend(markers)
+        flattened = "\n".join(parts)
+        return flattened if _size(flattened) < original else None
+    middle = text[len(head_part):len(text) - len(tail_part) if tail_part else len(text)]
     # The failure lines are paid for out of the head's own budget rather than
     # added to it: the preview the request carries keeps the same size, and a
     # line that says what failed replaces a line that says nothing.
@@ -325,7 +379,7 @@ def _shorten(
         "this older tool result; if the part you need may be the removed one, "
         "call sutra_restore with the id below]"
     )
-    parts = [notice, head_part, *(part for part in (salient,) if part), *markers]
+    parts = [notice, *(part for part in (salient,) if part), head_part, *markers]
     if tail_part:
         parts.append(tail_part)
     candidate = "\n".join(parts)

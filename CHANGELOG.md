@@ -13,6 +13,13 @@
 
 ### Changed
 
+- An elided middle now quotes the frame lines that occur nowhere else, up to 1,024
+  bytes paid for out of the head's own budget. A 600-frame traceback keeps one
+  `File "…", line N` that differs from its neighbours, so the frame naming the
+  planted file reaches the model instead of being cut with the rest of the middle.
+  Two `trace-deep` treatment runs with the quoted frame passed after three runs
+  without it failed.
+
 - The request preview keeps the lines a traceback makes interesting: numbers are
   blanked so repeated frames share one shape, and lines whose shape appears once
   are kept before the common ones. A 600-frame traceback now leads its preview
