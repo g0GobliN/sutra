@@ -331,27 +331,35 @@ def test_the_cli_serves_a_request_in_its_own_process(tmp_path, monkeypatch):
                 "SUTRA_PROMPT_MIN_MESSAGE_BYTES": "512",
                 "SUTRA_PROMPT_STORE_HOST": "1",
                 "SUTRA_STORE_DIR": str(tmp_path / "originals")})
-    process = subprocess.Popen(
-        [sys.executable, "-c", driver, str(pathlib.Path(__file__).parents[1]),
-         "--port", "0", "--upstream", f"http://127.0.0.1:{upstream.server_address[1]}"],
-        stdout=write_fd, stderr=subprocess.DEVNULL, env=env)
+    errors = tmp_path / "cli-stderr.log"
+    with open(errors, "wb") as sink:
+        process = subprocess.Popen(
+            [sys.executable, "-c", driver, str(pathlib.Path(__file__).parents[1]),
+             "--port", "0", "--upstream", f"http://127.0.0.1:{upstream.server_address[1]}"],
+            stdout=write_fd, stderr=sink, env=env)
     os.close(write_fd)
-    try:
-        port = None
-        deadline = time.time() + 30
-        line = b""
-        while time.time() < deadline and port is None:
+
+    def read_banner(deadline: float) -> int | None:
+        buffer = b""
+        while time.time() < deadline:
             chunk = os.read(read_fd, 1)
             if not chunk:
-                break
-            line += chunk
-            if line.endswith(b"\n"):
-                text = line.decode().strip()
-                match = re.search(r"listening on http://[^:]+:(\d+)", text)
+                return None
+            buffer += chunk
+            if buffer.endswith(b"\n"):
+                match = re.search(r"listening on http://[^:]+:(\d+)", buffer.decode(errors="replace"))
+                buffer = b""
                 if match:
-                    port = int(match.group(1))
-                line = b""
-        assert port, "the CLI never announced its port"
+                    return int(match.group(1))
+        return None
+
+    try:
+        # A cold interpreter on a loaded CI runner can take a while to import the
+        # package and bind; a crash shows up as end-of-file, and the captured
+        # stderr says why.
+        port = read_banner(time.time() + 90)
+        assert port, ("the CLI never announced its port; stderr was "
+                      + errors.read_text(errors="replace")[-2_000:])
         status, headers, _ = send(port, "/v1/messages", json.dumps(conversation()).encode("utf-8"))
     finally:
         os.close(read_fd)
