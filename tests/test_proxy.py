@@ -404,11 +404,55 @@ def test_an_anthropic_tool_result_body_is_shortened(pair):
     assert "request copy" in block["content"]
 
 
+def test_an_openai_chat_body_is_shortened_on_the_plain_path(pair):
+    """Chat Completions is the shape DeepSeek Harness, OpenCode and Codex send."""
+    original = json.dumps({**conversation(), "model": "deepseek-chat"}).encode("utf-8")
+
+    status, headers, _ = send(pair["port"], "/v1/chat/completions", original)
+
+    assert status == 200
+    assert headers.get("X-Sutra-Rewritten") == "1"
+    forwarded = Upstream.seen[-1]["body"]
+    assert len(forwarded) < len(original)
+    assert [message["role"] for message in json.loads(forwarded)["messages"]] == [
+        message["role"] for message in json.loads(original)["messages"]
+    ]
+    assert "request copy" in forwarded.decode("utf-8")
+
+
+def test_a_prefixed_chat_path_is_shortened_too(pair):
+    """A host's base URL adds a prefix; the shape lives in the suffix."""
+    original = json.dumps({**conversation(), "model": "deepseek-chat"}).encode("utf-8")
+
+    status, headers, _ = send(pair["port"], "/provider/v1/chat/completions", original)
+
+    assert status == 200
+    assert headers.get("X-Sutra-Rewritten") == "1"
+    forwarded = Upstream.seen[-1]["body"]
+    assert len(forwarded) < len(original)
+    assert Upstream.seen[-1]["path"] == "/provider/v1/chat/completions"
+
+
 # --- the answer's usage is counted, never changed -------------------------
 #
 # Claude Code reports prompt-cache hits in the answer's ``usage`` object. The
 # proxy is the only place SUTRA sees a Claude Code answer, so this is where the
 # observation has to happen; the bytes the client receives stay the provider's.
+
+def test_openai_usage_buckets_are_mapped_onto_the_counters():
+    """Chat Completions names the same quantities differently."""
+    normalized = proxy._normalize_usage({
+        "prompt_tokens": 120,
+        "completion_tokens": 8,
+        "prompt_tokens_details": {"cached_tokens": 64},
+    })
+
+    assert normalized == {
+        "input_tokens": 120,
+        "output_tokens": 8,
+        "cache_read_tokens": 64,
+    }
+
 
 def provider_counters() -> dict:
     return dict(metrics.snapshot()["provider"])
