@@ -252,3 +252,15 @@ def test_report_rejects_records_without_a_protocol(tmp_path, capsys):
                     encoding="utf-8")
     assert report.main([str(path)]) == 1
     assert "do not identify a protocol" in capsys.readouterr().out
+
+
+def test_a_session_id_is_read_from_either_stream():
+    """`hermes chat -q` prints `session_id:` on stderr; the interactive form
+    prints `Session:` on stdout. A stderr-only run used to record None, which
+    silently dropped the usage row from every result."""
+    module = run
+    stdout = "the answer\n"
+    stderr = "\nsession_id: local-abc123\n"
+    match = module.SESSION_RE.search(stdout + "\n" + stderr)
+    assert match and match.group(1) == "local-abc123"
+    assert module.SESSION_RE.search("Session: local-def456\n").group(1) == "local-def456"

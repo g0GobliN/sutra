@@ -97,6 +97,13 @@ explicitly for the expanded corpus. Each result row and filename carries the
 protocol, so evidence from different protocols cannot be mistaken for one
 experiment.
 
+`--task NAME` (repeatable) runs only the named tasks of the selected protocol,
+which is how a single paired comparison is made without spending a full pass:
+the same `--out` directory must still be fresh for each arm. The session id is
+read from either stream, because `hermes chat -q` prints `session_id:` on
+stderr while the interactive form prints `Session:` on stdout; a runner that
+read only stdout recorded every session as unreported.
+
 `--dry-run` builds the fixtures and records without starting a session and
 without probing the host; it honors `--protocol` and writes 8 rows per arm for
 v1 or 30 for v2. It is the safe mechanics check before an arm is set.

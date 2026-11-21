@@ -142,6 +142,17 @@
   prove compression still exits 0, emits one parseable JSON object, and writes
   no exporter noise.
 
+### Fixed
+
+- The A/B runner reads the session id from either stream and can run a single
+  task. `hermes chat -q` prints `session_id:` on stderr while the interactive
+  form prints `Session:` on stdout, so a runner that read only stdout recorded
+  every live result as `session_id=None` and `usage=unreported` — the row the
+  experiment exists to read was silently missing. `--task NAME` (repeatable)
+  runs one task of the selected protocol; `docs/ab-benchmark.md` states both
+  and the balanced-mode admission limit that keeps small conversations
+  unrewritten.
+
 ## 0.6.3 - 2026-11-14
 
 ### Fixed
