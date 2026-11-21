@@ -13,16 +13,22 @@
 
 ### Changed
 
+- The request preview keeps the lines a traceback makes interesting: numbers are
+  blanked so repeated frames share one shape, and lines whose shape appears once
+  are kept before the common ones. A 600-frame traceback now leads its preview
+  with the one frame that names a different file instead of the first frames. On the
+  40 × 12,000-byte fixture `balanced` removes 15.8%, `aggressive` 31.6% and `beast` 74.7%.
+
 - A shortened result's notice now says that the middle of the body was removed and that
   `sutra_restore` with its id reads the original back, instead of only naming a marker. Two
   paired runs on `trace-deep` showed why: the identifying frame sat in the removed middle while
   the closing exception message stayed in the tail, and the agent answered from what it could
-  still see. The preview's size is unchanged.
+  still see. The preview's budget is unchanged.
 
 - A shortened result's preview now keeps the lines that point at a failure — `Traceback`,
   `FAILED`, `ERROR`, a `…Error:` name, `File "…", line N`, `assert` — taken from the middle of the
   body up to 2,048 bytes and paid for out of the head's own budget, so the request does not grow
-  and the fixture's 15.9%/31.8%/75.0% removal is unchanged while the preview says what broke.
+  while the preview says what broke.
 
 - The proxy now shortens either request shape a host can send: a `POST` whose path ends in
   `/v1/messages` (Anthropic Messages) or `/chat/completions` (OpenAI Chat Completions). Because the
