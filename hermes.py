@@ -115,13 +115,28 @@ def _copy_plugin(destination: pathlib.Path) -> None:
 
 
 def _backup(path: pathlib.Path) -> pathlib.Path:
+    """Move the current plugin aside, outside the directory Hermes scans for plugins.
+
+    A backup beside the plugin (``sutra.bak-<stamp>`` inside ``<home>/plugins``) is itself a
+    plugin directory with the same manifest name, so the next load can pick the stale copy
+    and run the previous code. Keep the copy in ``<home>/plugin-backups`` instead, which the
+    loader never scans.
+    """
     stamp = time.strftime("%Y%m%dT%H%M%S")
-    backup = path.with_name(f"{path.name}.bak-{stamp}")
+    root = path.parent.parent / "plugin-backups"
+    try:
+        root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    except OSError:
+        root = path.parent
+    backup = root / f"{path.name}-{stamp}"
     suffix = 1
     while backup.exists():
         suffix += 1
-        backup = path.with_name(f"{path.name}.bak-{stamp}-{suffix}")
-    path.rename(backup)
+        backup = root / f"{path.name}-{stamp}-{suffix}"
+    try:
+        path.rename(backup)
+    except OSError:
+        shutil.move(str(path), str(backup))
     return backup
 
 

@@ -133,8 +133,17 @@ already carry a marker, at the cost of leaving host-produced output alone. The
 stage also needs a host running a plugin copy that declares it; a gateway that
 installed an earlier copy keeps executing only the stages that copy declared,
 which is a deployment state rather than a capability the repository can assert.
-No other adapter exposes a comparable boundary: the remaining hooks either fire
-before the request is assembled or see one result at a time.
+A gateway runs as a service, so `SUTRA_PROMPT=1` has to reach that process: export
+it in the unit (a `~/.config/systemd/user/hermes-gateway.service.d/sutra.conf`
+drop-in with `[Service]` and `Environment=SUTRA_PROMPT=1`, then `systemctl --user
+daemon-reload` and restart) or the stage stays off while everything else works.
+`sutra doctor` compares the installed copy with this package; it cannot see the
+service environment, so an enabled copy with the stage off still reports
+`status=pass`.
+Installation keeps the previous plugin in `<HERMES_HOME>/plugin-backups`, outside
+the directory Hermes scans. A backup named `sutra.bak-<stamp>` beside the plugin is
+itself a plugin directory with the same manifest name, and the host can load the
+stale copy instead of the one just written.
 
 What the stage costs is measured rather than assumed. `bench/request_stage.py`
 builds a synthetic conversation, runs the real policy for each mode, and reports

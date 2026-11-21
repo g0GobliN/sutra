@@ -125,3 +125,14 @@ def test_an_empty_request_log_is_named_not_an_error(tmp_path, capsys):
     assert cli.main(["stats", "--file", str(path)]) == 0
     out = capsys.readouterr().out
     assert "no rewrite recorded" in out
+
+
+def test_a_long_session_id_is_kept_in_full(tmp_path):
+    path = tmp_path / "sutra-stats.jsonl"
+    long_id = "local-" + "a1b2c3d4" * 9  # 70 characters, one Hermes session id shape
+    metrics.record_request_rewrite(
+        decision(90_000, 60_000), mode="balanced", session_id=long_id, config=config_at(path))
+
+    report = metrics.read_request_log(str(path))
+
+    assert report["by_session"][long_id]["records"] == 1

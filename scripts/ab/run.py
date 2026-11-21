@@ -653,6 +653,14 @@ def _request_log_path() -> pathlib.Path:
     return stats.with_name(stats.stem + "-request.jsonl")
 
 
+def _same_session(recorded, session: str) -> bool:
+    """A record's session id, tolerating ids an older writer shortened to 64 characters."""
+    if not recorded:
+        return False
+    recorded = str(recorded)
+    return recorded == session or (len(recorded) >= 64 and session.startswith(recorded))
+
+
 def session_request_evidence(session_id: str) -> dict:
     """Request-stage rewrites the durable log attributes to this session."""
     evidence = {"request_rewrites": 0, "request_saved_bytes": 0, "request_modes": []}
@@ -669,7 +677,7 @@ def session_request_evidence(session_id: str) -> dict:
                 record = json.loads(raw)
             except (ValueError, UnicodeDecodeError):
                 continue
-            if not isinstance(record, dict) or record.get("session") != session_id:
+            if not isinstance(record, dict) or not _same_session(record.get("session"), session_id):
                 continue
             evidence["request_rewrites"] += 1
             evidence["request_saved_bytes"] += max(0, int(record.get("saved") or 0))

@@ -333,3 +333,19 @@ def test_a_request_rewrite_is_attributed_to_its_session(tmp_path, monkeypatch):
     assert evidence["request_saved_bytes"] == 600
     assert evidence["request_modes"] == ["aggressive"]
     assert run.session_request_evidence("nobody")["request_rewrites"] == 0
+
+
+def test_a_shortened_record_still_matches_its_session(tmp_path, monkeypatch):
+    path = tmp_path / "sutra-stats.jsonl"
+    monkeypatch.setenv("SUTRA_STATS_FILE", str(path))
+    long_id = "local-" + "b" * 64  # what Hermes sends
+    shortened = long_id[:64]  # what an older writer stored
+    records = [{"at": "2026-11-21T00:00:00Z", "mode": "balanced", "session": shortened,
+                "before": 10, "after": 4, "saved": 6}]
+    target = path.with_name(path.name.replace(".jsonl", "-request.jsonl"))
+    target.write_text("\n".join(json.dumps(row) for row in records) + "\n", encoding="utf-8")
+
+    evidence = run.session_request_evidence(long_id)
+
+    assert evidence["request_rewrites"] == 1
+    assert evidence["request_saved_bytes"] == 6
