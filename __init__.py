@@ -213,7 +213,8 @@ def request_middleware(*, request: Any = None, session_id: str | None = None,
         )
     except Exception:  # fail open: a request rewrite is never worth a broken call
         return None
-    metrics.record_request_rewrite(decision, mode=cfg.mode)
+    metrics.record_request_rewrite(
+        decision, mode=cfg.mode, session_id=session_id or "", config=cfg)
     if not decision.changed:
         return None
     return {

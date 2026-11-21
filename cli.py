@@ -933,40 +933,55 @@ def _stats(argv: list[str]) -> int:
     except OSError as exc:
         print_error(f"sutra stats: cannot read {path}: {exc}")
         return 1
+    request_report = _metrics.read_request_log(path)
     if args.json:
+        report["request_stage"] = request_report
         print(_json.dumps(report, indent=2, sort_keys=True))
         return 0
-    if not report["records"]:
-        print(f"sutra stats: no rewrites recorded in {path}")
+    if report["records"]:
+        print(f"sutra stats: {path}")
+    else:
+        print(f"sutra stats: no tool-result rewrites in {path}")
         if report["unreadable"]:
             print(f"unreadable lines: {report['unreadable']}")
         print("The log is written when a tool result is rewritten; an untouched "
               "installation legitimately has no records yet.")
-        return 0
-    print(f"sutra stats: {path}")
-    if len(report["files"]) > 1:
-        print(f"including the rotated log {report['files'][0]}")
-    print(f"  rewrites: {report['records']}")
-    print(f"  bytes: {report['original_bytes']:,} before "
-          f"→ {report['compressed_bytes']:,} after "
-          f"({report['saved_bytes']:,} saved, {report['saved_pct']}%)")
-    if report["partial"] or report["fail_open"] or report["unreadable"]:
-        print(f"  partial: {report['partial']}  fail open: {report['fail_open']}  "
-              f"unreadable lines: {report['unreadable']}")
-    if report["first_at"]:
-        print(f"  from {report['first_at']} to {report['last_at']}")
-    for title, key in (("rule", "by_rule"), ("tool", "by_tool")):
-        rows = sorted(report[key].items(),
-                      key=lambda item: (-item[1]["saved_bytes"], item[0]))
-        if not rows:
-            continue
-        print(f"  by {title}:")
+    if report["records"]:
+        if len(report["files"]) > 1:
+            print(f"including the rotated log {report['files'][0]}")
+        print(f"  rewrites: {report['records']}")
+        print(f"  bytes: {report['original_bytes']:,} before "
+              f"→ {report['compressed_bytes']:,} after "
+              f"({report['saved_bytes']:,} saved, {report['saved_pct']}%)")
+        if report["partial"] or report["fail_open"] or report["unreadable"]:
+            print(f"  partial: {report['partial']}  fail open: {report['fail_open']}  "
+                  f"unreadable lines: {report['unreadable']}")
+        if report["first_at"]:
+            print(f"  from {report['first_at']} to {report['last_at']}")
+        for title, key in (("rule", "by_rule"), ("tool", "by_tool")):
+            rows = sorted(report[key].items(),
+                          key=lambda item: (-item[1]["saved_bytes"], item[0]))
+            if not rows:
+                continue
+            print(f"  by {title}:")
+            for name, row in rows[:8]:
+                print(f"    {name}: {row['records']} rewrite(s), "
+                      f"{row['saved_bytes']:,} bytes saved")
+    if request_report["records"]:
+        print(f"request stage: {request_report['records']} rewrite(s), "
+              f"{request_report['saved']:,} bytes removed "
+              f"({request_report['saved_pct']}%)")
+        rows = sorted(request_report["by_mode"].items(),
+                      key=lambda item: (-item[1]["saved"], item[0]))
         for name, row in rows[:8]:
-            print(f"    {name}: {row['records']} rewrite(s), "
-                  f"{row['saved_bytes']:,} bytes saved")
-    print("Counters for restores, request-stage rewrites and observed provider "
-          "usage live in the host process (`sutra.metrics_snapshot()`); this log "
-          "holds rewritten tool results only.")
+            print(f"  by mode {name}: {row['records']} rewrite(s), "
+                  f"{row['saved']:,} bytes removed")
+    else:
+        print(f"request stage: no rewrite recorded in "
+              f"{request_report['path']}")
+    print("Counters for restores and observed provider usage live in the host "
+          "process (`sutra.metrics_snapshot()`); this log holds rewritten tool "
+          "results and the request-stage rewrites beside it.")
     return 0
 
 

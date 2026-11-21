@@ -107,9 +107,11 @@ sutra stats: /home/me/.cache/sutra/sutra-stats.jsonl
   by rule:
     traceback: 8 rewrite(s), 940,220 bytes saved
     head-tail: 4 rewrite(s), 64,547 bytes saved
-Counters for restores, request-stage rewrites and observed provider usage live
-in the host process (`sutra.metrics_snapshot()`); this log holds rewritten tool
-results only.
+request stage: 3 rewrite(s), 41,880 bytes removed (12.4%)
+  by mode aggressive: 3 rewrite(s), 41,880 bytes removed
+Counters for restores and observed provider usage live in the host process
+(`sutra.metrics_snapshot()`); this log holds rewritten tool results and the
+request-stage rewrites beside it.
 ```
 
 `--json` prints the same report as an object; `--file` reads a different log.
@@ -119,4 +121,15 @@ being about savings. A line that does not parse is counted as `unreadable` and
 the rest of the file is still reported; so is a line that parses as JSON but
 carries a value where a byte count belongs, because counting it as zero would
 report a saving the log does not contain.
+
+`SUTRA_STATS_FILE` has a second, narrower log beside it:
+`<stem>-request.jsonl`. One record is appended for each request the request
+stage actually shortened — never for an untouched request — holding the time,
+the mode, the host session id, and the before, after and saved byte counts. It
+holds no message text, so it can be shared like the savings log, and it rotates
+once to `.1` like it. This is what makes a rewrite attributable to a session
+after the fact: the host's own transcript keeps the original tool result, so a
+marker never appears in the session store and an A/B run cannot find one there.
+The A/B runner reads this log and reports `request_rewrites`,
+`request_saved_bytes` and `request_modes` in each session's evidence.
 

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- A shortened request now leaves a durable, content-free record in
+  `<stats>-request.jsonl` beside the savings log: the time, the mode, the host session, and the
+  before, after and saved byte counts. `sutra stats` reports the aggregate and says when the log is
+  empty, and the A/B runner attributes each record to the session that sent it — `request_rewrites`
+  in a row's evidence now says the request stage actually ran, which the session transcript never
+  could because it keeps the original tool result.
+
 ### Changed
 
 - A shortened result's notice now says that the middle of the body was removed and that
