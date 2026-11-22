@@ -23,6 +23,14 @@
   in a row's evidence now says the request stage actually ran, which the session transcript never
   could because it keeps the original tool result.
 
+### Fixed
+
+- The DeepSeek Harness bundle now declares `inject = ['tools']`. Cordis reads that map as
+  service names, so the earlier `{ required: [...], optional: [...] }` asked for two services
+  literally named "required" and "optional"; the plugin's fiber stayed `pending` and neither
+  the tool stage nor the recovery server ever started. The recovery server is now read through
+  the context store instead of being a hard dependency.
+
 ### Changed
 
 - An elided middle now quotes the frame lines that occur nowhere else, up to 1,024

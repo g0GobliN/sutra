@@ -97,3 +97,18 @@ def test_doctor_separates_an_unattached_copy_from_a_missing_one(tmp_path):
     assert copied["copy"] == "current"
     assert copied["attached"] is False
     assert copied["status"] == "partial"
+
+
+def test_the_bundle_declares_its_dependency_in_the_form_cordis_reads():
+    """Cordis takes `inject` as a map of service names.
+
+    An object such as `{ required: [...], optional: [...] }` is read as two
+    services literally named "required" and "optional", so the plugin waits for
+    them forever and its fiber never leaves the pending phase. The bundle must
+    therefore declare only the services it needs, by name.
+    """
+
+    source = dsh.template("index.js").read_text(encoding="utf-8")
+
+    assert "export const inject = ['tools']" in source
+    assert "export const inject = {" not in source

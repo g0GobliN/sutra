@@ -13,7 +13,10 @@ import { join } from 'node:path'
 
 export const name = 'dsh-sutra-host'
 
-export const inject = { required: ['tools'], optional: ['mcpManager'] }
+// Cordis reads `inject` as a service-name map: an object key would be taken as
+// a service called "required". Only the tool service is a hard dependency, so
+// the bundle starts as soon as it exists; anything else is read defensively.
+export const inject = ['tools']
 
 const DEFAULTS = {
   python: 'python3',
@@ -114,9 +117,10 @@ export function apply(ctx, rawConfig) {
 
   // Recovery: the marker quotes an id, so the harness needs the tool that
   // answers it. Registered for this bundle's lifetime, withdrawn on disposal.
-  if (ctx.mcpManager !== undefined) {
+  const mcp = typeof ctx.get === 'function' ? ctx.get('mcpManager') : ctx.mcpManager
+  if (mcp !== undefined) {
     try {
-      ctx.mcpManager.register('sutra', {
+      mcp.register('sutra', {
         transport: 'stdio',
         command: config.python,
         args: ['-m', 'sutra.mcp'],
