@@ -48,6 +48,19 @@ server) expose exactly two operations plus introspection:
 `ok | not_found | expired | too_large | unavailable | error`, bounded
 responses, `content_note` framing). See [recovery.md](recovery.md).
 
+A host whose hook runs in another language hands over a whole content array at
+once with `sutra process-result`:
+
+    input : {"tool_name": "bash", "session_id": "…", "texts": ["…", null]}
+    output: {"texts": ["…", null], "changed": true}
+
+Every string goes through the same seam, a non-string entry passes through
+unchanged so a host can forward its content blocks in order, and `changed` is
+true only when a text really shrank. The command reads stdin, writes one JSON
+object to stdout and exits 1 when the payload carries no `texts` list. The
+store and the stats file follow the same environment variables as every other
+surface, and the evidence tools bypass exactly as they do elsewhere.
+
 Semantics shared by every adapter: deterministic output (no timestamps or
 random values); an explicit recovery status is a *result*, never a silent
 failure; failures carry a reason and never masquerade as success; storage
@@ -73,6 +86,7 @@ theoretical grounds.
 | Any subprocess-capable agent | CLI (`scripts/sutra-cli.py`), JSON on stdout, exit codes 0/1/2 | **No — manual** | **Implemented and locally tested** | call directly; no installation beyond the checkout | `tests/test_cli_adapter.py`: round-trip, statuses-as-results, usage errors, size cap, config | one process per invocation (no daemon); stdin capped at 64 MiB |
 | OpenCode | generated native plugin (`tool.execute.after` + tool registry) | **Yes, installed automatically** | **Live host tested** — OpenCode 1.19.5, isolated config, real Bash tool, scripted local provider: 48,436 B compressed to 18,649 B in the model-facing request (marker + id), then `sutra_restore` returned the buried clue with statuses `error`, `not_found`, `ok` | `sutra install --client opencode` writes `~/.config/opencode/plugins/sutra.js` and, when an OpenCode config exists, the MCP recovery entry; restart OpenCode | `sutra doctor`'s OpenCode probe (real CLI round-trip and a `tool.execute.after` contract check when Node is available) | Tested on OpenCode 1.19.5 only; one short-lived Python process per oversized result (2.5 s timeout, fail-open); the configuring interpreter must remain available; the plugin is global for that config tree; Windows untested |
 | OpenClaw | generated native plugin (`tool.execute.after` + tool registry) + MCP server for `sutra_restore` | **Yes, installed automatically** | **Live host tested** — OpenClaw 0.1.0, isolated config, real Bash tool, scripted local provider: 48,436 B compressed to 18,649 B in the model-facing request (marker + id), then `sutra_restore` returned the buried clue via MCP; `sutra doctor` passes | `sutra install --client openclaw` writes `~/.openclaw/plugins/sutra.js` (config directory overridable with `SUTRA_OPENCLAW_CONFIG`); restart OpenClaw | `tests/test_openclaw_adapter.py`: replacement, recovery through the real MCP server, protected/non-string pass-through, second-pass no-op, malformed/fail-open, storage failure; `tests/test_openclaw_doctor.py`: install, verify, idempotence, dry-run, uninstall, doctor trust states | Tested on OpenClaw 0.1.0 only; one short-lived Python process per oversized result (2.5 s timeout, fail-open); the configuring interpreter must remain available; the plugin is global for that config tree; Windows untested |
+| DeepSeek Harness | host plugin on the harness's `tools/post-execute` waterfall, which calls `python -m sutra process-result` and replaces only the text blocks that changed | **Yes, once the installed plugin loads** | **Plugin installed; a live harness tool call still has to confirm it** — the seam it calls is proved end to end (70,889 B to 18,665 B, marker and id, restore through the store) | the bundle ships a `cordis.patch.yml`; install it with the harness's plugin manager from the package directory, then restart the harness | `tests/test_cli_process_result.py`: replacement with a recoverable id, non-text pass-through, evidence-tool and small-result bypass, malformed payload; the plugin handler was run against the real seam offline | the plugin needs a Python that can import SUTRA (`python`, `pythonPath` and `mode` are plugin config); one short-lived process per oversized result with a 4 s timeout; every failure returns the result unchanged |
 | Cursor | native `postToolUse` hook (`updated_mcp_tool_output`) | **No adapter** | **Audited from official docs, not implemented** | MCP entry only, by hand (`~/.cursor/mcp.json`) | — | Cursor fires `postToolUse` for all tools but only replaces MCP tool output; built-in tool output cannot be replaced. No SUTRA hook is claimed. |
 
 ## Which lifecycle stage each adapter reaches

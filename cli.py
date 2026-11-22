@@ -1040,6 +1040,50 @@ def _shorten_results(argv: list[str]) -> int:
     return 0
 
 
+def _process_result(argv: list[str]) -> int:
+    """Rewrite one tool result a host hands over as its own payload.
+
+    Some hosts let a plugin replace a tool result but never expose the
+    conversation, so there is no request to rewrite: the payload on stdin is
+    the whole unit of work. Each text entry goes through the seam a native
+    host uses, the store keeps the original first, and an entry whose original
+    cannot be kept comes back unchanged.
+    """
+    from . import core as _core
+
+    parser = argparse.ArgumentParser(
+        prog="sutra process-result",
+        description="Rewrite one tool result (JSON on stdin).",
+    )
+    parser.add_argument(
+        "--session",
+        default="",
+        help="Session id recorded with the stored copies (falls back to the payload).",
+    )
+    args = parser.parse_args(argv)
+    try:
+        payload = json.load(sys.stdin)
+    except (OSError, ValueError) as exc:
+        print_error(f"sutra process-result: cannot read the payload: {type(exc).__name__}")
+        return 1
+    if not isinstance(payload, dict) or not isinstance(payload.get("texts"), list):
+        print_error("sutra process-result: expected {\"texts\": [...]} on stdin")
+        return 1
+    tool_name = str(payload.get("tool_name") or "")
+    session_id = str(args.session or payload.get("session_id") or "")
+    rewritten = []
+    changed = False
+    for text in payload["texts"]:
+        if not isinstance(text, str):
+            rewritten.append(text)
+            continue
+        shorter = _core.process_result(text, tool_name=tool_name, session_id=session_id)
+        rewritten.append(shorter)
+        changed = changed or shorter != text
+    print(json.dumps({"texts": rewritten, "changed": changed}))
+    return 0
+
+
 def _cost(argv: list[str]) -> int:
     from . import cost as cost_module
 
@@ -1259,6 +1303,8 @@ def main(argv: list[str] | None = None) -> int:
         return _stats(argv[1:])
     if argv[:1] == ["shorten-results"]:
         return _shorten_results(argv[1:])
+    if argv[:1] == ["process-result"]:
+        return _process_result(argv[1:])
     if argv[:1] == ["proxy"]:
         from .proxy import run as run_proxy
         return run_proxy(argv[1:])
