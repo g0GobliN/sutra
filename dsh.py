@@ -106,7 +106,8 @@ def _patch_text(python: str, python_path: str) -> str:
 
 def install(*, dry_run: bool = False, python: str | None = None,
             python_path: str | None = None, name: str | None = None,
-            home_dir: str | pathlib.Path | None = None) -> int:
+            home_dir: str | pathlib.Path | None = None,
+            cli: list[str] | None = None) -> int:
     interpreter = python or sys.executable or "python3"
     path = python_path if python_path is not None else (os.environ.get("SUTRA_PYTHONPATH") or "")
     target = bundle_dir(home_dir)
@@ -118,8 +119,8 @@ def install(*, dry_run: bool = False, python: str | None = None,
     if shutil.which(interpreter) is None and not pathlib.Path(interpreter).exists():
         print_error(f"{interpreter} is not runnable; pass --python with an interpreter that can import sutra")
         return 1
-    cli = binary()
-    if cli is None and not dry_run:
+    prefix = list(cli) if cli is not None else ([found] if (found := binary()) else [])
+    if not prefix and not dry_run:
         print_error("dsh is not on PATH; install DeepSeek Harness first, or pass --dry-run to inspect the bundle")
         return 1
     if dry_run:
@@ -132,7 +133,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
         else:
             shutil.copyfile(sources[filename], target / filename)
     print_success(f"sutra: wrote the host bundle at {target}")
-    command = [cli, "plugin", "--profile", profile(name), "add", str(target)]
+    command = [*prefix, "plugin", "--profile", profile(name), "add", str(target)]
     try:
         finished = subprocess.run(command, capture_output=True, text=True, timeout=600)
     except (OSError, subprocess.SubprocessError) as exc:
@@ -148,14 +149,15 @@ def install(*, dry_run: bool = False, python: str | None = None,
 
 
 def uninstall(*, dry_run: bool = False, name: str | None = None,
-              home_dir: str | pathlib.Path | None = None) -> int:
+              home_dir: str | pathlib.Path | None = None,
+              cli: list[str] | None = None) -> int:
     target = bundle_dir(home_dir)
-    cli = binary()
-    if dry_run or cli is None:
+    prefix = list(cli) if cli is not None else ([found] if (found := binary()) else [])
+    if dry_run or not prefix:
         print_warning(f"would run `dsh plugin --profile {profile(name)} remove {BUNDLE_NAME}` and delete {target}")
         return 0
     finished = subprocess.run(
-        [cli, "plugin", "--profile", profile(name), "remove", BUNDLE_NAME],
+        [*prefix, "plugin", "--profile", profile(name), "remove", BUNDLE_NAME],
         capture_output=True, text=True, timeout=600,
     )
     if finished.returncode != 0:

@@ -5,9 +5,13 @@ is narrow: copy the bundle beside the harness home, fill in the interpreter that
 import sutra, and ask the harness CLI to attach it to the profile. These tests pin
 that the copy happens, that a dry run writes nothing, and that the doctor tells a
 missing bundle from an attached one.
+
+The CLI is injected as an argv prefix so the tests run the same way on Windows, where
+there is no shell script to put on PATH.
 """
 
 import json
+import sys
 
 import pytest
 
@@ -17,50 +21,49 @@ dsh = plugin_module("dsh")
 
 
 @pytest.fixture()
-def fake_cli(tmp_path, monkeypatch):
-    """A `dsh` on PATH that records its arguments instead of touching a profile."""
+def fake_cli(tmp_path):
+    """An argv prefix that records what the adapter asked the harness to do."""
     record = tmp_path / "cli-calls.txt"
-    binary = tmp_path / "bin" / "dsh"
-    binary.parent.mkdir()
-    binary.write_text(
-        "#!/bin/sh\n"
-        f'printf "%s\\n" "$*" >> {record}\n',
+    recorder = tmp_path / "recorder.py"
+    recorder.write_text(
+        "import pathlib, sys\n"
+        f"pathlib.Path({str(record)!r}).write_text(' '.join(sys.argv[1:]), encoding='utf-8')\n",
         encoding="utf-8",
     )
-    binary.chmod(0o755)
-    monkeypatch.setenv("PATH", f"{binary.parent}:/usr/bin:/bin")
-    return record
+    return [sys.executable, str(recorder)], record
 
 
 def test_the_bundle_is_written_and_attached_to_the_profile(tmp_path, fake_cli):
     home = tmp_path / "dsh"
+    cli, record = fake_cli
 
-    status = dsh.install(python="/usr/bin/python3", home_dir=home, name="desktop")
+    status = dsh.install(python=sys.executable, home_dir=home, name="desktop", cli=cli)
 
     assert status == 0
     target = home / "sutra-host"
     assert sorted(path.name for path in target.iterdir()) == sorted(dsh.BUNDLE_FILES)
     patch = (target / "cordis.patch.yml").read_text(encoding="utf-8")
-    assert "python: /usr/bin/python3" in patch
+    assert f"python: {sys.executable}" in patch
     assert "id: dsh-sutra-host" in patch
-    calls = fake_cli.read_text(encoding="utf-8").splitlines()
-    assert calls == [f"plugin --profile desktop add {target}"]
+    assert record.read_text(encoding="utf-8") == f"plugin --profile desktop add {target}"
 
 
 def test_a_dry_run_writes_nothing(tmp_path, fake_cli):
     home = tmp_path / "dsh"
+    cli, record = fake_cli
 
-    status = dsh.install(python="/usr/bin/python3", home_dir=home, name="desktop", dry_run=True)
+    status = dsh.install(python=sys.executable, home_dir=home, name="desktop", dry_run=True, cli=cli)
 
     assert status == 0
     assert not (home / "sutra-host").exists()
-    assert not fake_cli.exists()
+    assert not record.exists()
 
 
 def test_the_python_path_travels_into_the_bundle_config(tmp_path, fake_cli):
     home = tmp_path / "dsh"
+    cli, _record = fake_cli
 
-    dsh.install(python="/usr/bin/python3", python_path="/opt/sutra/lib", home_dir=home)
+    dsh.install(python=sys.executable, python_path="/opt/sutra/lib", home_dir=home, cli=cli)
 
     patch = (home / "sutra-host" / "cordis.patch.yml").read_text(encoding="utf-8")
     assert "pythonPath: /opt/sutra/lib" in patch
