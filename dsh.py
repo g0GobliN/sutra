@@ -109,7 +109,11 @@ def install(*, dry_run: bool = False, python: str | None = None,
             home_dir: str | pathlib.Path | None = None,
             cli: list[str] | None = None) -> int:
     interpreter = python or sys.executable or "python3"
-    path = python_path if python_path is not None else (os.environ.get("SUTRA_PYTHONPATH") or "")
+    # The seam must import the same tree this installer runs from: a source
+    # checkout is not on the interpreter's path, and a stale `sutra` found there
+    # would answer "unknown command" for every call and silently do nothing.
+    default_path = os.environ.get("SUTRA_PYTHONPATH") or str(pathlib.Path(__file__).resolve().parent.parent)
+    path = python_path if python_path is not None else default_path
     target = bundle_dir(home_dir)
     sources = {filename: template(filename) for filename in BUNDLE_FILES}
     missing = [str(path) for path in sources.values() if not path.is_file()]

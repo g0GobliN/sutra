@@ -31,6 +31,12 @@
   the tool stage nor the recovery server ever started. The recovery server is now read through
   the context store instead of being a hard dependency.
 
+- The DeepSeek Harness bundle now records the directory it was installed from as its
+  `PYTHONPATH`, so the seam runs the same code the installer came from. Left empty, the
+  seam imported whatever `sutra` sat in site-packages — often an older release that
+  answers "unknown command" for `process-result`, which the plugin can only read as
+  "nothing to do": the tool stage installed, attached, reported healthy, and never trimmed.
+
 ### Changed
 
 - An elided middle now quotes the frame lines that occur nowhere else, up to 1,024

@@ -11,6 +11,7 @@ there is no shell script to put on PATH.
 """
 
 import json
+import pathlib
 import sys
 
 import pytest
@@ -112,3 +113,21 @@ def test_the_bundle_declares_its_dependency_in_the_form_cordis_reads():
 
     assert "export const inject = ['tools']" in source
     assert "export const inject = {" not in source
+
+
+def test_the_default_seam_path_points_at_the_tree_that_installed_it(tmp_path, fake_cli):
+    """A source checkout is not importable from the interpreter's own path.
+
+    Without PYTHONPATH the seam runs whatever `sutra` happens to be installed in
+    site-packages — often an older release that answers "unknown command" for
+    `process-result`, which the plugin reads as "nothing to do". The default has
+    to name the directory this package was imported from.
+    """
+
+    home = tmp_path / "dsh"
+    cli, _ = fake_cli
+
+    assert dsh.install(python=sys.executable, home_dir=home, cli=cli) == 0
+
+    patch = (home / "sutra-host" / "cordis.patch.yml").read_text(encoding="utf-8")
+    assert f"pythonPath: {pathlib.Path(dsh.__file__).resolve().parent.parent}" in patch
