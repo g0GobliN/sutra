@@ -3,6 +3,10 @@
 ## Unreleased
 
 ### Added
+- `sutra process-result` and `python -m sutra` give a host whose hook runs in
+  another language one call to hand a whole content array to the same seam: JSON on
+  stdin, JSON on stdout, non-text entries untouched, and a DeepSeek Harness plugin
+  that uses it to replace only the blocks that changed.
 
 - `SUTRA_PROMPT_MIN_SAVING_PERCENT` refuses a request rewrite that would remove less than the
   configured share of the request (default `0`, every trim allowed). A 2×2 `trace-deep` trial
