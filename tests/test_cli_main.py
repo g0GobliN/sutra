@@ -15,9 +15,10 @@ from pathlib import Path
 from conftest import plugin_module
 
 cli = plugin_module("cli")
+installer = plugin_module("installer")
 
 PACKAGE = "sutra_plugin"
-CLIENTS = ("claude_code", "hermes", "codex", "opencode", "openclaw")
+CLIENTS = ("claude_code", "hermes", "codex", "opencode", "openclaw", "dsh")
 
 
 def _fake_client_module(name, *, binary=False):
@@ -34,6 +35,9 @@ def _fake_client_module(name, *, binary=False):
         uninstall=lambda dry_run=False, **_kwargs: 0,
         doctor=lambda **_kwargs: {"client": name, "status": "not-installed"},
         status=lambda: {"client": name},
+        bundle_dir=lambda home=None: here / "sutra-host",
+        home=lambda explicit=None: here,
+        BUNDLE_FILES=("package.json", "cordis.patch.yml", "index.js"),
     )
 
 
@@ -56,6 +60,12 @@ def _install_fakes(monkeypatch, present=()):
         monkeypatch.setattr(package, name, fake, raising=False)
         monkeypatch.setitem(sys.modules, f"{PACKAGE}.{name}", fake)
     monkeypatch.setattr(cli, "openclaw", fakes["openclaw"])
+    monkeypatch.setattr(cli, "dsh", fakes["dsh"])
+    real_which = installer.shutil.which
+    monkeypatch.setattr(
+        installer.shutil, "which",
+        lambda name, *a, **k: None if name == "dsh" else real_which(name, *a, **k),
+    )
     discovery_fake = types.SimpleNamespace(detect=lambda clients=None: [])
     monkeypatch.setattr(package, "discovery", discovery_fake, raising=False)
     monkeypatch.setitem(

@@ -36,7 +36,7 @@ __all__ = ["detect_clients", "install", "opencode_config", "opencode_configured"
 # ``claude`` is the native PostToolUse hook; ``opencode`` gets a generated
 # plugin; ``openclaw`` gets the generated OpenClaw plugin; ``codex`` gets a
 # PostToolUse feedback hook plus MCP recovery.
-CLIENTS = ("hermes", "claude", "opencode", "openclaw", "codex")
+CLIENTS = ("hermes", "claude", "opencode", "openclaw", "codex", "dsh")
 
 
 def opencode_config(explicit: str | None = None) -> pathlib.Path:
@@ -86,6 +86,12 @@ def detect_clients() -> list[str]:
         if (shutil.which("openclaw") or openclaw.configured()
                 or (openclaw.openclaw_config_dir() / "openclaw.json").is_file()):
             found.append("openclaw")
+    except Exception:  # a detection failure must not make install unusable
+        pass
+    try:
+        from . import dsh
+        if shutil.which("dsh") or dsh.configured():
+            found.append("dsh")
     except Exception:  # a detection failure must not make install unusable
         pass
     return found
