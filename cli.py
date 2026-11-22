@@ -23,7 +23,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from . import __version__, installer, openclaw, runner
+from . import __version__, dsh, installer, openclaw, runner
 from .ui import (
     format_error,
     print_error,
@@ -43,11 +43,11 @@ MANUAL_CLIENTS = ("cursor", "windsurf")
 USAGE = """sutra {version}
 
 usage:
-  sutra install [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run] [--json]
-  sutra uninstall [--client hermes|claude|opencode|openclaw|codex]... [--all] [--config PATH] [--dry-run] [--json]
+  sutra install [--client hermes|claude|opencode|openclaw|codex|dsh]... [--all] [--config PATH] [--dry-run] [--json]
+  sutra uninstall [--client hermes|claude|opencode|openclaw|codex|dsh]... [--all] [--config PATH] [--dry-run] [--json]
   sutra detect [--client NAME]... [--json]   (read-only client discovery)
   sutra status [--json]
-  sutra doctor [--client hermes|claude|opencode|openclaw|codex]... [--json]  (prove integrations)
+  sutra doctor [--client hermes|claude|opencode|openclaw|codex|dsh]... [--json]  (prove integrations)
   sutra compress [--tool NAME] [--file PATH]   (stdin otherwise)
   sutra restore --id ID [--mode bytes|lines|search|full] ...
   sutra config
@@ -144,6 +144,14 @@ def _install_one(client: str, args, *, required: bool) -> int:
             print_warning("codex is not installed; skipped")
             return 0
         return codex.install(dry_run=args.dry_run)
+    if client == "dsh":
+        if dsh.binary() is None and not args.dry_run:
+            if required:
+                print_error("dsh is not installed")
+                return 1
+            print_warning("dsh is not installed; skipped")
+            return 0
+        return dsh.install(dry_run=args.dry_run)
     if client == "openclaw":
         # OpenClaw may not be installed on this host yet; the plugin itself is
         # still worth writing so it is ready when OpenClaw appears.
@@ -185,6 +193,8 @@ def _uninstall_one(client: str, args, *, required: bool) -> int:
     if client == "codex":
         from . import codex
         return codex.uninstall(dry_run=args.dry_run)
+    if client == "dsh":
+        return dsh.uninstall(dry_run=args.dry_run)
     if client == "openclaw":
         return openclaw.uninstall(dry_run=args.dry_run)
     from . import opencode
@@ -199,7 +209,7 @@ def _apply(action: str, args) -> int:
     clients = _selected(args)
     if not clients:
         message = ("no supported client detected; name one with --client "
-                   "(hermes, claude, opencode, openclaw, codex); cursor and "
+                   "(hermes, claude, opencode, openclaw, codex, dsh); cursor and "
                    "windsurf are MCP-only and configured by hand")
         json_mode = getattr(args, "json", False) or _json_env()
         if json_mode:
@@ -356,6 +366,13 @@ def _install_summary(clients: list[str], results: dict[str, int], dry_run: bool,
                 labels.append("openclaw=configured")
             else:
                 labels.append("openclaw=not configured")
+        elif client == "dsh":
+            if row.get("status") == "pass":
+                labels.append("dsh=configured")
+            elif row.get("files"):
+                labels.append("dsh=installed, restart needed")
+            else:
+                labels.append("dsh=not configured")
         else:
             if row.get("hook") != "installed":
                 labels.append("codex=not configured")
@@ -409,6 +426,12 @@ def _rows(config_path: str | None = None) -> list[dict]:
             })
     except Exception:  # a broken adapter or missing openclaw is silently skipped
         pass
+    try:
+        from . import dsh
+        if shutil.which("dsh") or dsh.bundle_dir().exists():
+            rows.append({"client": "dsh", **dsh.doctor()})
+    except Exception as exc:  # a broken bundle is reported, not raised
+        rows.append({"client": "dsh", "error": str(exc)})
     try:
         from . import hermes
         if hermes.binary() or hermes.plugin_dir().exists() or hermes.config_path().exists():

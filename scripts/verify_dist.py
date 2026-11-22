@@ -31,7 +31,7 @@ IMPORT_NAME = "sutra"
 
 RUNTIME_MODULES = frozenset({
     "__init__", "__main__", "cache", "claude_code", "cli", "codex", "config", "context",
-    "core", "cost", "discovery", "engine", "failure", "hermes", "hook",
+    "core", "cost", "discovery", "dsh", "engine", "failure", "hermes", "hook",
     "installer", "jsonc", "language", "mcp", "metrics", "opencode", "openclaw",
     "optimize", "orchestrator", "parsers", "policy", "preserve", "prompt", "proxy",
     "providers", "recovery", "redundancy", "replay", "repomap", "reuse",
@@ -45,7 +45,10 @@ RUNTIME_SCRIPTS = frozenset({
 # only what an install needs); the sdist includes it explicitly through
 # `MANIFEST.in`, so its presence does not depend on the setuptools version.
 DEV_SCRIPTS = frozenset({"check_version.py"})
-PACKAGE_DATA = frozenset({"plugin.yaml", "opencode_plugin.js", "openclaw_plugin.js"})
+PACKAGE_DATA = frozenset({
+    "plugin.yaml", "opencode_plugin.js", "openclaw_plugin.js",
+    "dsh_host_index.js", "dsh_host_package.json", "dsh_host_cordis.patch.yml",
+})
 
 # A path fragment that means a development artifact reached the archive.
 FORBIDDEN = (

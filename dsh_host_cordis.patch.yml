@@ -1,0 +1,9 @@
+# Written by `sutra install --client dsh`; the installer fills in the
+# interpreter that can import sutra.
+- insert:
+    - id: dsh-sutra-host
+      name: dsh-sutra-host
+      config:
+        python: python3
+        pythonPath: ""
+        mode: balanced
