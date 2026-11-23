@@ -78,7 +78,7 @@ function seam(config, args, stdin) {
   })
 }
 
-/** Text blocks of a decision's content, in order. */
+/** Text blocks of a tool result's content, in order. */
 function textBlocks(content) {
   if (!Array.isArray(content)) return []
   return content
@@ -93,7 +93,9 @@ export function apply(ctx, rawConfig) {
     const decision = await next()
     try {
       if (decision.kind !== 'accept') return decision
-      const blocks = textBlocks(decision.content)
+      // An accepted decision carries no content; the result does.
+      const source = Array.isArray(result?.content) ? result.content : []
+      const blocks = textBlocks(source)
       const big = blocks.filter(({ block }) => block.text.length >= config.minTextBytes)
       if (big.length === 0) return decision
       const reply = await seam(
@@ -102,7 +104,7 @@ export function apply(ctx, rawConfig) {
         JSON.stringify({ tool_name: exec.name, texts: big.map(({ block }) => block.text) }),
       )
       if (reply === null || reply.changed !== true) return decision
-      const content = decision.content.slice()
+      const content = source.slice()
       big.forEach(({ block, index }, position) => {
         const text = reply.texts?.[position]
         if (typeof text === 'string' && text !== block.text) {

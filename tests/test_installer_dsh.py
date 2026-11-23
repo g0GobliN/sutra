@@ -131,3 +131,91 @@ def test_the_default_seam_path_points_at_the_tree_that_installed_it(tmp_path, fa
 
     patch = (home / "sutra-host" / "cordis.patch.yml").read_text(encoding="utf-8")
     assert f"pythonPath: {pathlib.Path(dsh.__file__).resolve().parent.parent}" in patch
+
+
+def test_the_bundle_reads_the_result_not_the_decision(tmp_path, fake_cli):
+    """An accepted post-execute decision carries no content of its own.
+
+    The waterfall hands the listener `(exec, result)` and a default
+    `{kind: "accept"}` decision; the tool's text is on `result.content`. Reading
+    `decision.content` therefore found nothing and every live tool call passed
+    through untrimmed.
+    """
+
+    source = dsh.template("index.js").read_text(encoding="utf-8")
+
+    assert "result?.content" in source
+    assert "decision.content" not in source
+
+
+def _profile_with_preset(tmp_path, preset="preset-test"):
+    patch = tmp_path / "dsh" / "profiles" / "desktop" / "cordis.patch.yml"
+    patch.parent.mkdir(parents=True)
+    patch.write_text(
+        "# Hand-written profile.\n"
+        "- insert:\n"
+        "    - id: agent-preset-registry\n"
+        "      config:\n"
+        f"        default: {preset}\n"
+        "    - id: preset-a\n"
+        "      name: '@deepseek-ai/dsh-agent-preset'\n"
+        "      plugins:\n"
+        "        - id: plugin-one\n"
+        "          name: plugin-one\n",
+        encoding="utf-8",
+    )
+    return patch
+
+
+def test_the_preset_entry_is_inserted_once(tmp_path, fake_cli):
+    """A profile-level entry never sees a model tool call; the preset does.
+
+    `tools/post-execute` is scoped to the calling agent's own scope chain, so the
+    bundle has to be composed *inside* the preset that builds the agent.
+    """
+
+    home = tmp_path / "dsh"
+    cli, _ = fake_cli
+    patch = _profile_with_preset(tmp_path)
+
+    assert dsh.install(python=sys.executable, home_dir=home, cli=cli) == 0
+
+    text = patch.read_text(encoding="utf-8")
+    assert text.count(f"- id: {dsh.BUNDLE_NAME}") == 1
+    entry = [line for line in text.splitlines() if line.strip() == f"- id: {dsh.BUNDLE_NAME}"]
+    plugins = [line for line in text.splitlines() if line.strip() == "plugins:"][0]
+    assert len(entry[0]) - len(entry[0].lstrip()) > len(plugins) - len(plugins.lstrip()), (
+        "the entry must nest under plugins:"
+    )
+
+    assert dsh.wire_preset(sys.executable, "/tmp/lib", home_dir=home) == "present"
+    assert patch.read_text(encoding="utf-8").count(f"- id: {dsh.BUNDLE_NAME}") == 1
+
+
+def test_uninstall_takes_the_preset_entry_back(tmp_path, fake_cli):
+    """Leaving the entry behind would load a bundle whose directory is gone."""
+
+    home = tmp_path / "dsh"
+    cli, _ = fake_cli
+    patch = _profile_with_preset(tmp_path)
+
+    assert dsh.install(python=sys.executable, home_dir=home, cli=cli) == 0
+    assert dsh.uninstall(home_dir=home, cli=cli) == 0
+
+    assert dsh.BUNDLE_NAME not in patch.read_text(encoding="utf-8")
+    assert "plugin-one" in patch.read_text(encoding="utf-8")
+
+
+def test_a_profile_without_a_preset_is_reported_not_guessed(tmp_path, fake_cli):
+    """An empty profile has nothing to compose into; the install says so."""
+
+    home = tmp_path / "dsh"
+    cli, _ = fake_cli
+    patch = home / "profiles" / "desktop" / "cordis.patch.yml"
+    patch.parent.mkdir(parents=True)
+    patch.write_text("- insert: []\n", encoding="utf-8")
+
+    assert dsh.install(python=sys.executable, home_dir=home, cli=cli) == 0
+
+    assert dsh.wire_preset(sys.executable, "/tmp/lib", home_dir=home) == "no-preset"
+    assert patch.read_text(encoding="utf-8") == "- insert: []\n"

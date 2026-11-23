@@ -104,6 +104,85 @@ def _patch_text(python: str, python_path: str) -> str:
     )
 
 
+PRESET_BEGIN = "# sutra: begin preset entry"
+PRESET_END = "# sutra: end preset entry"
+
+
+def profile_patch(name: str | None = None, home_dir: str | pathlib.Path | None = None) -> pathlib.Path:
+    """The patch file that composes one profile's presets and plugin entries."""
+    return home(home_dir) / "profiles" / profile(name) / "cordis.patch.yml"
+
+
+def _preset_block(python: str, python_path: str, indent: str) -> list[str]:
+    pad = indent
+    return [
+        f"{pad}{PRESET_BEGIN}",
+        f"{pad}- id: {BUNDLE_NAME}",
+        f"{pad}  name: {BUNDLE_NAME}",
+        f"{pad}  config:",
+        f"{pad}    python: {python}",
+        f"{pad}    pythonPath: {python_path}",
+        f"{pad}    mode: balanced",
+        f"{pad}{PRESET_END}",
+    ]
+
+
+def _preset_plugins(lines: list[str]) -> tuple[int, str] | None:
+    """The line index and child indent of the first preset's ``plugins:`` list."""
+    for index, line in enumerate(lines):
+        if line.lstrip().startswith("- id: preset-"):
+            break
+    else:
+        return None
+    for position in range(index, len(lines)):
+        stripped = lines[position].strip()
+        if stripped == "plugins:":
+            return position, " " * (len(lines[position]) - len(lines[position].lstrip()) + 2)
+        if position + 1 < len(lines) and lines[position + 1].lstrip().startswith("- id: ") is False:
+            continue
+    return None
+
+
+def wire_preset(python: str, python_path: str, *, name: str | None = None,
+                home_dir: str | pathlib.Path | None = None) -> str:
+    """Put the bundle inside the profile's agent preset, idempotently.
+
+    A profile-level entry loads beside the presets, and the harness scopes
+    ``tools/post-execute`` to the calling agent's own scope chain, so only an
+    entry composed *inside* the preset ever sees a model tool call.
+    """
+    path = profile_patch(name, home_dir)
+    if not path.is_file():
+        return "no-file"
+    text = path.read_text(encoding="utf-8")
+    if BUNDLE_NAME in text:
+        return "present"
+    lines = text.splitlines()
+    located = _preset_plugins(lines)
+    if located is None:
+        return "no-preset"
+    position, indent = located
+    block = _preset_block(python, python_path, indent)
+    lines[position + 1:position + 1] = block
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return "wired"
+
+
+def unwire_preset(*, name: str | None = None, home_dir: str | pathlib.Path | None = None) -> bool:
+    path = profile_patch(name, home_dir)
+    if not path.is_file():
+        return False
+    lines = path.read_text(encoding="utf-8").splitlines()
+    try:
+        start = next(index for index, line in enumerate(lines) if line.strip() == PRESET_BEGIN)
+        end = next(index for index, line in enumerate(lines) if line.strip() == PRESET_END)
+    except StopIteration:
+        return False
+    del lines[start:end + 1]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return True
+
+
 def install(*, dry_run: bool = False, python: str | None = None,
             python_path: str | None = None, name: str | None = None,
             home_dir: str | pathlib.Path | None = None,
@@ -148,6 +227,13 @@ def install(*, dry_run: bool = False, python: str | None = None,
         print_error(f"dsh plugin add failed ({finished.returncode}): {' '.join(detail)}")
         return 1
     print_success(f"sutra: attached the bundle to the {profile(name)} profile")
+    wired = wire_preset(interpreter, path, name=name, home_dir=home_dir)
+    if wired == "wired":
+        print_success("sutra: placed the bundle inside the profile's agent preset, where model tool calls reach it")
+    elif wired == "present":
+        print_info("sutra: the profile's agent preset already lists the bundle")
+    elif wired == "no-preset":
+        print_warning("sutra: the profile declares no agent preset; add the bundle to a preset by hand")
     print_warning("Restart DeepSeek Harness once so the bundle loads; `sutra doctor` reports dsh after that")
     return 0
 
@@ -168,6 +254,8 @@ def uninstall(*, dry_run: bool = False, name: str | None = None,
         print_warning("dsh plugin remove reported a problem; the profile may need one manual pass")
     if target.exists():
         shutil.rmtree(target, ignore_errors=True)
+    if unwire_preset(name=name, home_dir=home_dir):
+        print_success("sutra: removed the bundle from the profile's agent preset")
     print_success("sutra: removed the DeepSeek Harness bundle")
     return 0
 
@@ -176,12 +264,16 @@ def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = Non
     target = bundle_dir(home_dir)
     files = [filename for filename in BUNDLE_FILES if (target / filename).is_file()]
     attached = configured(home_dir, name)
+    in_preset = "wired" if (profile_patch(name, home_dir).is_file()
+                            and BUNDLE_NAME in profile_patch(name, home_dir).read_text(encoding="utf-8")) else "missing"
     cli = binary()
     problems = []
     if not files:
         problems.append("the host bundle is not copied")
     if not attached:
         problems.append("the profile does not list dsh-sutra-host")
+    if in_preset != "wired":
+        problems.append("no agent preset composes dsh-sutra-host, so model tool calls never reach it")
     if cli is None:
         problems.append("dsh is not on PATH")
     status = "pass" if not problems else ("partial" if files else "fail")
@@ -191,6 +283,7 @@ def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = Non
         "files": files,
         "profile": profile(name),
         "attached": attached,
+        "preset": in_preset,
         "binary": cli or "",
         "problems": problems,
         "copy": "current" if len(files) == len(BUNDLE_FILES) else "stale",
