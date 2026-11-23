@@ -260,6 +260,77 @@ def uninstall(*, dry_run: bool = False, name: str | None = None,
     return 0
 
 
+def last_saves(home_dir: str | pathlib.Path | None = None, *, limit: int = 20_000) -> dict:
+    """What the seam has actually saved in this harness, from its own log.
+
+    A bundle can be attached, report a healthy doctor line, and still never
+    reach a model tool call — that is exactly how the preset defect hid. The
+    stats log is the only evidence that the stage ran, so the doctor reports it
+    instead of implying it.
+    """
+    path = bundle_dir(home_dir).with_name("sutra") / "stats.jsonl"
+    if not path.is_file():
+        return {"rewrites": 0, "saved_bytes": 0, "last_at": ""}
+    rewrites = 0
+    saved = 0
+    last = ""
+    try:
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            for index, line in enumerate(handle):
+                if index >= limit:
+                    break
+                try:
+                    record = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(record, dict):
+                    continue
+                trimmed = int(record.get("saved_bytes") or 0)
+                if trimmed <= 0:
+                    continue
+                rewrites += 1
+                saved += trimmed
+                last = str(record.get("at") or "")[:40] or last
+    except OSError:
+        return {"rewrites": 0, "saved_bytes": 0, "last_at": ""}
+    return {"rewrites": rewrites, "saved_bytes": saved, "last_at": last}
+
+
+def format_doctor(report: dict) -> str:
+    """One line naming what the harness has actually done, not only what is wired."""
+    if "error" in report:
+        return f"dsh: error: {report['error']}"
+    parts = [
+        "dsh:",
+        f"status={report.get('status', 'fail')}",
+        f"profile={report.get('profile', '?')}",
+        f"copy={report.get('copy', 'stale')}",
+        f"attached={'yes' if report.get('attached') else 'no'}",
+        f"preset={report.get('preset', 'missing')}",
+    ]
+    if report.get("stage") == "saved":
+        parts.append(f"stage=saved rewrites={report.get('rewrites', 0)}")
+        parts.append(f"saved={_megabytes(report.get('saved_bytes') or 0)}")
+        parts.append(f"last={report.get('last_saved') or 'unknown'}")
+    else:
+        parts.append("stage=never")
+    line = " ".join(parts)
+    problems = report.get("problems") or []
+    if problems:
+        line += " · " + "; ".join(problems[:3])
+    return line
+
+
+def _megabytes(count: int) -> str:
+    """A byte count a human can compare at a glance."""
+    size = float(count)
+    for unit in ("B", "KB", "MB"):
+        if size < 1024 or unit == "MB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} MB"
+
+
 def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = None) -> dict:
     target = bundle_dir(home_dir)
     files = [filename for filename in BUNDLE_FILES if (target / filename).is_file()]
@@ -267,6 +338,7 @@ def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = Non
     in_preset = "wired" if (profile_patch(name, home_dir).is_file()
                             and BUNDLE_NAME in profile_patch(name, home_dir).read_text(encoding="utf-8")) else "missing"
     cli = binary()
+    saves = last_saves(home_dir)
     problems = []
     if not files:
         problems.append("the host bundle is not copied")
@@ -274,6 +346,8 @@ def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = Non
         problems.append("the profile does not list dsh-sutra-host")
     if in_preset != "wired":
         problems.append("no agent preset composes dsh-sutra-host, so model tool calls never reach it")
+    if not saves["rewrites"]:
+        problems.append("no tool result has been trimmed in this harness yet")
     if cli is None:
         problems.append("dsh is not on PATH")
     status = "pass" if not problems else ("partial" if files else "fail")
@@ -287,4 +361,8 @@ def doctor(*, name: str | None = None, home_dir: str | pathlib.Path | None = Non
         "binary": cli or "",
         "problems": problems,
         "copy": "current" if len(files) == len(BUNDLE_FILES) else "stale",
+        "stage": "saved" if saves["rewrites"] else "never",
+        "rewrites": saves["rewrites"],
+        "saved_bytes": saves["saved_bytes"],
+        "last_saved": saves["last_at"],
     }

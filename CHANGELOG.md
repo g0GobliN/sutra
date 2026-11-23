@@ -4,6 +4,11 @@
 
 ### Added
 
+- `sutra doctor --client dsh` now reports what the harness stage has actually done: it reads the
+  seam's `stats.jsonl` and prints `stage=saved rewrites=N saved=… last=…`, or `stage=never` plus
+  the problem `no tool result has been trimmed in this harness yet`. An attached bundle used to
+  be indistinguishable from a working one — the preset defect behind #149 looked healthy.
+
 - `sutra install --client dsh` wires DeepSeek Harness in one command: it writes the host bundle to `$DSH_HOME/sutra-host` (a `tools/post-execute` listener that trims an oversized tool result through `python -m sutra process-result`, plus an `mcpManager` registration of the recovery server) and attaches it with `dsh plugin --profile <profile> add`. `sutra doctor --client dsh` reports the copy and the profile entry.
 - `sutra process-result` and `python -m sutra` give a host whose hook runs in
   another language one call to hand a whole content array to the same seam: JSON on
