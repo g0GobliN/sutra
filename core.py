@@ -115,6 +115,19 @@ def _record_compression(stats: dict[str, Any], cfg: _config.Config) -> None:
         logger.debug("sutra: compression metric failed", exc_info=True)
 
 
+def _marker_bytes(text: str) -> int:
+    """Bytes the sutra marker adds to a rewritten result.
+
+    The marker is a single line that starts with ``[sutra:``. Measuring it lets
+    the seam refuse a rewrite whose marker would cost more than the bytes it
+    removed: that rewrite is a larger request with an id attached, not a saving.
+    """
+    for line in text.splitlines():
+        if line.startswith("[sutra:"):
+            return len(line.encode("utf-8")) + 1
+    return 0
+
+
 def _reverted(stats: dict[str, Any], text: str, rule: str) -> dict[str, Any]:
     """Record a decision to keep the original because recovery is unavailable.
 
@@ -184,10 +197,25 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                     text, ref=Ref(entry.id, cfg.store_ttl_hours), cfg=cfg)
                 # A rewrite that quotes no id cannot be recovered, so it must
                 # not leave an unreachable entry behind or claim one.
-                if kept_stats.get("changed") and "[sutra:" in kept_out:
+                marker = _marker_bytes(kept_out)
+                saved = int(kept_stats.get("original_bytes") or 0) - len(
+                    kept_out.encode("utf-8"))
+                # A JSON rewrite carries its marker inside a field, so it has no
+                # marker line of its own; only a line-shaped marker can be priced.
+                priced_too_high = marker > 0 and saved <= marker
+                if (kept_stats.get("changed") and "[sutra:" in kept_out
+                        and not priced_too_high):
                     out, stats = kept_out, dict(kept_stats)
                     stats["stored"] = True
                     stats["id"] = entry.id
+                elif kept_stats.get("changed") and "[sutra:" in kept_out:
+                    # The marker costs at least what the rewrite removed, so the
+                    # host would send more bytes than it started with. Keep the
+                    # original and drop the entry: a billed "saving" that grows
+                    # the request is worse than no rewrite.
+                    store.delete(entry.id)
+                    out, stats = text, _reverted(
+                        stats, text, "recovery-marker-cost-kept")
                 else:
                     store.delete(entry.id)
                     out, stats = text, _reverted(

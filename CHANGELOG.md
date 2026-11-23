@@ -30,6 +30,11 @@
 
 ### Fixed
 
+- A rewrite whose marker would cost at least the bytes it removed is now refused
+  (`recovery-marker-cost-kept`): the marker is about 230 bytes, so a trim of 117 bytes
+  left a slightly larger tool result carrying an id. The live harness log holds 19 such
+  rewrites saving 2.2 KB in total, less than their markers cost.
+
 - DeepSeek Harness: the host bundle read `decision.content` on an accepted `tools/post-execute` decision, which carries no content, so every model tool call passed through untrimmed; it now reads `result.content`. The entry is also composed inside the profile's agent preset, because the harness scopes tool events to the calling agent's scope chain — a profile-level copy loaded, reported `status=pass` and did nothing. Verified live: a 64,109-byte result reached the model as head + `[sutra: partial · 45,781 bytes elided (large output) · id=su_…]` + tail.
 
 - The DeepSeek Harness bundle now declares `inject = ['tools']`. Cordis reads that map as
