@@ -109,10 +109,11 @@ SUTRA uses a shared core with small host-specific adapters. Automatic replacemen
 | OpenCode | `tool.execute.after` plugin + MCP recovery | Automatic replacement of supported string results |
 | OpenClaw | Generated plugin + MCP recovery | Automatic result processing |
 | Codex CLI | Trusted `PostToolUse` feedback hook + MCP recovery | Automatic after the one-time `/hooks` trust review |
+| DeepSeek Harness | Host bundle on `tools/post-execute` + MCP recovery | Automatic once `sutra install --client dsh` has attached the bundle and the harness has restarted; the installer also composes it inside the profile's agent preset, because the harness scopes tool events to the calling agent |
 | Other MCP clients | MCP server | Explicit `sutra_compress` and `sutra_restore` calls; MCP registration alone does not intercept other tools |
 | Cursor / Windsurf | Manual MCP configuration only | No SUTRA automatic built-in-tool result replacement adapter |
 
-The exact mechanisms, tested versions, installation details and host-specific limitations are maintained in the [integration matrix](docs/integrations.md). To install one client only, use `sutra install --client hermes|claude|opencode|openclaw|codex`.
+The exact mechanisms, tested versions, installation details and host-specific limitations are maintained in the [integration matrix](docs/integrations.md). To install one client only, use `sutra install --client hermes|claude|opencode|openclaw|codex|dsh`.
 
 ## Evidence and benchmarks
 
