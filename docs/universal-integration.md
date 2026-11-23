@@ -135,16 +135,17 @@ with the numbers, so a claim can be traced to a session:
 | Hermes tool stage | the user's gateway compiling `main`, `SUTRA_PROMPT=1` | 1,893 rewrites over 127,784,080 bytes of tool output, 97,986,207 removed (76.7 %); `bash` 84.4 % of 96.8 MB, `terminal` 89.1 % of 11.3 MB, `read_file` 29.5 % of 18.7 MB |
 | Hermes request stage | the same gateway, `balanced` | 19 rewrites across 10 sessions, 1,613,059 → 1,303,779 bytes (19.2 %) |
 | Hermes whole-session pairs | `scripts/ab/run.py --task trace-deep`, protocol v2, gateway restarted per arm | control 156,119 and 112,529 prompt tokens; treatment 168,476 and 171,791; treatment with a 25 % savings floor 108,777 and 137,378 |
+| DeepSeek Harness tool stage | `sutra install --client dsh`, then real sessions in this harness | 22 rewrites over 245.2 KB of tool output, 125.5 KB removed (51.2 %); `bash` 21 of them at 51.7 %, `read` 1 at 2.7 %; `sutra doctor --client dsh` reads the seam's log and reports `stage=saved rewrites=22 saved=125.6 KB` |
 | Claude Code hook | `claude_code.doctor()` through the installed hook | compressed and restored 73,893 → 18,637 bytes; the host reported the MCP server connected |
 | Claude Code live turn | `claude -p` on a 24,376-byte traceback | **not run**: the host answered `Failed to authenticate: OAuth session expired` |
-| OpenCode, Codex, OpenClaw | — | **not run**: none of the three executables is installed on this machine |
+| OpenCode, Codex, OpenClaw | installed with SUTRA (`opencode 1.19.6`, `codex-cli 0.171.0`, `OpenClaw 2026.11.6`; OpenCode and OpenClaw plugins written, Codex hook written and awaiting `/hooks` trust) | **no live turn**: Codex answers `Failed to refresh token … refresh token was already used`, the stored OpenCode Go tokens answer 403, and no provider key is set on this machine |
 | `sutra proxy` | unit tests only | **no live pair** |
 
 Two limits follow. The request stage's saving is a byte measurement: on the
 paired task it billed more prompt tokens than the control until a savings floor
 refused the small rewrites, and two seeds per arm cannot separate that from
-trajectory noise. And no host outside Hermes has been driven end to end by a
-model, so the Claude Code, OpenCode, Codex and OpenClaw rows describe an
+trajectory noise. And only Hermes and DeepSeek Harness have been driven end to
+end by a model, so the Claude Code, OpenCode, Codex and OpenClaw rows describe an
 installed and protocol-checked path, not an observed session.
 
 ## Deliberately not claimed
