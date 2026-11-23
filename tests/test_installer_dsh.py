@@ -100,6 +100,41 @@ def test_doctor_separates_an_unattached_copy_from_a_missing_one(tmp_path):
     assert copied["status"] == "partial"
 
 
+def test_doctor_reports_what_the_stage_has_actually_saved(tmp_path):
+    """A wired bundle is not a working stage.
+
+    The preset defect produced a healthy doctor line while no model tool call
+    ever reached the seam, so the doctor reports the seam's own log instead of
+    implying that wiring means saving.
+    """
+
+    home = tmp_path / "dsh"
+    target = home / "sutra-host"
+    target.mkdir(parents=True)
+    for filename in dsh.BUNDLE_FILES:
+        (target / filename).write_text("placeholder\n", encoding="utf-8")
+
+    empty = dsh.doctor(home_dir=home)
+    assert empty["stage"] == "never"
+    assert empty["rewrites"] == 0
+    assert any("no tool result has been trimmed" in problem for problem in empty["problems"])
+
+    log = home / "sutra" / "stats.jsonl"
+    log.parent.mkdir(parents=True)
+    log.write_text(
+        json.dumps({"at": "2026-11-23T09:39:30+0900", "saved_bytes": 0}) + "\n"
+        + json.dumps({"at": "2026-11-23T09:40:00+0900", "saved_bytes": 45725}) + "\n"
+        + "not json\n",
+        encoding="utf-8",
+    )
+
+    saved = dsh.doctor(home_dir=home)
+    assert saved["stage"] == "saved"
+    assert saved["rewrites"] == 1
+    assert saved["saved_bytes"] == 45725
+    assert saved["last_saved"] == "2026-11-23T09:40:00+0900"
+
+
 def test_the_bundle_declares_its_dependency_in_the_form_cordis_reads():
     """Cordis takes `inject` as a map of service names.
 
@@ -219,3 +254,31 @@ def test_a_profile_without_a_preset_is_reported_not_guessed(tmp_path, fake_cli):
 
     assert dsh.wire_preset(sys.executable, "/tmp/lib", home_dir=home) == "no-preset"
     assert patch.read_text(encoding="utf-8") == "- insert: []\n"
+
+
+def test_the_doctor_line_names_what_the_stage_has_saved():
+    """`wired` and `working` are different claims, and the line says which one holds."""
+
+    saving = {
+        "status": "pass",
+        "profile": "desktop",
+        "copy": "current",
+        "attached": True,
+        "preset": "wired",
+        "stage": "saved",
+        "rewrites": 3,
+        "saved_bytes": 3_145_728,
+        "last_saved": "2026-11-23T09:40:00+0900",
+        "problems": [],
+    }
+    line = dsh.format_doctor(saving)
+    assert line.startswith("dsh: status=pass profile=desktop copy=current")
+    assert "preset=wired" in line
+    assert "stage=saved rewrites=3 saved=3.0 MB last=2026-11-23T09:40:00+0900" in line
+
+    idle = dsh.format_doctor({**saving, "stage": "never", "rewrites": 0})
+    assert "stage=never" in idle
+    assert "saved=" not in idle.split("·")[0]
+
+    broken = dsh.format_doctor({"error": "boom"})
+    assert broken == "dsh: error: boom"

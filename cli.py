@@ -657,6 +657,8 @@ def _doctor(as_json: bool = False, clients: list[str] | None = None) -> int:
             formatter = hermes.format_doctor
         elif client == "openclaw":
             formatter = openclaw.format_doctor
+        elif client == "dsh":
+            formatter = dsh.format_doctor
         else:
             formatter = codex.format_doctor
         print(formatter(report))
