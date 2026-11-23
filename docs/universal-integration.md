@@ -148,6 +148,30 @@ trajectory noise. And only Hermes and DeepSeek Harness have been driven end to
 end by a model, so the Claude Code, OpenCode, Codex and OpenClaw rows describe an
 installed and protocol-checked path, not an observed session.
 
+### Reproducing the numbers
+
+The tool-stage rows come from the hosts' own logs, and each log is one command away.
+For the harness:
+
+```console
+$ SUTRA_STATS_FILE=$DSH_HOME/sutra/stats.jsonl sutra stats
+sutra stats: /home/goblin01/.dsh/sutra/stats.jsonl
+  rewrites: 22
+  bytes: 251,060 before → 122,481 after (128,579 saved, 51.2%)
+  partial: 3  fail open: 0  unreadable lines: 0
+  by rule:
+    head-tail: 3 rewrite(s), 126,343 bytes saved
+    search: 19 rewrite(s), 2,236 bytes saved
+  by tool:
+    bash: 21 rewrite(s), 128,513 bytes saved
+    read: 1 rewrite(s), 66 bytes saved
+```
+
+Two limits are visible in that output. Most rewrites are the small `search` rule, which
+trims indentation for about a hundred bytes each: frequent, harmless, and not where the
+saving lives. The bytes come from the three `head-tail` rewrites. The Hermes rows are read
+the same way from `SUTRA_STATS_FILE` at that host's default path.
+
 ## Deliberately not claimed
 
 - Codex output restoration beyond the text Codex itself supplies to the hook.
