@@ -25,6 +25,8 @@
 
 ### Fixed
 
+- DeepSeek Harness: the host bundle read `decision.content` on an accepted `tools/post-execute` decision, which carries no content, so every model tool call passed through untrimmed; it now reads `result.content`. The entry is also composed inside the profile's agent preset, because the harness scopes tool events to the calling agent's scope chain — a profile-level copy loaded, reported `status=pass` and did nothing. Verified live: a 64,109-byte result reached the model as head + `[sutra: partial · 45,781 bytes elided (large output) · id=su_…]` + tail.
+
 - The DeepSeek Harness bundle now declares `inject = ['tools']`. Cordis reads that map as
   service names, so the earlier `{ required: [...], optional: [...] }` asked for two services
   literally named "required" and "optional"; the plugin's fiber stayed `pending` and neither
