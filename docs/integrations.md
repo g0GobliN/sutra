@@ -463,6 +463,8 @@ It copies one small bundle to `$DSH_HOME/sutra-host`, fills in the interpreter t
 
 The doctor line answers a different question from `attached`. `sutra doctor --client dsh` reads the seam's own `stats.jsonl` and reports `stage=saved rewrites=N saved=… last=…` once a tool result has actually been through it; until then it reports `stage=never` and names `no tool result has been trimmed in this harness yet` as a problem, so a wired-but-idle install is not mistaken for a working one. An attached bundle and a saving stage are different claims, and both are visible now.
 
+The same seam log backs `sutra stats`: point `SUTRA_STATS_FILE` at `$DSH_HOME/sutra/stats.jsonl` and the command reports rewrites, bytes, rules and tools for this harness, beside the request-stage section.
+
 The request stage is deliberately absent. The harness hands a plugin a model route on `agent/request` (a provider and model, not the outbound message array), and its history rewriting belongs to compaction, so a plugin that claimed to trim the outbound prompt there would be describing a hook the harness does not expose. A harness that wants the request stage can still point a provider's `baseURL` at `sutra proxy`, as below.
 
 DeepSeek Harness reads its providers from the `llm-pi-ai` entry in `~/.dsh/profiles/desktop/cordis.patch.yml`. Adding a provider whose `baseURL` names the proxy routes that provider's traffic through the policy, while the key stays where the entry already keeps it:
