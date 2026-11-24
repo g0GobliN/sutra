@@ -4,6 +4,13 @@
 
 ### Added
 
+- `scripts/ab/mock_provider.py` serves a local OpenAI-shaped stream that asks a host for one tool
+  call and then answers, so a host's real session loop — tool execution, adapter hook, request
+  assembly — can be exercised and recorded on a machine with no provider credential. Every
+  request is summarised to JSON Lines with each message's role, byte size and `[sutra:` flag;
+  that record is what proves the adapter rewrote the result the host submitted. A scripted model
+  makes no quality claim, and the guide says so beside the numbers.
+
 - `sutra doctor --client dsh` now reports what the harness stage has actually done: it reads the
   seam's `stats.jsonl` and prints `stage=saved rewrites=N saved=… last=…`, or `stage=never` plus
   the problem `no tool result has been trimmed in this harness yet`. An attached bundle used to

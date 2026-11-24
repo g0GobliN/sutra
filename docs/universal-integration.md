@@ -125,6 +125,28 @@ The Claude Code, OpenCode and Codex host proofs are the scripted-provider runs
 recorded in [automatic-install.md](automatic-install.md); they are not live
 model or billing measurements.
 
+A host loop can also be reproduced on a machine with no provider credential.
+`scripts/ab/mock_provider.py` serves an OpenAI-shaped stream that asks for one
+tool call and then answers, and records what the host actually sent:
+
+```bash
+python3 scripts/ab/mock_provider.py --port 8899 --log /tmp/mock.jsonl --bytes 36000
+OPENCODE_CONFIG=/tmp/oc-mock/config.json XDG_DATA_HOME=/tmp/oc-mock/data \
+  opencode run "Run the shell command and report the output." -m mock/mock-1
+```
+
+Point the host's provider `baseURL` at `http://127.0.0.1:8899/v1`. The default
+log is `<home>/.sutra/mock-provider/requests.jsonl`, created owner-only; the
+server is unauthenticated and loopback-only, so run it on a machine you trust
+and stop it when the loop is over. OpenCode
+needs its own `XDG_DATA_HOME` because a database written by an older release
+answers `Database is not empty and has no session table`; the host also streams
+unconditionally, so a provider that answers plain JSON makes it retry until it
+is killed. The model is fake and no quality claim follows, but the tool
+execution, the adapter hook and the request the host finally submits are real —
+and the log's per-message byte sizes and `[sutra:` flags are what prove the
+adapter rewrote the result the host sent back.
+
 ## Live evidence
 
 The sections above are the API contract. This is what has actually been run,
@@ -139,14 +161,18 @@ with the numbers, so a claim can be traced to a session:
 | Claude Code hook | `claude_code.doctor()` through the installed hook | compressed and restored 73,893 → 18,637 bytes; the host reported the MCP server connected |
 | Claude Code live turn | `claude -p` on a 24,376-byte traceback | **not run**: the host answered `Failed to authenticate: OAuth session expired` |
 | OpenCode, Codex, OpenClaw | installed with SUTRA (`opencode 1.19.6`, `codex-cli 0.171.0`, `OpenClaw 2026.11.6`; OpenCode and OpenClaw plugins written, Codex hook written and awaiting `/hooks` trust) | **no live turn**: Codex answers `Failed to refresh token … refresh token was already used`, the stored OpenCode Go tokens answer 403, and no provider key is set on this machine |
+| OpenCode host loop, scripted provider | `scripts/ab/mock_provider.py` (OpenAI-shaped SSE asking for one `bash` call), `opencode run` with `XDG_DATA_HOME` isolated to a fresh database | the host executed the command (36,001 bytes) and its next request carried the tool message at **18,671 bytes with `[sutra: partial … id=su_…]`**; `sutra_restore` was in the advertised tool list and the original was on disk under `~/.sutra/cache/sutra-store/` |
 | `sutra proxy` | unit tests only | **no live pair** |
 
 Two limits follow. The request stage's saving is a byte measurement: on the
 paired task it billed more prompt tokens than the control until a savings floor
 refused the small rewrites, and two seeds per arm cannot separate that from
 trajectory noise. And only Hermes and DeepSeek Harness have been driven end to
-end by a model, so the Claude Code, OpenCode, Codex and OpenClaw rows describe an
-installed and protocol-checked path, not an observed session.
+end by a model, so the Claude Code, Codex and OpenClaw rows describe an
+installed and protocol-checked path, not an observed session. OpenCode's loop
+was driven end to end with the scripted provider above: that proves the plugin,
+the tool execution and the bytes the host submitted, and it says nothing about
+how a real model behaves.
 
 ### Reproducing the numbers
 
