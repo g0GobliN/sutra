@@ -12,7 +12,9 @@
 // non-JSON output, process failure); only a string result output is ever
 // rewritten; the Python process is spawned without a shell and with a
 // dedicated HERMES_HOME, never the user's Hermes profile.
-import { spawn } from "node:child_process"
+// CommonJS on purpose: OpenClaw loads a config-tree plugin with require(),
+// so an ES module (or any top-level await) fails the plugin load.
+const { spawn } = require("node:child_process")
 
 const PYTHON = __SUTRA_PYTHON__
 const SUTRA_HOME = __SUTRA_HOME__
@@ -141,7 +143,7 @@ function setOutput(result, value) {
 }
 
 // Sutra export for testing and doctor probe - mirrors the OpenCode adapter interface
-export const Sutra = async () => ({
+const Sutra = async () => ({
   tool: {
     sutra_restore: {
       description:
@@ -198,20 +200,12 @@ export const Sutra = async () => ({
   },
 })
 
-// Try to import definePluginEntry from OpenClaw's plugin SDK.
-// If available (running inside OpenClaw), use it to create the plugin entry.
-// If not available (testing outside OpenClaw), fall back to a plain entry object.
-let definePluginEntry = null
-try {
-  const mod = await import("openclaw/plugin-sdk/core")
-  definePluginEntry = mod.definePluginEntry
-} catch {
-  // Not running inside OpenClaw; SDK not available. Use plain entry.
-}
-
 const entry = {
   id: "sutra",
   name: "sutra",
+  // OpenClaw rejects a tool registration unless the plugin declares the
+  // contract up front; hooks alone do not need it.
+  contracts: { tools: true },
   description:
     "Deterministic tool-output compression for OpenClaw via SUTRA.",
   register(ctx) {
@@ -367,4 +361,8 @@ const entry = {
   },
 }
 
-export default definePluginEntry ? definePluginEntry(entry) : entry
+// A plain entry object is what OpenClaw reads from a config-tree plugin:
+// it looks for `id` and `register(ctx)`. The SDK helper is optional and
+// needs top-level await, which require() cannot load.
+module.exports = entry
+module.exports.Sutra = Sutra

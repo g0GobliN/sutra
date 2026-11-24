@@ -68,6 +68,53 @@ def test_install_writes_a_private_plugin_and_is_idempotent(paths, capsys):
     assert "nothing to do" in capsys.readouterr().out
 
 
+def test_install_names_the_plugin_in_the_host_config(paths):
+    """A file under the config tree is inert until the host config names it."""
+    root, config_dir, config = paths
+    path = openclaw.plugin_path(config_dir)
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    value = json.loads(config.read_text(encoding="utf-8"))
+    assert str(path) in value["plugins"]["load"]["paths"]
+    assert "sutra" in value["plugins"]["allow"]
+    assert value["theme"] == "dark"
+
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    again = json.loads(config.read_text(encoding="utf-8"))
+    assert again["plugins"]["load"]["paths"].count(str(path)) == 1
+    assert again["plugins"]["allow"].count("sutra") == 1
+
+
+def test_uninstall_takes_the_config_entries_back(paths):
+    root, config_dir, config = paths
+    path = openclaw.plugin_path(config_dir)
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    assert openclaw.uninstall(config_path=config_dir) == 0
+    assert not path.exists()
+    value = json.loads(config.read_text(encoding="utf-8"))
+    assert str(path) not in value["plugins"]["load"]["paths"]
+    assert "sutra" not in value["plugins"]["allow"]
+    assert value["theme"] == "dark"
+
+
+def test_doctor_reports_a_plugin_the_config_does_not_name(paths):
+    root, config_dir, config = paths
+    assert openclaw.install(python="/opt/python", home=root / "home",
+                            config_path=config_dir) == 0
+    value = json.loads(config.read_text(encoding="utf-8"))
+    value["plugins"]["load"]["paths"] = []
+    value["plugins"]["allow"] = []
+    config.write_text(json.dumps(value), encoding="utf-8")
+    report = openclaw.doctor(path=str(openclaw.plugin_path(config_dir)),
+                             node="/nonexistent/node")
+    config_check = next(item for item in report["checks"] if item["name"] == "config")
+    assert config_check["status"] == "fail"
+    assert "plugins.load.paths" in config_check["detail"]
+    assert "plugins.allow" in config_check["detail"]
+
+
 def test_install_auto_detection_includes_an_installed_openclaw(paths):
     root, config_dir, _ = paths
     assert openclaw.install(python="/opt/python", home=root / "home",
@@ -213,7 +260,7 @@ def test_plugin_hook_compresses_and_recovers_through_the_real_cli(paths, tmp_pat
     if os.environ.get("CI") == "true":
         pytest.skip("OpenClaw plugin test unstable in CI environment")
     _, config_dir, config = paths
-    plugin = tmp_path / "sutra-plugin.mjs"
+    plugin = tmp_path / "sutra-plugin.cjs"
     home = tmp_path / "home"
     assert openclaw.install(python=sys.executable, home=home, config_path=config_dir) == 0
     plugin.write_text(openclaw.render(python=sys.executable, home=home), encoding="utf-8")
@@ -221,7 +268,9 @@ def test_plugin_hook_compresses_and_recovers_through_the_real_cli(paths, tmp_pat
     script = tmp_path / "hook.mjs"
     script.write_text(f"""
 import assert from "node:assert/strict"
-const plugin = await import({json.dumps(plugin.as_uri())})
+import {{ createRequire }} from "node:module"
+const require = createRequire(import.meta.url)
+const plugin = require({json.dumps(str(plugin))})
 const hooks = await plugin.Sutra({{}})
 const lines = Array.from({{length: 3000}}, (_, i) => `line ${{i}} padding padding`)
 lines[1500] = "CLUE: openclaw-plugin-token-9K"
@@ -271,13 +320,15 @@ def test_plugin_hook_allows_a_slow_but_successful_compression(paths, tmp_path):
         "#!/bin/sh\nsleep 3\nexec " + shlex.quote(sys.executable) + ' "$@"\n',
         encoding="utf-8")
     wrapper.chmod(0o755)
-    plugin = tmp_path / "slow-plugin.mjs"
+    plugin = tmp_path / "slow-plugin.cjs"
     plugin.write_text(openclaw.render(python=str(wrapper), home=home), encoding="utf-8")
 
     script = tmp_path / "slow-hook.mjs"
     script.write_text(f"""
 import assert from "node:assert/strict"
-const plugin = await import({json.dumps(plugin.as_uri())})
+import {{ createRequire }} from "node:module"
+const require = createRequire(import.meta.url)
+const plugin = require({json.dumps(str(plugin))})
 const hooks = await plugin.Sutra({{}})
 const lines = Array.from({{length: 3000}}, (_, i) => `line ${{i}} padding padding`)
 lines[1500] = "CLUE: openclaw-slow-token-7Q"
