@@ -374,3 +374,23 @@ def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, mon
 
     assert openclaw.uninstall(config_path=config_dir) == 0
     assert not openclaw.named_in_config(config_dir)
+
+
+def test_a_failed_registration_restores_the_previous_plugin_and_keeps_its_backup(tmp_path, monkeypatch):
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    (config_dir / "openclaw.json").write_text(
+        '{"plugins": {"load": {"paths": "not-a-list"}}}\n', encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.parent.mkdir(parents=True)
+    previous = openclaw.render(python="/usr/bin/python3",
+                               home=tmp_path / "home").replace(
+        "SUTRA_MODE", "SUTRA_MODE", 1)
+    plugin.write_text(previous + "\n// older build\n", encoding="utf-8")
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir) == 1
+    assert plugin.read_text(encoding="utf-8") == previous + "\n// older build\n"
+    backups = list(plugin.parent.glob("sutra.js.bak-*"))
+    assert backups, "the rollback must leave the backup it restored from"

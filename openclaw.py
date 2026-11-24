@@ -103,13 +103,21 @@ def config_file(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     OpenClaw names it ``openclaw.json`` inside its config directory; an explicit
     ``OPENCLAW_CONFIG_PATH`` points at the file itself.
     """
-    override = os.environ.get("OPENCLAW_CONFIG_PATH")
-    if override:
-        return pathlib.Path(override).expanduser()
-    return openclaw_config_dir(config_path) / "openclaw.json"
+    if config_path is not None:
+        return openclaw_config_dir(config_path) / "openclaw.json"
+    # The tree that holds the plugin also holds the file it is named in;
+    # OPENCLAW_CONFIG_PATH is the host's own pointer and applies only when
+    # SUTRA does not force a tree of its own.
+    if os.environ.get("SUTRA_OPENCLAW_CONFIG"):
+        return openclaw_config_dir() / "openclaw.json"
+    named = os.environ.get("OPENCLAW_CONFIG_PATH")
+    if named:
+        return pathlib.Path(named).expanduser()
+    return openclaw_config_dir() / "openclaw.json"
 
 
-def named_in_config(config_path: str | pathlib.Path | None = None) -> bool:
+def named_in_config(config_path: str | pathlib.Path | None = None, *,
+                    path: pathlib.Path | None = None) -> bool:
     """True when the host config names the plugin in ``plugins.load.paths``.
 
     Detection asks this instead of "does a config file exist": an uninstall
@@ -126,7 +134,7 @@ def named_in_config(config_path: str | pathlib.Path | None = None) -> bool:
         return False
     if not isinstance(paths, list):
         return False
-    target = str(plugin_path(config_path))
+    target = str(path if path is not None else plugin_path(config_path))
     return any(isinstance(item, str) and item == target for item in paths)
 
 
@@ -294,18 +302,23 @@ def install(*, dry_run: bool = False, python: str | None = None,
         # discover: the next run would call it present and report success. The
         # backup is moved last, so a failure here keeps the only copy on disk.
         try:
+            unregister(config_path, path=path)
             if existed:
-                # os.replace overwrites atomically: the original is never
-                # absent from `path` for longer than the rename itself.
-                os.replace(str(backup), str(path))
+                # A copy, not a move: the backup stays on disk, so the next
+                # attempt still has the bytes this one restored.
+                mode = stat.S_IMODE(pathlib.Path(str(backup)).stat().st_mode)
+                _new_file(path, pathlib.Path(str(backup)).read_text(encoding="utf-8"),
+                          mode=mode)
             else:
                 path.unlink(missing_ok=True)
         except OSError as restore:
             print_error(
                 f"sutra: could not name the plugin in OpenClaw's config: {exc}; "
-                f"the previous plugin was left at {backup} ({restore})")
+                f"the previous plugin is still at {backup} ({restore})")
             return 1
         print_error(f"sutra: could not name the plugin in OpenClaw's config: {exc}")
+        if existed:
+            print_info("sutra: the previous plugin was restored and the new one was discarded")
         return 1
     if existed:
         print_success(f"sutra: updated the OpenClaw plugin at {path}")
@@ -345,11 +358,6 @@ def uninstall(*, dry_run: bool = False,
         print_info(f"sutra: took the plugin out of {config_file(config_path)}")
     path.unlink()
     print_success(f"sutra: removed the OpenClaw plugin at {path}")
-    try:
-        if unregister(config_path, path=path):
-            print_info(f"sutra: took the plugin out of {config_file(config_path)}")
-    except OSError as exc:
-        print_warning(f"sutra: removed {path} but could not clean OpenClaw's config: {exc}")
     return 0
 
 
