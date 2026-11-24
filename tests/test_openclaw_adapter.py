@@ -394,3 +394,24 @@ def test_a_failed_registration_restores_the_previous_plugin_and_keeps_its_backup
     assert plugin.read_text(encoding="utf-8") == previous + "\n// older build\n"
     backups = list(plugin.parent.glob("sutra.js.bak-*"))
     assert backups, "the rollback must leave the backup it restored from"
+
+
+def test_uninstall_keeps_the_file_when_the_config_cannot_be_cleaned(tmp_path, monkeypatch):
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text(openclaw.render(python="/usr/bin/python3",
+                                      home=tmp_path / "home"), encoding="utf-8")
+    (config_dir / "openclaw.json").write_text(
+        json.dumps({"plugins": {"load": {"paths": [str(plugin)]},
+                                "allow": ["sutra"]}}) + "\n", encoding="utf-8")
+    # A config directory nobody may write leaves the entries in place, so the
+    # file must stay: deleting it would point the host at a missing path.
+    config_dir.chmod(0o500)
+    try:
+        assert openclaw.uninstall(config_path=config_dir) == 1
+        assert plugin.exists()
+    finally:
+        config_dir.chmod(0o700)

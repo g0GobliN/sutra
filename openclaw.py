@@ -226,10 +226,10 @@ def unregister(config_path: str | pathlib.Path | None = None, *, path: pathlib.P
         block["allow"] = [item for item in allow if item != PLUGIN_ID]
         changed = True
     if changed:
-        try:
-            _save_config(file, value)
-        except OSError:
-            return False
+        # A caller that deletes the plugin file must know the entries are
+        # really gone; swallowing the write error here is what leaves a host
+        # naming a path that no longer exists.
+        _save_config(file, value)
     return changed
 
 
@@ -291,6 +291,12 @@ def install(*, dry_run: bool = False, python: str | None = None,
         print_info(f"sutra: dry run, would write the OpenClaw plugin to {path} (no file was written)")
         return 0
     existed = path.exists()
+    # Read the previous plugin and whether the host already named it before
+    # anything is written: a rollback must not depend on how the writer ordered
+    # its own backup, and it must not strip entries a working install owns.
+    previous_mode = stat.S_IMODE(path.stat().st_mode) if existed else None
+    previous_text = path.read_text(encoding="utf-8") if existed else None
+    was_registered = named_in_config(config_path, path=path)
     if existed:
         backup = installer._write(path, text)  # timestamped backup beside the file
     else:
@@ -302,19 +308,22 @@ def install(*, dry_run: bool = False, python: str | None = None,
         # discover: the next run would call it present and report success. The
         # backup is moved last, so a failure here keeps the only copy on disk.
         try:
-            unregister(config_path, path=path)
+            if was_registered:
+                # The host already named this plugin before this run: leaving
+                # the entries alone keeps the restored file discoverable.
+                pass
+            else:
+                unregister(config_path, path=path)
             if existed:
-                # A copy, not a move: the backup stays on disk, so the next
-                # attempt still has the bytes this one restored.
-                mode = stat.S_IMODE(pathlib.Path(str(backup)).stat().st_mode)
-                _new_file(path, pathlib.Path(str(backup)).read_text(encoding="utf-8"),
-                          mode=mode)
+                assert previous_text is not None and previous_mode is not None
+                _new_file(path, previous_text, mode=previous_mode)
             else:
                 path.unlink(missing_ok=True)
         except OSError as restore:
+            where = f"the backup is still at {backup}" if existed else "no file exists"
             print_error(
                 f"sutra: could not name the plugin in OpenClaw's config: {exc}; "
-                f"the previous plugin is still at {backup} ({restore})")
+                f"the previous plugin was not restored ({restore}); {where}")
             return 1
         print_error(f"sutra: could not name the plugin in OpenClaw's config: {exc}")
         if existed:
@@ -354,7 +363,14 @@ def uninstall(*, dry_run: bool = False,
     if dry_run:
         print_info(f"sutra: dry run, would remove the OpenClaw plugin at {path} (no file was written)")
         return 0
-    if unregister(config_path, path=path):
+    try:
+        cleaned = unregister(config_path, path=path)
+    except OSError as exc:
+        # Deleting the file would leave the host naming a path that is gone.
+        print_warning(f"sutra: could not clean OpenClaw's config: {exc}; "
+                      f"leaving {path} in place")
+        return 1
+    if cleaned:
         print_info(f"sutra: took the plugin out of {config_file(config_path)}")
     path.unlink()
     print_success(f"sutra: removed the OpenClaw plugin at {path}")
@@ -553,8 +569,8 @@ console.log("openclaw doctor hook ok")
 
 _ENTRY_PROBE = """
 const entry = require(process.argv[1])
-const shape = { register: typeof entry?.register, contracts: entry?.contracts }
-if (shape.register !== "function" || shape.contracts?.tools !== true) {
+const shape = { id: entry?.id, register: typeof entry?.register, contracts: entry?.contracts }
+if (shape.id !== "sutra" || shape.register !== "function" || shape.contracts?.tools !== true) {
   console.error(JSON.stringify(shape))
   process.exit(2)
 }
@@ -578,6 +594,9 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
         return _check("entry", "fail", f"the plugin could not be loaded: {exc}")
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no output").strip()[-200:]
+        if '"id"' in detail and '"sutra"' not in detail:
+            return _check("entry", "fail",
+                          f"the plugin loads under a different id: {detail}")
         return _check("entry", "fail", f"the plugin loads but registers nothing: {detail}")
     return _check("entry", "pass", "loads under require() with register() and contracts.tools")
 
