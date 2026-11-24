@@ -25,6 +25,7 @@ import os
 import pathlib
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -145,8 +146,14 @@ def _load_config(path: pathlib.Path) -> dict:
 
 
 def _save_config(path: pathlib.Path, value: dict) -> None:
+    """Replace the host config atomically, keeping the file's own mode."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    _new_file(path, json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+    try:
+        mode = stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        mode = 0o600
+    text = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    _new_file(path, text, mode=mode)
 
 
 def _plugins_block(value: dict) -> dict:
@@ -240,13 +247,13 @@ def configured(config_path: str | pathlib.Path | None = None) -> bool:
     return MARKER in text
 
 
-def _new_file(path: pathlib.Path, text: str) -> None:
+def _new_file(path: pathlib.Path, text: str, *, mode: int = 0o600) -> None:
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".",
                                      suffix=".tmp")
     try:
         if hasattr(os, "fchmod"):
-            os.fchmod(fd, 0o600)
+            os.fchmod(fd, mode)
         with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
             handle.write(text)
         os.replace(temporary, path)
@@ -284,12 +291,19 @@ def install(*, dry_run: bool = False, python: str | None = None,
         changed, file = register(config_path, path=path)
     except (OSError, ValueError) as exc:
         # Roll back so a failed install never leaves a plugin the host cannot
-        # discover: the next run would call it present and report success.
-        if existed:
-            path.unlink(missing_ok=True)
-            pathlib.Path(str(backup)).replace(path)
-        else:
-            path.unlink(missing_ok=True)
+        # discover: the next run would call it present and report success. The
+        # backup is moved last, so a failure here keeps the only copy on disk.
+        try:
+            if existed:
+                path.unlink(missing_ok=True)
+                shutil.move(str(backup), str(path))
+            else:
+                path.unlink(missing_ok=True)
+        except OSError as restore:
+            print_error(
+                f"sutra: could not name the plugin in OpenClaw's config: {exc}; "
+                f"the previous plugin was left at {backup} ({restore})")
+            return 1
         print_error(f"sutra: could not name the plugin in OpenClaw's config: {exc}")
         return 1
     if existed:
@@ -533,7 +547,6 @@ if (shape.register !== "function" || shape.contracts?.tools !== true) {
   console.error(JSON.stringify(shape))
   process.exit(2)
 }
-console.log(JSON.stringify(shape))
 """
 
 

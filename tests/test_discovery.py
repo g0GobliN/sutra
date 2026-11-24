@@ -108,8 +108,10 @@ def test_openclaw_config_naming_the_plugin_is_evidence_without_a_binary(isolated
     config = home / ".openclaw" / "openclaw.json"
     config.parent.mkdir(parents=True)
     plugin = home / ".openclaw" / "plugins" / "sutra.js"
+    # json.dumps, not an f-string: a Windows path needs escaped backslashes.
     config.write_text(
-        '{"plugins": {"load": {"paths": ["%s"]}, "allow": ["sutra"]}}\n' % plugin,
+        json.dumps({"plugins": {"load": {"paths": [str(plugin)]},
+                                "allow": ["sutra"]}}) + "\n",
         encoding="utf-8")
 
     row = discovery.detect(["openclaw"])[0]
