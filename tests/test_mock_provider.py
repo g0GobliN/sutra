@@ -6,6 +6,7 @@ import importlib.util
 import json
 import pathlib
 import subprocess
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -102,8 +103,11 @@ def test_the_recorder_keeps_the_size_and_marker_of_each_message(server):
 
 def test_the_printed_command_produces_about_the_requested_size():
     command = MOCK.print_command(36_000)
+    # Run the payload with this interpreter: the command is a host's shell string,
+    # but the size it prints is what the assertion is about, on every platform.
+    body = command.split('-c "', 1)[1].rsplit('"', 1)[0]
     printed = subprocess.run(
-        ["bash", "-c", command], capture_output=True, text=True, check=True
+        [sys.executable, "-c", body], capture_output=True, text=True, check=True
     ).stdout
     assert 35_000 <= len(printed) <= 37_000
 
