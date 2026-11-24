@@ -223,6 +223,22 @@ def test_a_rewrite_must_shrink_the_bytes_the_host_would_bill(sutra):
     assert grows(original=2_280, kept=2_200) is False  # 80 bytes saved, kept
 
 
+def test_a_lossy_rewrite_that_grows_the_bytes_is_refused(
+        sutra, tmp_path, monkeypatch):
+    """The gate is end to end: a marker that inflates the text is rejected."""
+    monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path))
+    body = "".join(f"line {index:04d} payload\n" for index in range(120))
+    grown = body + "x" * 500 + ' [sutra: partial · 999 bytes elided · id="su_x"]\n'
+    stats = {"changed": True, "original_bytes": len(body.encode("utf-8")),
+             "omitted_bytes": 999, "partial": True}
+    monkeypatch.setattr(sutra.core.engine, "compress",
+                        lambda text, **kwargs: (grown, dict(stats)))
+    outcome = sutra.core.process_text(body, tool_name="bash", session_id="probe")
+    assert outcome.changed is False
+    assert outcome.output == body
+    assert outcome.compressed_bytes == outcome.original_bytes
+
+
 def test_a_rewrite_that_beats_its_marker_is_kept(sutra, tmp_path, monkeypatch):
     monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path))
     monkeypatch.setenv("SUTRA_MAX_BYTES", "1200")

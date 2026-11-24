@@ -214,9 +214,11 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                 # rewritten text, marker included), so the rewrite is only too
                 # expensive when it does not shrink the bytes at all. Comparing
                 # against the marker itself refused rewrites that still saved.
+                original = int(
+                    kept_stats.get("original_bytes")
+                    or len(text.encode("utf-8")))
                 priced_too_high = _rewrite_grows_bytes(
-                    int(kept_stats.get("original_bytes") or 0),
-                    len(kept_out.encode("utf-8")))
+                    original, len(kept_out.encode("utf-8")))
                 if (kept_stats.get("changed") and "[sutra:" in kept_out
                         and not priced_too_high):
                     out, stats = kept_out, dict(kept_stats)
