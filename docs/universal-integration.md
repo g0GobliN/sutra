@@ -135,7 +135,10 @@ OPENCODE_CONFIG=/tmp/oc-mock/config.json XDG_DATA_HOME=/tmp/oc-mock/data \
   opencode run "Run the shell command and report the output." -m mock/mock-1
 ```
 
-Point the host's provider `baseURL` at `http://127.0.0.1:8899/v1`. OpenCode
+Point the host's provider `baseURL` at `http://127.0.0.1:8899/v1`. The default
+log is `<home>/.sutra/mock-provider/requests.jsonl`, created owner-only; the
+server is unauthenticated and loopback-only, so run it on a machine you trust
+and stop it when the loop is over. OpenCode
 needs its own `XDG_DATA_HOME` because a database written by an older release
 answers `Database is not empty and has no session table`; the host also streams
 unconditionally, so a provider that answers plain JSON makes it retry until it

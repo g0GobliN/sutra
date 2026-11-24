@@ -7,25 +7,30 @@ sends are real. Nothing here claims a model-quality measurement.
 
 Run it beside a host:
 
-    python3 scripts/ab/mock_provider.py --port 8899 --log /tmp/mock.jsonl
+python3 scripts/ab/mock_provider.py --port 8899 --log /tmp/mock.jsonl
     opencode run "run the command" -m mock/mock-1      # provider baseURL -> http://127.0.0.1:8899/v1
 
-Every request is summarised into the log (one JSON object per line): call
-number, whether the client streamed, and per message its role, byte size,
-whether it carries a `[sutra:` marker, and how many tool calls it holds. That
-record is what proves the adapter rewrote the result the host sent back.
+The server is unauthenticated and binds to loopback only: run it on a machine
+you trust, and stop it when the host loop is over. Every request is summarised
+into the log (one JSON object per line): call number, whether the client
+streamed, and per message its role, byte size, whether it carries a `[sutra:`
+marker, and how many tool calls it holds. That record is what proves the adapter
+rewrote the result the host sent back. The default log lives under
+``~/.sutra/mock-provider/`` and is created owner-only.
 """
 
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
+import os
 import pathlib
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 DEFAULT_BYTES = 36_000
-DEFAULT_LOG = "/tmp/sutra-mock-provider.jsonl"
+DEFAULT_LOG = str(pathlib.Path("~").expanduser() / ".sutra" / "mock-provider" / "requests.jsonl")
 
 
 def _summary(payload: dict) -> list[dict]:
@@ -50,12 +55,76 @@ def _summary(payload: dict) -> list[dict]:
     return rows
 
 
+def _chunk(delta: dict, finish: str | None = None) -> dict:
+    return {
+        "id": "chatcmpl-mock",
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": "mock-1",
+        "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
+    }
+
+
+def _answer(content: str = "done") -> dict:
+    return {
+        "id": "chatcmpl-mock-final",
+        "object": "chat.completion",
+        "model": "mock-1",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "stop",
+                "message": {"role": "assistant", "content": content},
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+def _tool_call(tool: str, arguments: str) -> dict:
+    return {
+        "id": "chatcmpl-mock-call",
+        "object": "chat.completion",
+        "model": "mock-1",
+        "choices": [
+            {
+                "index": 0,
+                "finish_reason": "tool_calls",
+                "message": {
+                    "role": "assistant",
+                    "content": None,
+                    "tool_calls": [
+                        {
+                            "id": "call_mock_1",
+                            "type": "function",
+                            "function": {"name": tool, "arguments": arguments},
+                        }
+                    ],
+                },
+            }
+        ],
+        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
+    }
+
+
+def _append_private(path: str, payload: dict) -> None:
+    """Append one record, creating the file owner-only on first use."""
+
+    target = pathlib.Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    flag = os.O_WRONLY | os.O_CREAT | os.O_APPEND
+    descriptor = os.open(target, flag, 0o600)
+    with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(payload) + "\n")
+
+
 def handler_for(*, log_path: str | None, command: str, tool: str):
     """Build a request handler closing over the recorder settings."""
 
+    calls = itertools.count(1)
+
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
-        calls = 0
 
         def log_message(self, *args):  # keep the console quiet under a host
             pass
@@ -94,128 +163,71 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
                 return
             self._json(404, {"error": {"message": "not found"}})
 
-        def do_POST(self) -> None:  # noqa: N802 - http.server names
-            length = int(self.headers.get("content-length") or 0)
-            payload = json.loads(self.rfile.read(length) or b"{}")
-            type(self).calls += 1
-            if log_path:
-                with open(log_path, "a", encoding="utf-8") as handle:
-                    handle.write(
-                        json.dumps(
-                            {
-                                "call": type(self).calls,
-                                "stream": bool(payload.get("stream")),
-                                "messages": _summary(payload),
-                                "tools": [
-                                    (tool_spec.get("function") or {}).get("name")
-                                    for tool_spec in payload.get("tools", [])
-                                ],
-                            }
-                        )
-                        + "\n"
-                    )
-            saw_result = any(m.get("role") == "tool" for m in payload.get("messages", []))
-            arguments = json.dumps({"command": command, "description": "print a large result"})
-            if not saw_result:
-                if payload.get("stream"):
-                    def chunk(delta: dict, finish: str | None = None) -> dict:
-                        return {
-                            "id": "chatcmpl-mock",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": "mock-1",
-                            "choices": [{"index": 0, "delta": delta, "finish_reason": finish}],
-                        }
+        def _body(self) -> dict | None:
+            """Read the request payload, answering 400 when it is not JSON."""
 
-                    self._sse(
-                        [
-                            chunk({"role": "assistant", "content": ""}),
-                            chunk(
-                                {
-                                    "tool_calls": [
-                                        {
-                                            "index": 0,
-                                            "id": "call_mock_1",
-                                            "type": "function",
-                                            "function": {"name": tool, "arguments": ""},
-                                        }
-                                    ]
-                                }
-                            ),
-                            chunk({"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]}),
-                            chunk({}, "tool_calls"),
-                        ]
-                    )
-                    return
-                self._json(
-                    200,
+            try:
+                length = int(self.headers.get("content-length") or 0)
+            except ValueError:
+                length = 0
+            raw = self.rfile.read(length) if length > 0 else b""
+            try:
+                payload = json.loads(raw or b"{}")
+            except ValueError:
+                self._json(400, {"error": {"message": "invalid JSON body"}})
+                return None
+            return payload if isinstance(payload, dict) else {}
+
+        def do_POST(self) -> None:  # noqa: N802 - http.server names
+            payload = self._body()
+            if payload is None:
+                return
+            call = next(calls)
+            if log_path:
+                _append_private(
+                    log_path,
                     {
-                        "id": "chatcmpl-mock-1",
-                        "object": "chat.completion",
-                        "model": "mock-1",
-                        "choices": [
-                            {
-                                "index": 0,
-                                "finish_reason": "tool_calls",
-                                "message": {
-                                    "role": "assistant",
-                                    "content": None,
-                                    "tool_calls": [
-                                        {
-                                            "id": "call_mock_1",
-                                            "type": "function",
-                                            "function": {"name": tool, "arguments": arguments},
-                                        }
-                                    ],
-                                },
-                            }
+                        "call": call,
+                        "stream": bool(payload.get("stream")),
+                        "messages": _summary(payload),
+                        "tools": [
+                            (tool_spec.get("function") or {}).get("name")
+                            for tool_spec in payload.get("tools", [])
                         ],
-                        "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
                     },
                 )
+            saw_result = any(m.get("role") == "tool" for m in payload.get("messages", []))
+            stream = bool(payload.get("stream"))
+            if saw_result:
+                if stream:
+                    self._sse([_chunk({"role": "assistant", "content": "done"}),
+                               _chunk({}, "stop")])
+                    return
+                self._json(200, _answer())
                 return
-            if payload.get("stream"):
+            arguments = json.dumps({"command": command, "description": "print a large result"})
+            if stream:
                 self._sse(
                     [
-                        {
-                            "id": "chatcmpl-mock",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": "mock-1",
-                            "choices": [
-                                {
-                                    "index": 0,
-                                    "delta": {"role": "assistant", "content": "done"},
-                                    "finish_reason": None,
-                                }
-                            ],
-                        },
-                        {
-                            "id": "chatcmpl-mock",
-                            "object": "chat.completion.chunk",
-                            "created": int(time.time()),
-                            "model": "mock-1",
-                            "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                        },
+                        _chunk({"role": "assistant", "content": ""}),
+                        _chunk(
+                            {
+                                "tool_calls": [
+                                    {
+                                        "index": 0,
+                                        "id": "call_mock_1",
+                                        "type": "function",
+                                        "function": {"name": tool, "arguments": ""},
+                                    }
+                                ]
+                            }
+                        ),
+                        _chunk({"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]}),
+                        _chunk({}, "tool_calls"),
                     ]
                 )
                 return
-            self._json(
-                200,
-                {
-                    "id": "chatcmpl-mock-2",
-                    "object": "chat.completion",
-                    "model": "mock-1",
-                    "choices": [
-                        {
-                            "index": 0,
-                            "finish_reason": "stop",
-                            "message": {"role": "assistant", "content": "done"},
-                        }
-                    ],
-                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                },
-            )
+            self._json(200, _tool_call(tool, arguments))
 
     return Handler
 
@@ -241,9 +253,7 @@ def serve(
     call it directly. ``server.server_address[1]`` is the bound port.
     """
 
-    handler = handler_for(
-        log_path=log_path, command=command or print_command(), tool=tool
-    )
+    handler = handler_for(log_path=log_path, command=command or print_command(), tool=tool)
     return ThreadingHTTPServer(("127.0.0.1", port), handler)
 
 
@@ -254,16 +264,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--bytes", type=int, default=DEFAULT_BYTES, help="tool output size")
     parser.add_argument("--tool", default="bash", help="tool name to call")
     args = parser.parse_args(argv)
-    pathlib.Path(args.log).parent.mkdir(parents=True, exist_ok=True)
-    server = serve(
-        args.port, log_path=args.log, command=print_command(args.bytes), tool=args.tool
-    )
+    server = serve(args.port, log_path=args.log, command=print_command(args.bytes), tool=args.tool)
     host, port = server.server_address[:2]
     print(f"mock provider listening on http://{host}:{port}/v1 (log: {args.log})", flush=True)
+    print("local, unauthenticated provider: stop it when the host loop is over.", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        pass
+        print("mock provider stopped", flush=True)
     finally:
         server.server_close()
     return 0

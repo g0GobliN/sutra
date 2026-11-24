@@ -5,7 +5,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import pathlib
+import subprocess
 import threading
+import urllib.error
+import urllib.request
 
 import pytest
 
@@ -37,8 +40,6 @@ def server(tmp_path):
 
 
 def post(server, body: dict) -> str:
-    import urllib.request
-
     host, port = server.server_address[:2]
     request = urllib.request.Request(
         f"http://{host}:{port}/v1/chat/completions",
@@ -99,7 +100,25 @@ def test_the_recorder_keeps_the_size_and_marker_of_each_message(server):
     assert tool_row["bytes"] == len(content.encode())
 
 
-def test_the_printed_command_is_about_the_requested_size():
+def test_the_printed_command_produces_about_the_requested_size():
     command = MOCK.print_command(36_000)
-    assert "line of output " in command
-    assert "2400" in command
+    printed = subprocess.run(
+        ["bash", "-c", command], capture_output=True, text=True, check=True
+    ).stdout
+    assert 35_000 <= len(printed) <= 37_000
+
+
+def test_a_malformed_body_is_answered_with_400_not_a_dropped_connection(server):
+    httpd, log = server
+    host, port = httpd.server_address[:2]
+    request = urllib.request.Request(
+        f"http://{host}:{port}/v1/chat/completions",
+        data=b"{not json",
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as raised:
+        urllib.request.urlopen(request, timeout=10)
+    assert raised.value.code == 400
+    assert json.loads(raised.value.read())["error"]["message"] == "invalid JSON body"
+    assert not log.exists()
