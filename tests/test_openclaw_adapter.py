@@ -345,3 +345,32 @@ console.log("openclaw slow hook ok")
                             timeout=30, cwd=str(tmp_path), env=env)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "openclaw slow hook ok" in result.stdout
+
+def test_a_failed_registration_rolls_the_plugin_back(tmp_path, monkeypatch):
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text('{"plugins": {"load": {"paths": "not-a-list"}}}\n', encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+
+    code = openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir)
+    assert code == 1
+    # Nothing is left behind: a later install must not call this file present.
+    assert not openclaw.plugin_path(config_dir).exists()
+    assert "not-a-list" in config.read_text(encoding="utf-8")
+
+
+def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, monkeypatch):
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text("{}\n", encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir) == 0
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.unlink()
+
+    assert openclaw.uninstall(config_path=config_dir) == 0
+    assert not openclaw.named_in_config(config_dir)

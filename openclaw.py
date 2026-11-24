@@ -84,6 +84,11 @@ def openclaw_config_dir(config_path=None) -> pathlib.Path:
     override = os.environ.get("SUTRA_OPENCLAW_CONFIG")
     if override:
         return pathlib.Path(override).expanduser()
+    # An explicit config file names the tree it belongs to; writing the plugin
+    # somewhere else would register a path the host reads but SUTRA never wrote.
+    named = os.environ.get("OPENCLAW_CONFIG_PATH")
+    if named:
+        return pathlib.Path(named).expanduser().parent
     return pathlib.Path.home() / ".openclaw"
 
 
@@ -101,6 +106,27 @@ def config_file(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     if override:
         return pathlib.Path(override).expanduser()
     return openclaw_config_dir(config_path) / "openclaw.json"
+
+
+def named_in_config(config_path: str | pathlib.Path | None = None) -> bool:
+    """True when the host config names the plugin in ``plugins.load.paths``.
+
+    Detection asks this instead of "does a config file exist": an uninstall
+    leaves ``openclaw.json`` behind, and a config that no longer names SUTRA is
+    not evidence that the host will load it.
+    """
+    try:
+        value = _load_config(config_file(config_path))
+    except (OSError, ValueError):
+        return False
+    try:
+        paths = value["plugins"]["load"]["paths"]
+    except (KeyError, TypeError):
+        return False
+    if not isinstance(paths, list):
+        return False
+    target = str(plugin_path(config_path))
+    return any(isinstance(item, str) and item == target for item in paths)
 
 
 def _load_config(path: pathlib.Path) -> dict:
@@ -249,18 +275,28 @@ def install(*, dry_run: bool = False, python: str | None = None,
     if dry_run:
         print_info(f"sutra: dry run, would write the OpenClaw plugin to {path} (no file was written)")
         return 0
-    if path.exists():
+    existed = path.exists()
+    if existed:
         backup = installer._write(path, text)  # timestamped backup beside the file
-        print_success(f"sutra: updated the OpenClaw plugin at {path}")
-        print_info(f"sutra: backup at {backup}")
     else:
         _new_file(path, text)
-        print_success(f"sutra: installed the OpenClaw plugin at {path}")
     try:
         changed, file = register(config_path, path=path)
     except (OSError, ValueError) as exc:
-        print_error(f"sutra: wrote {path} but could not register it in OpenClaw's config: {exc}")
+        # Roll back so a failed install never leaves a plugin the host cannot
+        # discover: the next run would call it present and report success.
+        if existed:
+            path.unlink(missing_ok=True)
+            pathlib.Path(str(backup)).replace(path)
+        else:
+            path.unlink(missing_ok=True)
+        print_error(f"sutra: could not name the plugin in OpenClaw's config: {exc}")
         return 1
+    if existed:
+        print_success(f"sutra: updated the OpenClaw plugin at {path}")
+        print_info(f"sutra: backup at {backup}")
+    else:
+        print_success(f"sutra: installed the OpenClaw plugin at {path}")
     if changed:
         print_success(f"sutra: named the plugin in {file} so OpenClaw discovers and loads it")
     else:
@@ -274,6 +310,13 @@ def uninstall(*, dry_run: bool = False,
     """Remove the generated plugin; refuse to touch a foreign file."""
     path = plugin_path(config_path)
     if not path.exists():
+        # The entries outlive the file: clean them, or the host keeps a path
+        # that nothing writes.
+        try:
+            if unregister(config_path, path=path):
+                print_info(f"sutra: took the plugin out of {config_file(config_path)}")
+        except OSError as exc:
+            print_warning(f"sutra: could not clean OpenClaw's config: {exc}")
         print_info(f"sutra: {path} does not exist; nothing to uninstall")
         return 0
     text = path.read_text(encoding="utf-8")
@@ -483,14 +526,45 @@ console.log("openclaw doctor hook ok")
     return _check("plugin_hook", "pass", "hook replaced and restored through OpenClaw contract")
 
 
-def _config_check(plugin: pathlib.Path) -> dict:
+_ENTRY_PROBE = """
+const entry = require(process.argv[1])
+const shape = { register: typeof entry?.register, contracts: entry?.contracts }
+if (shape.register !== "function" || shape.contracts?.tools !== true) {
+  console.error(JSON.stringify(shape))
+  process.exit(2)
+}
+console.log(JSON.stringify(shape))
+"""
+
+
+def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
+    """Does the rendered file load as the host requires it, with a live entry?
+
+    OpenClaw ``require()``s a config-tree plugin, so an ES module loads but
+    registers nothing - the failure mode that reads exactly like a host hook
+    that never fires. A load test distinguishes the two.
+    """
+    if not node:
+        return _check("entry", "skip", "node is not available to load the plugin")
+    try:
+        result = subprocess.run([node, "-e", _ENTRY_PROBE, str(plugin)],
+                                capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return _check("entry", "fail", f"the plugin could not be loaded: {exc}")
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "no output").strip()[-200:]
+        return _check("entry", "fail", f"the plugin loads but registers nothing: {detail}")
+    return _check("entry", "pass", "loads under require() with register() and contracts.tools")
+
+
+def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None = None) -> dict:
     """Is the plugin file actually named in the config OpenClaw reads?
 
     A file in ``<config>/plugins`` is inert until ``plugins.load.paths`` names it
     and ``plugins.allow`` carries its id; this check is what separates "written"
     from "the host will load it".
     """
-    file = config_file()
+    file = config_file(config_path)
     try:
         value = _load_config(file)
     except (OSError, ValueError) as exc:
@@ -513,14 +587,15 @@ def _config_check(plugin: pathlib.Path) -> dict:
     return _check("config", "fail", f"{file} is missing {', '.join(missing)}")
 
 
-def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -> dict:
+def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None,
+        config_path: str | pathlib.Path | None = None) -> dict:
     """Prove the installed OpenClaw plugin and its Python path end to end.
 
     The installed file is only read. The protocol probe renders the same
     generated contract into a temporary directory with a temporary store, so
     a doctor run never writes the user's recovery entries.
     """
-    plugin = pathlib.Path(path) if path is not None else plugin_path()
+    plugin = pathlib.Path(path) if path is not None else plugin_path(config_path)
     checks: list[dict] = []
     report: dict = {"client": "openclaw", "plugin": str(plugin),
                     "checks": checks, "ok": False, "status": "fail"}
@@ -549,7 +624,8 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None) -
         report["probe"] = "foreign plugin; refusing to execute it"
         return report
     checks.append(_check("plugin", "pass", f"generated plugin at {plugin}"))
-    checks.append(_config_check(plugin))
+    checks.append(_config_check(plugin, config_path))
+    checks.append(_entry_check(plugin, node))
     host = shutil.which("openclaw")
     checks.append(_check("host", "pass" if host else "skip",
                          host or "the openclaw executable is not on PATH"))

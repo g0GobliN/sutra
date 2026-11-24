@@ -159,3 +159,30 @@ def test_cli_doctor_returns_nonzero_for_a_real_failure(tmp_path, monkeypatch, ca
     reports = json.loads(capsys.readouterr().out)
     assert reports[0]["status"] == "fail"
     assert reports[0]["ok"] is False
+
+def test_an_entry_that_loads_without_registering_is_reported(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    esm = tmp_path / "sutra.js"
+    esm.write_text("export default { id: 'sutra' }\n", encoding="utf-8")
+
+    check = openclaw._entry_check(esm, node)
+    assert check["status"] == "fail", check
+    assert "registers nothing" in check["detail"]
+
+
+def test_a_generated_plugin_loads_under_require(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    plugin = tmp_path / "sutra.js"
+    plugin.write_text(openclaw.render(python="/usr/bin/python3", home=tmp_path / "home"),
+                      encoding="utf-8")
+
+    check = openclaw._entry_check(plugin, node)
+    assert check["status"] == "pass", check
