@@ -396,6 +396,8 @@ def test_a_failed_registration_restores_the_previous_plugin_and_keeps_its_backup
     assert backups, "the rollback must leave the backup it restored from"
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="a read-only directory is how this failure is injected; Windows ignores the mode")
 def test_uninstall_keeps_the_file_when_the_config_cannot_be_cleaned(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
