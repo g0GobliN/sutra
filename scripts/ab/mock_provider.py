@@ -176,6 +176,7 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
+        timeout = 30  # a stalled client may hold its worker, not the server
 
         def log_message(self, *args):  # keep the console quiet under a host
             pass
@@ -276,7 +277,9 @@ def serve(
     """
 
     handler = handler_for(log_path=log_path, command=command or print_command(), tool=tool)
-    return ThreadingHTTPServer(("127.0.0.1", port), handler)
+    server = ThreadingHTTPServer(("127.0.0.1", port), handler)
+    server.daemon_threads = True
+    return server
 
 
 def main(argv: list[str] | None = None) -> int:

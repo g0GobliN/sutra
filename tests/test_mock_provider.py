@@ -112,6 +112,7 @@ def test_the_printed_command_produces_about_the_requested_size():
     assert 35_000 <= len(printed) <= 37_000
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX file mode")
 def test_the_log_is_owner_only(server):
     httpd, log = server
     post(httpd, {"model": "mock-1", "messages": [{"role": "user", "content": "go"}]})
