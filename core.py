@@ -214,6 +214,8 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                 # rewritten text, marker included), so the rewrite is only too
                 # expensive when it does not shrink the bytes at all. Comparing
                 # against the marker itself refused rewrites that still saved.
+                # Fall back to the real input length, not 0: a missing
+                # original_bytes must not turn the growth test into a refusal.
                 original = int(
                     kept_stats.get("original_bytes")
                     or len(text.encode("utf-8")))

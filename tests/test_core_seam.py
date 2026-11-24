@@ -233,7 +233,16 @@ def test_a_lossy_rewrite_that_grows_the_bytes_is_refused(
              "omitted_bytes": 999, "partial": True}
     monkeypatch.setattr(sutra.core.engine, "compress",
                         lambda text, **kwargs: (grown, dict(stats)))
+    seen = []
+    real = sutra.core._rewrite_grows_bytes
+
+    def spy(original, kept):
+        seen.append((original, kept))
+        return real(original, kept)
+
+    monkeypatch.setattr(sutra.core, "_rewrite_grows_bytes", spy)
     outcome = sutra.core.process_text(body, tool_name="bash", session_id="probe")
+    assert seen == [(len(body.encode("utf-8")), len(grown.encode("utf-8")))]
     assert outcome.changed is False
     assert outcome.output == body
     assert outcome.compressed_bytes == outcome.original_bytes
