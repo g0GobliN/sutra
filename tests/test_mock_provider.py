@@ -112,6 +112,12 @@ def test_the_printed_command_produces_about_the_requested_size():
     assert 35_000 <= len(printed) <= 37_000
 
 
+def test_the_log_is_owner_only(server):
+    httpd, log = server
+    post(httpd, {"model": "mock-1", "messages": [{"role": "user", "content": "go"}]})
+    assert log.stat().st_mode & 0o777 == 0o600
+
+
 def test_a_request_for_another_host_name_is_refused(server):
     httpd, log = server
     host, port = httpd.server_address[:2]
