@@ -118,6 +118,49 @@ def _append_private(path: str, payload: dict) -> None:
         handle.write(json.dumps(payload) + "\n")
 
 
+def _reply(handler, *, payload: dict, command: str, tool: str) -> None:
+    """Answer one request: ask for the tool call, or answer once its result is in."""
+
+    saw_result = any(m.get("role") == "tool" for m in payload.get("messages", []))
+    stream = bool(payload.get("stream"))
+    if saw_result:
+        if stream:
+            handler.sse([_chunk({"role": "assistant", "content": "done"}), _chunk({}, "stop")])
+            return
+        handler.json(200, _answer())
+        return
+    arguments = json.dumps({"command": command, "description": "print a large result"})
+    if stream:
+        handler.sse(
+            [
+                _chunk({"role": "assistant", "content": ""}),
+                _chunk(
+                    {
+                        "tool_calls": [
+                            {
+                                "index": 0,
+                                "id": "call_mock_1",
+                                "type": "function",
+                                "function": {"name": tool, "arguments": ""},
+                            }
+                        ]
+                    }
+                ),
+                _chunk({"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]}),
+                _chunk({}, "tool_calls"),
+            ]
+        )
+        return
+    handler.json(200, _tool_call(tool, arguments))
+
+
+def _loopback_host(value: str) -> bool:
+    """Whether a Host header names this loopback server."""
+
+    name = value.rsplit(":", 1)[0].strip("[]").lower()
+    return name in {"127.0.0.1", "localhost", "::1"}
+
+
 def handler_for(*, log_path: str | None, command: str, tool: str):
     """Build a request handler closing over the recorder settings."""
 
@@ -129,7 +172,7 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
         def log_message(self, *args):  # keep the console quiet under a host
             pass
 
-        def _json(self, code: int, body: dict) -> None:
+        def json(self, code: int, body: dict) -> None:
             data = json.dumps(body).encode()
             self.send_response(code)
             self.send_header("content-type", "application/json")
@@ -137,23 +180,20 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
             self.end_headers()
             self.wfile.write(data)
 
-        def _events(self, chunk: dict) -> None:
-            self.wfile.write(b"data: " + json.dumps(chunk).encode() + b"\n\n")
-
-        def _sse(self, events: list[dict]) -> None:
+        def sse(self, events: list[dict]) -> None:
             self.send_response(200)
             self.send_header("content-type", "text/event-stream")
             self.send_header("cache-control", "no-cache")
             self.send_header("connection", "close")
             self.end_headers()
             for event in events:
-                self._events(event)
+                self.wfile.write(b"data: " + json.dumps(event).encode() + b"\n\n")
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
 
         def do_GET(self) -> None:  # noqa: N802 - http.server names
             if self.path.endswith("/models"):
-                self._json(
+                self.json(
                     200,
                     {
                         "object": "list",
@@ -161,7 +201,7 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
                     },
                 )
                 return
-            self._json(404, {"error": {"message": "not found"}})
+            self.json(404, {"error": {"message": "not found"}})
 
         def _body(self) -> dict | None:
             """Read the request payload, answering 400 when it is not JSON."""
@@ -174,20 +214,22 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
             try:
                 payload = json.loads(raw or b"{}")
             except ValueError:
-                self._json(400, {"error": {"message": "invalid JSON body"}})
+                self.json(400, {"error": {"message": "invalid JSON body"}})
                 return None
             return payload if isinstance(payload, dict) else {}
 
         def do_POST(self) -> None:  # noqa: N802 - http.server names
+            if not _loopback_host(self.headers.get("host", "")):
+                self.json(403, {"error": {"message": "loopback only"}})
+                return
             payload = self._body()
             if payload is None:
                 return
-            call = next(calls)
             if log_path:
                 _append_private(
                     log_path,
                     {
-                        "call": call,
+                        "call": next(calls),
                         "stream": bool(payload.get("stream")),
                         "messages": _summary(payload),
                         "tools": [
@@ -196,38 +238,7 @@ def handler_for(*, log_path: str | None, command: str, tool: str):
                         ],
                     },
                 )
-            saw_result = any(m.get("role") == "tool" for m in payload.get("messages", []))
-            stream = bool(payload.get("stream"))
-            if saw_result:
-                if stream:
-                    self._sse([_chunk({"role": "assistant", "content": "done"}),
-                               _chunk({}, "stop")])
-                    return
-                self._json(200, _answer())
-                return
-            arguments = json.dumps({"command": command, "description": "print a large result"})
-            if stream:
-                self._sse(
-                    [
-                        _chunk({"role": "assistant", "content": ""}),
-                        _chunk(
-                            {
-                                "tool_calls": [
-                                    {
-                                        "index": 0,
-                                        "id": "call_mock_1",
-                                        "type": "function",
-                                        "function": {"name": tool, "arguments": ""},
-                                    }
-                                ]
-                            }
-                        ),
-                        _chunk({"tool_calls": [{"index": 0, "function": {"arguments": arguments}}]}),
-                        _chunk({}, "tool_calls"),
-                    ]
-                )
-                return
-            self._json(200, _tool_call(tool, arguments))
+            _reply(self, payload=payload, command=command, tool=tool)
 
     return Handler
 

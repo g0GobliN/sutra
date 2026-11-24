@@ -112,6 +112,21 @@ def test_the_printed_command_produces_about_the_requested_size():
     assert 35_000 <= len(printed) <= 37_000
 
 
+def test_a_request_for_another_host_name_is_refused(server):
+    httpd, log = server
+    host, port = httpd.server_address[:2]
+    request = urllib.request.Request(
+        f"http://{host}:{port}/v1/chat/completions",
+        data=b"{}",
+        headers={"content-type": "application/json", "host": "example.com"},
+        method="POST",
+    )
+    with pytest.raises(urllib.error.HTTPError) as raised:
+        urllib.request.urlopen(request, timeout=10)
+    assert raised.value.code == 403
+    assert not log.exists()
+
+
 def test_a_malformed_body_is_answered_with_400_not_a_dropped_connection(server):
     httpd, log = server
     host, port = httpd.server_address[:2]
