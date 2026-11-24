@@ -215,17 +215,12 @@ def test_budget_contract_reports_exceeded_bytes_and_tokens(sutra):
     assert tokens_over.tokens_exceeded is True
 
 
-def test_a_rewrite_whose_marker_costs_more_than_it_saves_is_refused(
-        sutra, tmp_path, monkeypatch):
-    """A marker that eats the saving leaves a bigger request with an id on it."""
-    monkeypatch.setenv("SUTRA_STORE_DIR", str(tmp_path))
-    monkeypatch.setenv("SUTRA_MAX_BYTES", "2200")
-    body = "".join(f"line {index:04d} payload\n" for index in range(120))
-    text = body  # 2,280 bytes: a 2,200-byte budget removes only 80 of them
-    outcome = sutra.core.process_text(text, tool_name="bash", session_id="probe")
-    assert outcome.changed is False
-    assert outcome.output == text
-    assert outcome.compressed_bytes == outcome.original_bytes
+def test_a_rewrite_must_shrink_the_bytes_the_host_would_bill(sutra):
+    """The gate prices the marker already; a small net win is still a win."""
+    grows = sutra.core._rewrite_grows_bytes
+    assert grows(original=2_280, kept=2_400) is True   # larger than the input
+    assert grows(original=2_280, kept=2_280) is True   # no change at all
+    assert grows(original=2_280, kept=2_200) is False  # 80 bytes saved, kept
 
 
 def test_a_rewrite_that_beats_its_marker_is_kept(sutra, tmp_path, monkeypatch):

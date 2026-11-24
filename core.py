@@ -128,6 +128,16 @@ def _marker_bytes(text: str) -> int:
     return 0
 
 
+def _rewrite_grows_bytes(original: int, kept: int) -> bool:
+    """True when a rewrite did not shrink the bytes it was measured on.
+
+    ``kept`` is the rewritten text with its marker already in place, so it is
+    the number the host would bill. A rewrite only has to beat that; it does
+    not have to beat the marker's own size.
+    """
+    return kept >= original
+
+
 def _reverted(stats: dict[str, Any], text: str, rule: str) -> dict[str, Any]:
     """Record a decision to keep the original because recovery is unavailable.
 
@@ -197,12 +207,16 @@ def _compress_and_store(text: str, *, cfg: _config.Config, tool_name: str = "",
                     text, ref=Ref(entry.id, cfg.store_ttl_hours), cfg=cfg)
                 # A rewrite that quotes no id cannot be recovered, so it must
                 # not leave an unreachable entry behind or claim one.
-                marker = _marker_bytes(kept_out)
-                saved = int(kept_stats.get("original_bytes") or 0) - len(
-                    kept_out.encode("utf-8"))
-                # A JSON rewrite carries its marker inside a field, so it has no
-                # marker line of its own; only a line-shaped marker can be priced.
-                priced_too_high = marker > 0 and saved <= marker
+                # The marker is already inside `kept_out`, so pricing the rewrite
+                # against the counted bytes is enough: a rewrite is refused only
+                # when it does not shrink what the host would bill.
+                # `saved` is already net of the marker (it is measured on the
+                # rewritten text, marker included), so the rewrite is only too
+                # expensive when it does not shrink the bytes at all. Comparing
+                # against the marker itself refused rewrites that still saved.
+                priced_too_high = _rewrite_grows_bytes(
+                    int(kept_stats.get("original_bytes") or 0),
+                    len(kept_out.encode("utf-8")))
                 if (kept_stats.get("changed") and "[sutra:" in kept_out
                         and not priced_too_high):
                     out, stats = kept_out, dict(kept_stats)
