@@ -242,7 +242,11 @@ window in which another writer could lose its change is one system call wide;
 when another process edits the file in between, the install reports that and
 leaves the newer text alone. A config that does not exist yet is created
 exclusively: if another process creates it during the install, SUTRA reports
-that and leaves the file alone instead of overwriting it. No host process is needed
+that and leaves the file alone instead of overwriting it, and treats it as done
+when that file already names the plugin. A plugin file this run wrote stays in
+place when the config write fails, because the two writes are separate and a
+re-run will register it: a plugin whose text is already current is only
+reported as "nothing to do" when the config names it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file

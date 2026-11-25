@@ -167,7 +167,10 @@ def test_an_entry_that_loads_without_registering_is_reported(tmp_path):
 
         pytest.skip("node is not installed")
     esm = tmp_path / "sutra.js"
-    esm.write_text("export default { id: 'sutra' }\n", encoding="utf-8")
+    # Marked as generated, so the probe reaches the loader and reports the failure
+    # that matters: an ES module loads under import but registers nothing.
+    esm.write_text(openclaw.MARKER + "\nexport default { id: 'sutra' }\n",
+                   encoding="utf-8")
 
     check = openclaw._entry_check(esm, node)
     assert check["status"] == "fail", check

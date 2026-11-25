@@ -385,8 +385,8 @@ def test_an_explicit_config_directory_wins_over_the_environment(tmp_path, monkey
 
 @pytest.mark.skipif(sys.platform == "win32",
                     reason="POSIX permission bits are what this asserts")
-def test_a_rollback_keeps_the_config_file_mode_and_the_backup(tmp_path, monkeypatch, capsys):
-    """Restoring the text must not quietly re-mode a file the user owns."""
+def test_a_config_that_cannot_be_written_keeps_its_mode_and_the_plugin(tmp_path, monkeypatch, capsys):
+    """The config is the file the user owns: it keeps its mode and its text."""
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
     config = config_dir / "openclaw.json"
@@ -405,12 +405,15 @@ def test_a_rollback_keeps_the_config_file_mode_and_the_backup(tmp_path, monkeypa
 
     assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
                             config_path=config_dir) == 1
-    capsys.readouterr()
+    captured = capsys.readouterr()
     assert stat.S_IMODE(config.stat().st_mode) == 0o644
-    assert plugin.read_text(encoding="utf-8") == original
+    assert config.read_text(encoding="utf-8") == '{"theme": "dark"}\n'
+    assert plugin.read_text(encoding="utf-8") != original, (
+        "the plugin write succeeded, so the file holds this run's build")
     (backup,) = list(plugin.parent.glob("sutra.js.bak-*"))
     assert backup.read_text(encoding="utf-8") == original, (
-        "the backup describes the file that survived, not the build that was discarded")
+        "the backup holds the build this run replaced")
+    assert "run `sutra install` again" in captured.out + captured.err
 
 
 @pytest.mark.skipif(sys.platform == "win32",
@@ -495,7 +498,7 @@ def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, mon
     assert not openclaw.named_in_config(config_dir)
 
 
-def test_a_failed_save_restores_the_previous_plugin_and_keeps_its_backup(tmp_path, monkeypatch):
+def test_a_failed_save_keeps_the_plugin_it_wrote_and_the_backup(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
     (config_dir / "openclaw.json").write_text('{"theme": "dark"}\n', encoding="utf-8")
@@ -515,9 +518,9 @@ def test_a_failed_save_restores_the_previous_plugin_and_keeps_its_backup(tmp_pat
 
     assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
                             config_path=config_dir) == 1
-    assert plugin.read_text(encoding="utf-8") == previous + "\n// older build\n"
-    backups = list(plugin.parent.glob("sutra.js.bak-*"))
-    assert backups, "the rollback must leave the backup it restored from"
+    assert plugin.read_text(encoding="utf-8") != previous + "\n// older build\n"
+    (backup,) = list(plugin.parent.glob("sutra.js.bak-*"))
+    assert backup.read_text(encoding="utf-8") == previous + "\n// older build\n"
 
 
 @pytest.mark.skipif(sys.platform == "win32",
@@ -579,11 +582,12 @@ def test_a_config_another_process_created_is_left_alone(tmp_path, monkeypatch, c
 
     assert openclaw.install(python=sys.executable, home=tmp_path / "home",
                             config_path=config_dir) == 1
-    err = capsys.readouterr().err
+    captured = capsys.readouterr()
     assert config.read_text(encoding="utf-8") == foreign, (
-        "a config this run did not create must survive the rollback")
-    assert not openclaw.plugin_path(config_dir).exists()
-    assert "another process" in err
+        "a config this run did not create must never be touched")
+    assert openclaw.plugin_path(config_dir).exists(), (
+        "the plugin write succeeded; the config failure is a separate problem")
+    assert "another process" in captured.out + captured.err
 
 
 def test_install_stops_when_it_cannot_keep_the_config_it_replaces(paths, monkeypatch, capsys):
@@ -599,7 +603,7 @@ def test_install_stops_when_it_cannot_keep_the_config_it_replaces(paths, monkeyp
                             config_path=config_dir) == 1
 
     assert config.read_text(encoding="utf-8") == before
-    assert not openclaw.plugin_path(config_dir).exists()
+    assert openclaw.plugin_path(config_dir).exists()
     assert "no space left on device" in capsys.readouterr().err
 
 
@@ -663,10 +667,48 @@ def test_a_config_edited_during_the_install_is_left_alone(paths, monkeypatch, ca
     monkeypatch.setattr(openclaw, "_apply_registration", racing)
 
     assert openclaw.install(python=sys.executable) == 1
-    err = capsys.readouterr().err
-    assert "changed while SUTRA was writing it" in err
+    captured = capsys.readouterr()
+    assert "changed while SUTRA was writing it" in captured.err
     assert config.read_text(encoding="utf-8") == '{"theme": "concurrent"}\n'
-    assert not openclaw.plugin_path(config_dir).exists()
+    assert openclaw.plugin_path(config_dir).exists(), (
+        "the plugin was written before the config; discarding it helps nobody")
+    assert "run `sutra install` again" in captured.out + captured.err
+
+
+def test_a_current_plugin_the_config_does_not_name_is_registered(paths, capsys):
+    """A previous run can have written the plugin and failed to register it."""
+    root, config_dir, config = paths
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.parent.mkdir(parents=True, exist_ok=True)
+    plugin.write_text(openclaw.render(python=sys.executable), encoding="utf-8")
+
+    assert openclaw.install(python=sys.executable, home=root / "home",
+                            config_path=config_dir) == 0
+
+    value = json.loads(config.read_text(encoding="utf-8"))
+    assert str(plugin) in value["plugins"]["load"]["paths"]
+    assert "nothing to do" not in capsys.readouterr().out
+
+
+def test_a_config_another_process_created_that_names_the_plugin_is_success(
+        tmp_path, monkeypatch, capsys):
+    """The other install did this run's work; discarding the plugin would undo it."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+
+    def lose_the_race(file, _value):
+        file.write_text(json.dumps(
+            {"plugins": {"load": {"paths": [str(plugin)]}, "allow": ["sutra"]}},
+            indent=2) + "\n", encoding="utf-8")
+        raise FileExistsError(17, "File exists", str(file))
+    monkeypatch.setattr(openclaw, "_create_config", lose_the_race)
+
+    assert openclaw.install(python=sys.executable, home=tmp_path / "home",
+                            config_path=config_dir) == 0
+    assert plugin.exists()
+    assert "names the plugin" in capsys.readouterr().out
 
 
 def test_unregister_leaves_an_id_it_did_not_remove(paths):
