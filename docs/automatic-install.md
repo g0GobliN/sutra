@@ -228,7 +228,10 @@ text the rewrite replaced is kept beside it as `openclaw.json.sutra-bak`, and
 the install prints that path, because a whole-file rewrite is the only way to
 add one entry and the file belongs to the host. An
 install refuses to start when that file exists but cannot be read or cannot take
-the entry, rather than writing and rolling back. No host process is needed
+the entry, rather than writing and rolling back, and it stops before the rewrite
+when that copy cannot be made. A config that does not exist yet is created
+exclusively: if another process creates it during the install, SUTRA reports
+that and leaves the file alone instead of overwriting it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file

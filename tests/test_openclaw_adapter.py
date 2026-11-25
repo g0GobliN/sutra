@@ -564,26 +564,58 @@ def test_the_host_named_file_wins_over_a_named_directory(tmp_path, monkeypatch):
         "the entry belongs in the file the host reads, not in one derived beside it")
 
 
-def test_a_failed_save_leaves_a_config_someone_else_created(tmp_path, monkeypatch, capsys):
-    """The rollback may remove only a file holding this run's own text."""
+def test_a_config_another_process_created_is_left_alone(tmp_path, monkeypatch, capsys):
+    """O_EXCL, not text comparison: a file this run did not create is untouchable."""
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
     config = config_dir / "openclaw.json"
     foreign = '{"theme": "light"}\n'
 
-    def create_then_fail(file, _value):
+    def lose_the_race(file, _value):
         file.write_text(foreign, encoding="utf-8")
-        raise OSError("the config became read-only")
-    monkeypatch.setattr(openclaw, "_save_config", create_then_fail)
+        raise FileExistsError(17, "File exists", str(file))
+    monkeypatch.setattr(openclaw, "_create_config", lose_the_race)
 
-    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+    assert openclaw.install(python=sys.executable, home=tmp_path / "home",
                             config_path=config_dir) == 1
-    out = capsys.readouterr().out
+    err = capsys.readouterr().err
     assert config.read_text(encoding="utf-8") == foreign, (
-        "a config this run did not write must survive the rollback")
+        "a config this run did not create must survive the rollback")
     assert not openclaw.plugin_path(config_dir).exists()
-    assert "not created by this run" in out
+    assert "another process" in err
+
+
+def test_install_stops_when_it_cannot_keep_the_config_it_replaces(paths, monkeypatch, capsys):
+    """A rewrite loses formatting, so no copy means no rewrite."""
+    root, config_dir, config = paths
+    before = config.read_text(encoding="utf-8")
+
+    def cannot_copy(_path):
+        raise OSError("no space left on device")
+    monkeypatch.setattr(openclaw, "_backup_config", cannot_copy)
+
+    assert openclaw.install(python=sys.executable, home=root / "home",
+                            config_path=config_dir) == 1
+
+    assert config.read_text(encoding="utf-8") == before
+    assert not openclaw.plugin_path(config_dir).exists()
+    assert "no space left on device" in capsys.readouterr().err
+
+
+def test_unregister_leaves_an_entry_it_cannot_trace_to_its_own_file(paths, capsys):
+    """Another tree's install owns that entry; removing it disables that one."""
+    _, config_dir, config = paths
+    other = "/elsewhere/plugins/sutra.js"
+    config.write_text(json.dumps(
+        {"plugins": {"load": {"paths": [other]}, "allow": ["sutra"]}},
+        indent=2) + "\n", encoding="utf-8")
+
+    assert openclaw.unregister(config_path=config_dir,
+                               path=openclaw.plugin_path(config_dir)) is False
+
+    assert json.loads(config.read_text(encoding="utf-8")) == {
+        "plugins": {"load": {"paths": [other]}, "allow": ["sutra"]}}
 
 
 def test_uninstall_keeps_the_plugin_when_the_config_cannot_be_parsed(tmp_path, monkeypatch, capsys):
@@ -614,11 +646,17 @@ def test_the_config_check_requires_the_file_doctor_was_given(tmp_path, monkeypat
 
     given = tmp_path / "somewhere" / "sutra.js"
     assert openclaw._config_check(given, config_dir)["status"] == "pass"
-    assert openclaw._config_check(given, config_dir, canonical=False)["status"] == "fail"
+    assert openclaw._config_check(given, config_dir, exact=True)["status"] == "fail"
 
 
-def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
-    """The wrapper is reachable by name without becoming part of the plugin entry."""
+def test_the_entry_declares_the_host_contract_and_hides_the_wrapper(paths):
+    """The entry is the plain contract OpenClaw reads, not an SDK wrapper.
+
+    ``openclaw/plugin-sdk`` cannot be imported from a CommonJS file the loader
+    calls ``require()`` on, so the generated entry carries ``id``,
+    ``register(ctx)`` and ``contracts.tools`` itself, and the test wrapper is a
+    non-enumerable property that never becomes part of that contract.
+    """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node is not installed")
@@ -629,7 +667,9 @@ def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
     script = (
         "const plugin = require(process.env.SUTRA_PLUGIN);"
         "process.stdout.write(JSON.stringify({keys: Object.keys(plugin),"
-        " wrapper: typeof plugin.Sutra}))"
+        " wrapper: typeof plugin.Sutra, id: plugin.id,"
+        " register: typeof plugin.register,"
+        " tools: plugin.contracts && plugin.contracts.tools}))"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True,
                             timeout=30,
@@ -638,6 +678,9 @@ def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
     seen = json.loads(result.stdout)
     assert seen["wrapper"] == "function"
     assert "Sutra" not in seen["keys"]
+    assert seen["id"] == "sutra"
+    assert seen["register"] == "function"
+    assert seen["tools"] is True
 
 
 def test_a_rewrite_keeps_a_copy_of_the_config_it_replaced(paths, capsys):
@@ -656,7 +699,7 @@ def test_a_rewrite_keeps_a_copy_of_the_config_it_replaced(paths, capsys):
 def test_install_reports_the_config_it_replaced(paths, capsys):
     _, config_dir, _config = paths
 
-    assert openclaw.install(python="/usr/bin/python3", home=paths[0] / "home",
+    assert openclaw.install(python=sys.executable, home=paths[0] / "home",
                             config_path=config_dir) == 0
 
     out = capsys.readouterr().out
@@ -666,7 +709,7 @@ def test_install_reports_the_config_it_replaced(paths, capsys):
 def test_a_plugin_that_cannot_be_removed_stays_named_in_the_config(paths, monkeypatch, capsys):
     """The entries are the only thing that finds the file, so they go back."""
     root, config_dir, config = paths
-    assert openclaw.install(python="/usr/bin/python3", home=root / "home",
+    assert openclaw.install(python=sys.executable, home=root / "home",
                             config_path=config_dir) == 0
     plugin = openclaw.plugin_path(config_dir)
     capsys.readouterr()
@@ -678,14 +721,20 @@ def test_a_plugin_that_cannot_be_removed_stays_named_in_the_config(paths, monkey
         assert openclaw.uninstall(config_path=config_dir) == 1
 
     assert plugin.is_file()
-    assert str(plugin) in config.read_text(encoding="utf-8")
+    # Read the value back, not the raw text: a Windows path is stored with
+    # escaped backslashes, so the text never contains the path itself.
+    named = json.loads(config.read_text(encoding="utf-8"))["plugins"]["load"]["paths"]
+    assert str(plugin) in named
     assert "still named in the config" in capsys.readouterr().err
 
 
 def test_doctor_finishes_when_the_protocol_probe_cannot_start(paths, monkeypatch, capsys):
     """A probe that cannot set itself up still leaves a complete report."""
     root, config_dir, _config = paths
-    assert openclaw.install(python="/usr/bin/python3", home=root / "home",
+    # `sys.executable`, not a POSIX path: doctor stops before the probe when the
+    # embedded interpreter does not resolve, which is what every non-Linux
+    # runner would see with a hard-coded `/usr/bin/python3`.
+    assert openclaw.install(python=sys.executable, home=root / "home",
                             config_path=config_dir) == 0
 
     def cannot_start(*_args, **_kwargs):
