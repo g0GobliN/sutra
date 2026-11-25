@@ -304,7 +304,9 @@ def test_a_pair_applies_each_prefix_once():
     def counted(name: str):
         def apply(text: str) -> str:
             calls.append(name)
-            return text
+            # Change the text, so the combination phase opens, but make it
+            # longer, so nothing is accepted and the phase is reached.
+            return text + name
         return Strategy(name=name, apply=apply, note="counts its own applications")
 
     strategies = [counted(name) for name in ("alpha", "beta", "gamma")]
@@ -336,13 +338,17 @@ def test_the_search_result_does_not_change_with_the_prefix_memo():
     and recurses through the same application path as the real cache.
     """
     text = "alpha  \r\nbeta\n\n\n\n\ngamma\ndelta\n" * 6
-    memoised = optimize.optimize(text, max_passes=4, combine=True, triple=True)
+    # A minimum nothing can reach keeps every single rejected, so the searches
+    # reach the pair and triple phases their caches serve.
+    budgets = {"max_passes": 4, "combine": True, "triple": True,
+               "min_saved_bytes": 10 ** 9}
+    memoised = optimize.optimize(text, **budgets)
 
     real = optimize._Applied
     _UncachedApplied.lookups = 0
     optimize._Applied = _UncachedApplied
     try:
-        recomputed = optimize.optimize(text, max_passes=4, combine=True, triple=True)
+        recomputed = optimize.optimize(text, **budgets)
     finally:
         optimize._Applied = real
 
@@ -468,3 +474,68 @@ def test_a_triple_phase_never_follows_an_accepted_pair():
     assert result.applied == ("aa+bb",), result.applied
     assert all(item.name.count("+") < 2 for item in result.evaluations), [
         item.name for item in result.evaluations if item.name.count("+") > 1]
+
+
+def test_the_combination_phase_is_skipped_when_no_single_changes_the_text():
+    """No strategy moves the text, so no chain can: the phase is not enumerated."""
+    Strategy = optimize.Strategy
+
+    def unchanged(text: str) -> str:
+        return text
+
+    strategies = tuple(
+        Strategy(name=f"noop-{index}", apply=unchanged, note="Does nothing")
+        for index in range(3)
+    )
+    text = "line one\nline two\n"
+    result = optimize.optimize(text, max_passes=1, strategies=strategies,
+                               combine=True, triple=True)
+    names = [item.name for item in result.evaluations]
+    assert all("+" not in name for name in names), names
+    skipped = [item for item in result.evaluations if item.name == "combination"]
+    assert len(skipped) == 1, names
+    assert "no single strategy changes this text" in skipped[0].reason
+    assert result.text == text, result.text
+    assert result.applied == (), result.applied
+
+
+def test_a_pair_still_runs_when_a_single_rewrites_the_text_without_saving():
+    """A single that changes the text keeps the phase alive even when it saves nothing."""
+    Strategy = optimize.Strategy
+
+    def grow(text: str) -> str:
+        return text + "grew"
+
+    def finish(text: str) -> str:
+        return text.replace("grew", "")
+
+    strategies = (
+        Strategy(name="grow", apply=grow, note="Grows the text"),
+        Strategy(name="finish", apply=finish, note="Undoes the growth"),
+    )
+    text = "payload\n"
+    result = optimize.optimize(text, max_passes=1, strategies=strategies,
+                               combine=True, triple=True)
+    names = [item.name for item in result.evaluations]
+    assert "grow+finish" in names, names
+    assert "combination" not in names, names
+    assert result.text == text, result.text
+
+
+def test_a_zero_minimum_keeps_the_combination_phase():
+    """With a zero minimum an unchanged candidate counts as accepted, so no skip."""
+    Strategy = optimize.Strategy
+
+    def no_text(text: str) -> None:
+        return None
+
+    strategies = tuple(
+        Strategy(name=f"no-text-{index}", apply=no_text, note="Produces no text")
+        for index in range(2)
+    )
+    text = "line one\n"
+    result = optimize.optimize(text, max_passes=1, min_saved_bytes=0,
+                               strategies=strategies, combine=True, triple=True)
+    names = [item.name for item in result.evaluations]
+    assert "no-text-0+no-text-1" in names, names
+    assert "combination" not in names, names

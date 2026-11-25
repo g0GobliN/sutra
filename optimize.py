@@ -248,38 +248,44 @@ def _evaluate(
     strategy: Strategy,
     validator: Callable[[str, str], tuple[bool, list[str]]],
     min_saved_bytes: int,
-) -> tuple[Evaluation, str | None]:
-    """Try one strategy; return its evaluation and the candidate if accepted."""
+) -> tuple[Evaluation, str | None, str | None]:
+    """Try one strategy.
+
+    Returns its evaluation, the candidate when it was accepted, and the text
+    the strategy produced even when something later rejected it. The last
+    value is what tells the caller whether a combination phase has anything
+    to explore, without applying the strategy a second time.
+    """
     started = time.monotonic()
     try:
         candidate = strategy.apply(text)
     except Exception as exc:  # a broken strategy must not break the loop
         elapsed = (time.monotonic() - started) * 1000.0
         return Evaluation(strategy.name, 0, elapsed, False,
-                          f"strategy raised: {exc}"), None
+                          f"strategy raised: {exc}"), None, None
     elapsed = (time.monotonic() - started) * 1000.0
     if not isinstance(candidate, str):
         return Evaluation(strategy.name, 0, elapsed, False,
-                          "candidate is not text"), None
+                          "candidate is not text"), None, None
     if not candidate:
         return Evaluation(strategy.name, 0, elapsed, False,
-                          "candidate is empty"), None
+                          "candidate is empty"), None, candidate
     saved = _size(text) - _size(candidate)
     try:
         ok, reasons = validator(text, candidate)
     except Exception as exc:  # a broken validator rejects, never crashes
         return Evaluation(strategy.name, saved, elapsed, False,
-                          f"validator raised: {exc}"), None
+                          f"validator raised: {exc}"), None, candidate
     if not ok:
         reason = (reasons[0] if reasons else "validator rejected")
         return Evaluation(strategy.name, saved, elapsed, False,
-                          reason[:_MAX_REASON_CHARS]), None
+                          reason[:_MAX_REASON_CHARS]), None, candidate
     if saved < min_saved_bytes:
         return Evaluation(
             strategy.name, saved, elapsed, False,
             f"saved {saved} bytes, below the {min_saved_bytes}-byte minimum",
-        ), None
-    return Evaluation(strategy.name, saved, elapsed, True), candidate
+        ), None, candidate
+    return Evaluation(strategy.name, saved, elapsed, True), candidate, candidate
 
 
 class _Applied:
@@ -438,19 +444,37 @@ def optimize(
 
     for _ in range(max_passes):
         accepted: list[tuple[Evaluation, str]] = []
+        moved = False
         for strategy in candidates:
             if ledger is not None and ledger.is_disabled(strategy.name, scope):
                 evaluations.append(Evaluation(
                     strategy.name, 0, 0.0, False,
                     "skipped: disabled for this payload shape after repeated failures"))
                 continue
-            evaluation, candidate = _evaluate(
+            evaluation, candidate, produced = _evaluate(
                 current, strategy, check, min_saved_bytes)
             evaluations.append(evaluation)
+            if produced is not None and produced != current:
+                moved = True
             if candidate is not None:
                 accepted.append((evaluation, candidate))
         if not accepted:
             if combine and _size(current) <= PAIR_MAX_BYTES:
+                # A chain applies its strategies in order, each to the text the
+                # previous one produced, so when no single strategy changed this
+                # text no pair or triple can differ from it either: enumerating
+                # them could only reproduce the input and be rejected for saving
+                # nothing. ``moved`` is the singles pass above, over the same
+                # ``candidates`` sequence the pair and triple loops iterate, so
+                # the conclusion covers exactly the chains that would run.
+                # With a zero minimum an unchanged candidate counts as accepted,
+                # so the skip would change the recorded applied list and is not
+                # taken.
+                if min_saved_bytes > 0 and not moved:
+                    evaluations.append(Evaluation(
+                        "combination", 0, 0.0, False,
+                        "skipped: no single strategy changes this text"))
+                    break
                 # One cache serves both phases: the triple phase runs only when
                 # no pair was accepted (``if not pairs``), so ``current`` cannot
                 # have moved between them.
