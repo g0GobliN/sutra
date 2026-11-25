@@ -775,6 +775,29 @@ def test_a_config_another_process_created_that_names_the_plugin_is_success(
     assert "names the plugin" in capsys.readouterr().out
 
 
+def test_a_concurrent_config_that_forgets_the_allow_list_is_completed(
+        tmp_path, monkeypatch, capsys):
+    """A path without the id loads nowhere, so success has to mean both."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+
+    def lose_the_race(file, _value):
+        file.write_text(json.dumps(
+            {"plugins": {"load": {"paths": [str(plugin)]}}} | {"theme": "dark"},
+            indent=2) + "\n", encoding="utf-8")
+        raise FileExistsError(17, "File exists", str(file))
+    monkeypatch.setattr(openclaw, "_create_config", lose_the_race)
+
+    assert openclaw.install(python=sys.executable, home=tmp_path / "home",
+                            config_path=config_dir) == 0
+    written = json.loads((config_dir / "openclaw.json").read_text(encoding="utf-8"))
+    assert written["plugins"]["allow"] == ["sutra"], "the id had to be added"
+    assert written["theme"] == "dark", "the other file's key survived"
+    assert "names the plugin" in capsys.readouterr().out
+
+
 def test_unregister_never_edits_the_allow_list(paths):
     """`allow` is a permission list, not a loader: an id without a path is
     harmless, while dropping one another install needs disables that one."""

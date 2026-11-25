@@ -168,6 +168,29 @@ def _config_names_plugin(file: pathlib.Path, target: str | pathlib.Path) -> bool
         return False
 
 
+def _allow_the_plugin(file: pathlib.Path, target: pathlib.Path) -> bool:
+    """True when the config names the plugin and allows its id.
+
+    A config another process created can name the path without the id; a host
+    that does not allow the id never loads the plugin, so reporting success on
+    the path alone would be wrong. The id is added here, guarded by the same
+    compare-and-swap the install uses.
+    """
+    try:
+        value = _load_config(file)
+    except (OSError, ValueError):
+        return False
+    if not _names_plugin(value, target):
+        return False
+    try:
+        if not _apply_registration(value, target):
+            return True
+        _save_config(file, value, expect=_read_config_bytes(file))
+    except (OSError, ValueError):
+        return False
+    return True
+
+
 def _names_plugin(value: dict, target: str | pathlib.Path) -> bool:
     """True when a parsed config names ``target`` in ``plugins.load.paths``."""
     try:
@@ -187,9 +210,13 @@ def _same_path(item: str, target: str | pathlib.Path) -> bool:
     load.
     """
     try:
-        return pathlib.Path(item).resolve() == pathlib.Path(str(target)).resolve()
+        left = os.path.normcase(str(pathlib.Path(item).resolve()))
+        right = os.path.normcase(str(pathlib.Path(str(target)).resolve()))
     except (OSError, RuntimeError):
         return item == str(target)
+    # normcase folds the case on the filesystems that ignore it, so a config
+    # spelling that differs only in case is not given a second entry.
+    return left == right
 
 
 def named_in_config(config_path: str | pathlib.Path | None = None, *,
@@ -630,7 +657,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
         # host whose config could not be read, and the next run registers it
         # because a matching file is no longer "nothing to do".
         if isinstance(exc, FileExistsError):
-            if _config_names_plugin(file, path):
+            if _allow_the_plugin(file, path):
                 print_success(f"sutra: {file} was created by another process, and it names the plugin")
                 print_info("sutra: restart OpenClaw so it loads the plugin")
                 return 0
