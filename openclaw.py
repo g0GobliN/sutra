@@ -103,9 +103,24 @@ def config_file(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     OpenClaw names it ``openclaw.json`` inside its config directory; an explicit
     ``OPENCLAW_CONFIG_PATH`` points at the file itself.
     """
-    # The file is always inside the tree openclaw_config_dir() resolves, which
-    # honours SUTRA's override and then the host's own OPENCLAW_CONFIG_PATH.
-    return openclaw_config_dir(config_path) / "openclaw.json"
+    if config_path is not None:
+        return openclaw_config_dir(config_path) / "openclaw.json"
+    if os.environ.get("SUTRA_OPENCLAW_CONFIG"):
+        return openclaw_config_dir() / "openclaw.json"
+    named = os.environ.get("OPENCLAW_CONFIG_PATH")
+    if named:
+        # The host named this exact file; a sibling called openclaw.json is
+        # not the file it reads.
+        return pathlib.Path(named).expanduser()
+    return openclaw_config_dir() / "openclaw.json"
+
+
+def _read_config_text(file: pathlib.Path) -> str | None:
+    """The config file's text, or None when there is nothing to restore."""
+    try:
+        return file.read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 def named_in_config(config_path: str | pathlib.Path | None = None, *,
@@ -296,6 +311,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
             print_error(f"sutra: cannot read {path} to update it safely: {exc}")
             return 1
     was_registered = named_in_config(config_path, path=path)
+    config_text = _read_config_text(config_file(config_path))
     if existed:
         backup = installer._write(path, text)  # timestamped backup beside the file
     else:
@@ -313,8 +329,16 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 _new_file(path, previous_text, mode=previous_mode)
             elif not existed:
                 path.unlink(missing_ok=True)
-            if not was_registered:
+            if was_registered and config_text is not None:
+                # A partial register may have changed the file; put back
+                # exactly what the host had before this run.
+                _new_file(config_file(config_path), config_text)
+            elif not was_registered:
                 unregister(config_path, path=path)
+            if existed:
+                # The backup belongs to the file this run wrote; make it hold
+                # the text that survived, not the build that was discarded.
+                _new_file(pathlib.Path(str(backup)), previous_text or "")
         except (OSError, ValueError) as restore:
             where = f"the backup is still at {backup}" if existed else "no file exists"
             print_error(
@@ -361,7 +385,7 @@ def uninstall(*, dry_run: bool = False,
         return 0
     try:
         cleaned = unregister(config_path, path=path)
-    except OSError as exc:
+    except (OSError, ValueError) as exc:
         # Deleting the file would leave the host naming a path that is gone.
         print_warning(f"sutra: could not clean OpenClaw's config: {exc}; "
                       f"leaving {path} in place")
@@ -614,7 +638,10 @@ def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None =
         return _check("config", "fail", f"{file} has no plugins block")
     load = block.get("load")
     paths = load.get("paths") if isinstance(load, dict) else None
-    named = isinstance(paths, list) and str(plugin) in paths
+    # doctor() may be pointed at a plugin file explicitly; the canonical
+    # install location is still what install() names, so accept either.
+    wanted = {str(plugin), str(plugin_path(config_path))}
+    named = isinstance(paths, list) and any(item in wanted for item in paths)
     allow = block.get("allow")
     allowed = isinstance(allow, list) and PLUGIN_ID in allow
     if named and allowed:
