@@ -224,17 +224,21 @@ entry therefore lands where OpenClaw will look for it. That config file is a
 JSON document SUTRA edits structurally, so the entry is added by rewriting it as
 JSON with two-space indentation: the values and key order survive, hand-written
 whitespace and comments do not, and the file keeps its own permission bits. The
-text the rewrite replaced is kept beside it as `openclaw.json.sutra-bak`, and
-the install prints that path, because a whole-file rewrite is the only way to
-add one entry and the file belongs to the host. That copy is written once and
-never replaced, so it keeps the host's own text across repeated installs; a
-second rewrite would only save an earlier SUTRA entry over it. A directory
-passed explicitly decides the whole layout, and the install warns when
-`OPENCLAW_CONFIG_PATH` names a different file, because the entry would land
-where the host does not look. An
+text the rewrite replaced is kept beside it as
+`openclaw.json.<digest>.sutra-bak`, and the install prints that path, because a
+whole-file rewrite is the only way to add one entry and the file belongs to the
+host. The name carries a digest of the text it holds, so each distinct text is
+kept exactly once: a later rewrite after the host has edited its config adds a
+second copy instead of burying the first. A directory passed explicitly decides
+the whole layout, and the install warns when `OPENCLAW_CONFIG_PATH` names a
+different file, because the entry would land where the host does not look.
+`doctor` reads the same layout, so pass it the same `--config-path` the install
+used; its `config` check names the file it looked at when the entry is missing. An
 install refuses to start when that file exists but cannot be read or cannot take
 the entry, rather than writing and rolling back, and it stops before the rewrite
-when that copy cannot be made. A config that does not exist yet is created
+when that copy cannot be made. The rewrite replaces the file only while it still
+holds the text the install read; when another process edits it in between, the
+install reports that and leaves the newer text alone. A config that does not exist yet is created
 exclusively: if another process creates it during the install, SUTRA reports
 that and leaves the file alone instead of overwriting it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up

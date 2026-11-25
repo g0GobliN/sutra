@@ -649,20 +649,58 @@ def test_the_config_check_requires_the_file_it_was_given(tmp_path, monkeypatch):
     assert openclaw._config_check(canonical, config_dir)["status"] == "pass"
 
 
-def test_a_second_install_keeps_the_first_copy_of_the_config(paths):
-    """The backup holds the host's own text; a later rewrite cannot bury it."""
+def test_a_config_edited_during_the_install_is_left_alone(paths, monkeypatch, capsys):
+    """The rewrite only replaces the text this run read, so a race is reported."""
+    _, config_dir, config = paths
+    real = openclaw._apply_registration
+
+    def racing(value, target):
+        # Another process edits the config between the snapshot and the write.
+        changed = real(value, target)
+        config.write_text('{"theme": "concurrent"}\n', encoding="utf-8")
+        return changed
+
+    monkeypatch.setattr(openclaw, "_apply_registration", racing)
+
+    assert openclaw.install(python=sys.executable) == 1
+    err = capsys.readouterr().err
+    assert "changed while SUTRA was installing" in err
+    assert config.read_text(encoding="utf-8") == '{"theme": "concurrent"}\n'
+    assert not openclaw.plugin_path(config_dir).exists()
+
+
+def test_unregister_clears_an_allow_entry_nothing_loads(paths):
+    """An id no remaining path loads is SUTRA's to remove, whether or not it wrote it."""
+    _, config_dir, config = paths
+    config.write_text(json.dumps(
+        {"plugins": {"load": {"paths": []}, "allow": ["sutra", "other"]}},
+        indent=2) + "\n", encoding="utf-8")
+
+    assert openclaw.unregister(config_path=config_dir) is True
+
+    assert json.loads(config.read_text(encoding="utf-8")) == {
+        "plugins": {"load": {"paths": []}, "allow": ["other"]}}
+
+
+def test_a_second_install_keeps_each_text_it_replaced(paths):
+    """Two rewrites keep two copies: the first is never buried by the second."""
     _, config_dir, config = paths
     assert openclaw.install(python=sys.executable) == 0
-    backup = config_dir / "openclaw.json.sutra-bak"
-    first = backup.read_text(encoding="utf-8")
-    assert '"dark"' in first
+    copies = sorted(config_dir.glob("openclaw.json.*.sutra-bak"))
+    assert len(copies) == 1
+    assert '"dark"' in copies[0].read_text(encoding="utf-8")
 
-    # The host edits its config and installs again: the copy still holds the
-    # text from before SUTRA first touched the file, not the previous rewrite.
+    # The host edits its config and installs again: the edited text gets its own
+    # copy, and the text from before SUTRA first touched the file survives.
     config.write_text('{\n  "theme": "light"\n}\n', encoding="utf-8")
     openclaw.plugin_path(config_dir).unlink()
     assert openclaw.install(python=sys.executable) == 0
-    assert backup.read_text(encoding="utf-8") == first
+
+    copies = sorted(config_dir.glob("openclaw.json.*.sutra-bak"))
+    assert len(copies) == 2
+    texts = [copy.read_text(encoding="utf-8") for copy in copies]
+    assert any('"dark"' in text and '"sutra"' not in text for text in texts)
+    assert any('"light"' in text for text in texts)
 
 
 def test_install_says_so_when_the_named_file_is_not_the_one_it_uses(paths, tmp_path,
@@ -721,7 +759,10 @@ def test_a_rewrite_keeps_a_copy_of_the_config_it_replaced(paths, capsys):
     backup = openclaw._save_config(config, {"theme": "light"})
 
     assert backup is not None
-    assert backup.name == f"{config.name}.sutra-bak"
+    # The name carries a digest of the text, so two different texts cannot
+    # overwrite each other's copy.
+    assert backup.name.startswith(f"{config.name}.")
+    assert backup.name.endswith(".sutra-bak")
     assert backup.read_text(encoding="utf-8") == before
     assert json.loads(config.read_text(encoding="utf-8")) == {"theme": "light"}
 

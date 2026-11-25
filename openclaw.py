@@ -19,6 +19,7 @@ compatibility wrapper.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.resources
 import json
 import os
@@ -204,25 +205,21 @@ def _backup_config(path: pathlib.Path) -> pathlib.Path | None:
 
     A copy that cannot be made raises instead of returning ``None``: the rewrite
     loses key order and any comment the host tolerates, so proceeding without a
-    copy would destroy text the user cannot get back.
+    copy would destroy text the user cannot get back. The name carries a digest
+    of the text, so each distinct text is kept once and later rewrites cannot
+    bury the host's own copy.
     """
     if not path.is_file():
         return None
-    backup = path.with_name(f"{path.name}.sutra-bak")
+    raw = path.read_bytes()
+    # The copy is named after the text it holds, so every distinct text gets its
+    # own file: a second rewrite keeps the host's edited text instead of burying
+    # it under the first copy, and the same text is never copied twice.
+    digest = hashlib.sha256(raw).hexdigest()[:8]
+    backup = path.with_name(f"{path.name}.{digest}.sutra-bak")
     if backup.is_file():
-        # The first rewrite keeps the host's own text; a later one would only
-        # keep an earlier SUTRA entry and bury the file the user wants back.
         return backup
-    temporary = backup.with_name(f"{backup.name}.{os.getpid()}.tmp")
-    try:
-        shutil.copy2(path, temporary)
-        os.replace(temporary, backup)
-    except BaseException:
-        try:
-            temporary.unlink()
-        except OSError:
-            pass
-        raise
+    _new_file(backup, raw.decode("utf-8"), mode=_file_mode(path))
     return backup
 
 
@@ -309,7 +306,7 @@ def _is_plugin_file(item: str) -> bool:
 def _apply_removal(value: dict, target: pathlib.Path) -> bool:
     """Take the plugin path back out of a parsed config; return whether it changed.
 
-    The allowed id is only dropped when this call also took the load path out:
+    The allowed id is kept while any other load path still names a plugin file:
     an entry SUTRA cannot trace to the file it is removing may belong to another
     tree's install, and removing it would disable that one instead.
     """
@@ -323,17 +320,18 @@ def _apply_removal(value: dict, target: pathlib.Path) -> bool:
         if isinstance(paths, list) and str(target) in paths:
             load["paths"] = [item for item in paths if item != str(target)]
             changed = True
-    if changed:
-        allow = block.get("allow")
-        remaining = load.get("paths") if isinstance(load, dict) else None
-        # Another tree's install may still name a plugin file, and every file
-        # SUTRA writes is named ``sutra.js``: a remaining path with that name is
-        # this same plugin, and its entry needs the allowed id even though this
-        # tree's path is gone.
-        still_installed = (isinstance(remaining, list)
-                           and any(_is_plugin_file(item) for item in remaining))
-        if isinstance(allow, list) and PLUGIN_ID in allow and not still_installed:
-            block["allow"] = [item for item in allow if item != PLUGIN_ID]
+    # The allowed id is dropped whenever nothing that loads it remains, not only
+    # when this call removed a path: a file written by a failed install, or a
+    # path removed by hand, would otherwise leave an id behind that the next
+    # install inherits without having created it. Every file SUTRA writes is
+    # named ``sutra.js``, so a remaining path with that name is this same plugin.
+    allow = block.get("allow")
+    remaining = load.get("paths") if isinstance(load, dict) else None
+    still_installed = (isinstance(remaining, list)
+                       and any(_is_plugin_file(item) for item in remaining))
+    if isinstance(allow, list) and PLUGIN_ID in allow and not still_installed:
+        block["allow"] = [item for item in allow if item != PLUGIN_ID]
+        changed = True
     return changed
 
 
@@ -487,7 +485,6 @@ def install(*, dry_run: bool = False, python: str | None = None,
     except OSError as exc:
         print_error(f"sutra: cannot read {file} to update it safely: {exc}")
         return 1
-    config_mode = _file_mode(file) if config_text is not None else None
     # Parse and extend the snapshot once, before anything is written: a read
     # failure or an unusable shape is a refusal, not a rollback. The same value
     # is what the write later saves, so naming the plugin never re-reads the
@@ -535,6 +532,31 @@ def install(*, dry_run: bool = False, python: str | None = None,
             return 1
     saved = None
     created = False
+    if changed and config_text is not None:
+        # Compare and swap: replace the file only while it still holds the text
+        # this run read. A concurrent edit is reported instead of overwritten,
+        # and there is nothing to put back on failure - the write is one
+        # `os.replace` of a complete temp file, so the old text stays in place.
+        try:
+            current = _read_config_text(file)
+        except OSError as exc:
+            current = None
+            refused = f"cannot re-read {file} before updating it: {exc}"
+        else:
+            refused = (f"{file} changed while SUTRA was installing"
+                       if current != config_text else None)
+        if refused is not None:
+            try:
+                if existed:
+                    _restore_plugin(path, previous_text, previous_mode)
+                else:
+                    path.unlink()
+            except OSError as restore:
+                print_error(f"sutra: {refused}; the plugin was not named and could "
+                            f"not be removed ({restore})")
+                return 1
+            print_error(f"sutra: {refused}; the plugin was not named")
+            return 1
     try:
         if changed:
             if config_text is None:
@@ -561,11 +583,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 _new_file(path, previous_text, mode=previous_mode)
             elif not existed:
                 path.unlink(missing_ok=True)
-            if config_text is not None:
-                # A partial save may have changed the file; put back exactly
-                # what the host had before this run, at the mode it had.
-                _new_file(file, config_text, mode=config_mode)
-            elif created:
+            if created:
                 # Only a file this run created is this run's to remove; the
                 # exclusive create above is what proved ownership.
                 file.unlink(missing_ok=True)
@@ -593,7 +611,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
     else:
         print_info(f"sutra: {file} already names the plugin")
     if saved is not None:
-        print_info(f"sutra: the config before this change is at {saved}")
+        print_info(f"sutra: the config text this rewrite replaced is at {saved}")
     print_info("sutra: restart OpenClaw so it loads the plugin")
     return 0
 
@@ -622,6 +640,15 @@ def uninstall(*, dry_run: bool = False,
     if dry_run:
         print_info(f"sutra: dry run, would remove the OpenClaw plugin at {path} (no file was written)")
         return 0
+    file = config_file(config_path)
+    try:
+        original = _read_config_text(file)
+    except OSError as exc:
+        # Without the text there is nothing to put back if the removal fails.
+        print_warning(f"sutra: cannot read {file} to update it safely: {exc}; "
+                      f"leaving {path} in place")
+        return 1
+    original_mode = _file_mode(file)
     try:
         cleaned = unregister(config_path, path=path)
     except (OSError, ValueError) as exc:
@@ -635,10 +662,17 @@ def uninstall(*, dry_run: bool = False,
         path.unlink()
     except OSError as exc:
         # The entries are already gone, so failing here would leave a host that
-        # no longer names a file the user cannot delete. Put them back instead.
+        # no longer names a file the user cannot delete. Put back the exact text
+        # read before the removal: re-running `register` would re-read the file
+        # and could overwrite an edit made in between, or re-add entries the
+        # user has since removed.
+        if original is None:
+            print_error(f"sutra: could not remove {path}: {exc}; {file} did not exist "
+                        f"before the removal, so there is nothing to put back")
+            return 1
         try:
-            register(config_path, path=path)
-        except (OSError, ValueError) as restore:
+            _new_file(file, original, mode=original_mode)
+        except OSError as restore:
             print_error(f"sutra: could not remove {path}: {exc}; the config no longer "
                         f"names it ({restore})")
             return 1
@@ -857,6 +891,9 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
     """
     if not node:
         return _check("entry", "skip", "node is not available to load the plugin")
+    # An absolute path: `require()` resolves a bare name against node's own
+    # search path, which would load a different file or none.
+    plugin = plugin.resolve()
     env = dict(os.environ, SUTRA_ENTRY_PLUGIN=str(plugin))
     try:
         # The path travels in the environment: as an argv entry, a path that
@@ -903,7 +940,9 @@ def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None =
         missing.append("plugins.load.paths")
     if not allowed:
         missing.append("plugins.allow")
-    return _check("config", "fail", f"{file} is missing {', '.join(missing)}")
+    return _check("config", "fail", f"{file} is missing {', '.join(missing)}"
+                  + ("" if config_path is not None else
+                     "; a different directory may have been given to `sutra install`"))
 
 
 _DOWNSTREAM_CHECKS = ("cli_roundtrip", "protected_output", "plugin_hook", "host")
