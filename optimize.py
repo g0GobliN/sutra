@@ -282,12 +282,60 @@ def _evaluate(
     return Evaluation(strategy.name, saved, elapsed, True), candidate
 
 
+class _Applied:
+    """Memoise strategy applications for one combination phase.
+
+    Pairs and triples run every ordered combination over the same base text, so
+    the first strategy of a pair is applied once per second strategy and a
+    triple re-applies its two-strategy prefix once per third strategy. The
+    strategies are pure functions of their input, so applying a prefix once and
+    reusing the text leaves the candidates, their order and their ranking
+    exactly as they were.
+    """
+
+    def __init__(self, base: str) -> None:
+        self._base = base
+        self._done: dict[tuple[str, ...], tuple[str | None, str]] = {}
+
+    def chain(self, strategies: Sequence[Strategy]) -> tuple[str | None, str]:
+        """Return the text after this chain, or ``(None, reason)``."""
+        key = tuple(item.name for item in strategies)
+        if key in self._done:
+            return self._done[key]
+        if len(strategies) == 1:
+            strategy = strategies[0]
+            try:
+                text = strategy.apply(self._base)
+            except Exception as exc:
+                result: tuple[str | None, str] = (None, f"strategy raised: {exc}")
+            else:
+                result = (text, "") if isinstance(text, str) and text else (
+                    None, f"{strategy.name} produced no text")
+            self._done[key] = result
+            return result
+        prefix, reason = self.chain(strategies[:-1])
+        if prefix is None:
+            self._done[key] = (None, reason)
+            return self._done[key]
+        strategy = strategies[-1]
+        try:
+            text = strategy.apply(prefix)
+        except Exception as exc:
+            result = (None, f"strategy raised: {exc}")
+        else:
+            result = (text, "") if isinstance(text, str) and text else (
+                None, f"{strategy.name} produced no text")
+        self._done[key] = result
+        return result
+
+
 def _evaluate_chain(
     base: str,
     original: str,
     strategies: Sequence[Strategy],
     validator: Callable[[str, str], tuple[bool, list[str]]],
     min_saved_bytes: int,
+    applied: _Applied | None = None,
 ) -> tuple[Evaluation, str | None]:
     """Apply an ordered strategy chain, validating against the run's original.
 
@@ -298,69 +346,12 @@ def _evaluate_chain(
     """
     name = "+".join(item.name for item in strategies)
     started = time.monotonic()
-    candidate = base
-    try:
-        for strategy in strategies:
-            candidate = strategy.apply(candidate)
-            if not isinstance(candidate, str) or not candidate:
-                elapsed = (time.monotonic() - started) * 1000.0
-                return Evaluation(name, 0, elapsed, False,
-                                  f"{strategy.name} produced no text"), None
-    except Exception as exc:
+    cache = applied if applied is not None else _Applied(base)
+    candidate, reason = cache.chain(strategies)
+    if candidate is None:
         elapsed = (time.monotonic() - started) * 1000.0
-        return Evaluation(name, 0, elapsed, False,
-                          f"strategy raised: {exc}"), None
+        return Evaluation(name, 0, elapsed, False, reason), None
     elapsed = (time.monotonic() - started) * 1000.0
-    saved = _size(base) - _size(candidate)
-    try:
-        ok, reasons = validator(original, candidate)
-    except Exception as exc:
-        return Evaluation(name, saved, elapsed, False,
-                          f"validator raised: {exc}"), None
-    if not ok:
-        reason = (reasons[0] if reasons else "validator rejected")
-        return Evaluation(name, saved, elapsed, False,
-                          reason[:_MAX_REASON_CHARS]), None
-    if saved < min_saved_bytes:
-        return Evaluation(
-            name, saved, elapsed, False,
-            f"saved {saved} bytes, below the {min_saved_bytes}-byte minimum",
-        ), None
-    return Evaluation(name, saved, elapsed, True), candidate
-
-
-def _evaluate_pair(
-    base: str,
-    original: str,
-    first: Strategy,
-    second: Strategy,
-    validator: Callable[[str, str], tuple[bool, list[str]]],
-    min_saved_bytes: int,
-) -> tuple[Evaluation, str | None]:
-    """Try two strategies in order, validating against the original text.
-
-    This is the aggressive-mode combination search: when no single strategy is
-    accepted any more, a pair can still be strictly smaller, and validating
-    the result against the text at the start of the run keeps the cumulative
-    guarantee the single-strategy path already has.
-    """
-    name = f"{first.name}+{second.name}"
-    started = time.monotonic()
-    try:
-        intermediate = first.apply(base)
-        if not isinstance(intermediate, str) or not intermediate:
-            elapsed = (time.monotonic() - started) * 1000.0
-            return Evaluation(name, 0, elapsed, False,
-                              "first strategy produced no text"), None
-        candidate = second.apply(intermediate)
-    except Exception as exc:
-        elapsed = (time.monotonic() - started) * 1000.0
-        return Evaluation(name, 0, elapsed, False,
-                          f"strategy raised: {exc}"), None
-    elapsed = (time.monotonic() - started) * 1000.0
-    if not isinstance(candidate, str) or not candidate:
-        return Evaluation(name, 0, elapsed, False,
-                          "candidate is not text"), None
     saved = _size(base) - _size(candidate)
     try:
         ok, reasons = validator(original, candidate)
@@ -432,14 +423,15 @@ def optimize(
                 accepted.append((evaluation, candidate))
         if not accepted:
             if combine and _size(current) <= PAIR_MAX_BYTES:
+                prefixes = _Applied(current)
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:
                     for second in candidates:
                         if first is second:
                             continue
-                        pair_evaluation, pair_text = _evaluate_pair(
-                            current, text, first, second, check,
-                            min_saved_bytes)
+                        pair_evaluation, pair_text = _evaluate_chain(
+                            current, text, (first, second), check,
+                            min_saved_bytes, prefixes)
                         evaluations.append(pair_evaluation)
                         if pair_text is not None:
                             pairs.append((pair_evaluation, pair_text))
@@ -454,7 +446,7 @@ def optimize(
                                     continue
                                 combo_evaluation, combo_text = _evaluate_chain(
                                     current, text, (first, second, third),
-                                    check, min_saved_bytes)
+                                    check, min_saved_bytes, prefixes)
                                 evaluations.append(combo_evaluation)
                                 if combo_text is not None:
                                     triples.append((combo_evaluation, combo_text))

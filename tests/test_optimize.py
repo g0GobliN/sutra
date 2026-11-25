@@ -294,3 +294,46 @@ def test_savings_are_measured_in_utf8_bytes_not_code_points():
     report = optimize.optimize(payload, max_passes=1)
     assert report.text == "hello world"
     assert report.saved_bytes == 1
+
+
+def test_a_pair_applies_each_prefix_once():
+    """The pair phase applies a first strategy once, not once per second."""
+    Strategy = optimize.Strategy
+    calls: list[str] = []
+
+    def counted(name: str):
+        def apply(text: str) -> str:
+            calls.append(name)
+            return text
+        return Strategy(name=name, apply=apply, note="counts its own applications")
+
+    strategies = [counted(name) for name in ("alpha", "beta", "gamma")]
+    result = optimize.optimize("line\n" * 8, max_passes=1, combine=True,
+                               strategies=strategies)
+    assert result.applied == ()
+    # Three single applications, then three prefixes and six suffixes: twelve,
+    # where re-applying every prefix per pair would take fifteen.
+    assert len(calls) == 12, calls
+
+
+def test_the_search_result_does_not_change_with_the_prefix_memo():
+    """Memoised and recomputed combination searches return the same text."""
+    class Uncached(optimize._Applied):
+        def chain(self, strategies):
+            self._done.pop(tuple(item.name for item in strategies), None)
+            return super().chain(strategies)
+
+    text = "alpha  \r\nbeta\n\n\n\n\ngamma\ndelta\n" * 6
+    memoised = optimize.optimize(text, max_passes=4, combine=True, triple=True)
+
+    real = optimize._Applied
+    optimize._Applied = Uncached
+    try:
+        recomputed = optimize.optimize(text, max_passes=4, combine=True, triple=True)
+    finally:
+        optimize._Applied = real
+
+    assert memoised.text == recomputed.text
+    assert memoised.applied == recomputed.applied
+    assert [item.name for item in memoised.evaluations] == [
+        item.name for item in recomputed.evaluations]
