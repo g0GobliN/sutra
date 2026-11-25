@@ -43,8 +43,10 @@ evidence, and a binary alone never upgrades a client's capability tier.
 
 OpenClaw is also detected from its generated plugin. `sutra install --client
 openclaw` is allowed before the host exists, so `<config>/plugins/sutra.js` is
-concrete evidence of the config tree; `<config>` defaults to `~/.openclaw` and
-honors `SUTRA_OPENCLAW_CONFIG`, while its config file is `<config>/openclaw.json`.
+concrete evidence of the config tree. `<config>` is `SUTRA_OPENCLAW_CONFIG` when
+set, otherwise the parent of `OPENCLAW_CONFIG_PATH` when the host names its own
+config file, otherwise `~/.openclaw`; the config file is `OPENCLAW_CONFIG_PATH`
+itself when set, otherwise `<config>/openclaw.json`.
 
 | Client | Tier when installed | Mechanism |
 |---|---|---|
@@ -213,8 +215,10 @@ a live OpenCode model session.
 ### OpenClaw
 
 `sutra install --client openclaw` generates
-`<config>/plugins/sutra.js`; the config directory defaults to `~/.openclaw`
-and can be redirected with `SUTRA_OPENCLAW_CONFIG`. No host process is needed
+`<config>/plugins/sutra.js`. The config directory defaults to `~/.openclaw`, can
+be redirected with `SUTRA_OPENCLAW_CONFIG`, and otherwise follows the parent of
+`OPENCLAW_CONFIG_PATH`; that variable also names the config file the host reads,
+so the entry is written where OpenClaw will look for it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file

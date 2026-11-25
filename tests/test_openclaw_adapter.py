@@ -346,6 +346,75 @@ console.log("openclaw slow hook ok")
     assert result.returncode == 0, result.stdout + result.stderr
     assert "openclaw slow hook ok" in result.stdout
 
+def test_the_host_named_config_file_decides_where_the_plugin_goes(tmp_path, monkeypatch):
+    """OPENCLAW_CONFIG_PATH names the file; its tree is what SUTRA writes into."""
+    monkeypatch.delenv("SUTRA_OPENCLAW_CONFIG", raising=False)
+    tree = tmp_path / "oclaw"
+    tree.mkdir()
+    named = tree / "custom.json"
+    named.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(named))
+
+    tree_out, file_out, plugin_out = openclaw.config_layout()
+    assert file_out == named
+    assert tree_out == tree
+    assert plugin_out == tree / "plugins" / "sutra.js"
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home") == 0
+    assert plugin_out.is_file()
+    # The entry lands in the file the host reads, not in a sibling default name.
+    assert str(plugin_out) in named.read_text(encoding="utf-8")
+    assert not (tree / "openclaw.json").exists()
+
+
+def test_an_explicit_config_directory_wins_over_the_environment(tmp_path, monkeypatch):
+    chosen = tmp_path / "chosen"
+    chosen.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(elsewhere / "custom.json"))
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(elsewhere))
+
+    assert openclaw.config_layout(chosen) == (
+        chosen, chosen / "openclaw.json", chosen / "plugins" / "sutra.js")
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="file modes do not make a file unreadable on Windows")
+def test_install_refuses_an_unreadable_config_before_writing_anything(tmp_path, monkeypatch, capsys):
+    """Text SUTRA never saw cannot be restored, so the install must not start."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    config.chmod(0o000)
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    try:
+        assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                                config_path=config_dir) == 1
+    finally:
+        config.chmod(0o600)
+    assert "cannot read" in capsys.readouterr().err
+    assert not openclaw.plugin_path(config_dir).exists()
+    assert config.read_text(encoding="utf-8") == '{"theme": "dark"}\n'
+
+
+def test_install_refuses_an_unusable_config_before_writing_anything(tmp_path, monkeypatch, capsys):
+    """A shape the entry cannot be added to is a refusal, not a rollback."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    original = '{"plugins": {"load": {"paths": "not-a-list"}}}\n'
+    config.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir) == 1
+    assert "cannot name the plugin" in capsys.readouterr().err
+    assert not openclaw.plugin_path(config_dir).exists()
+    assert config.read_text(encoding="utf-8") == original
+
+
 def test_a_failed_registration_rolls_the_plugin_back(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
@@ -379,10 +448,15 @@ def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, mon
 def test_a_failed_registration_restores_the_previous_plugin_and_keeps_its_backup(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
-    (config_dir / "openclaw.json").write_text(
-        '{"plugins": {"load": {"paths": "not-a-list"}}}\n', encoding="utf-8")
+    (config_dir / "openclaw.json").write_text('{"theme": "dark"}\n', encoding="utf-8")
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
     plugin = openclaw.plugin_path(config_dir)
+
+    # The config is valid, so the install gets as far as writing the plugin;
+    # only the config save fails, which is what the rollback must survive.
+    def refuse_save(_file, _value):
+        raise OSError("the config became read-only")
+    monkeypatch.setattr(openclaw, "_save_config", refuse_save)
     plugin.parent.mkdir(parents=True)
     previous = openclaw.render(python="/usr/bin/python3",
                                home=tmp_path / "home").replace(

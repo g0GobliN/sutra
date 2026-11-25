@@ -84,7 +84,7 @@ def detect_clients() -> list[str]:
     try:
         from . import openclaw
         if (shutil.which("openclaw") or openclaw.configured()
-                or (openclaw.openclaw_config_dir() / "openclaw.json").is_file()):
+                or openclaw.config_file().is_file()):
             found.append("openclaw")
     except Exception:  # a detection failure must not make install unusable
         pass
