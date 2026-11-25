@@ -656,15 +656,18 @@ def test_an_entry_written_with_another_spelling_is_not_duplicated(paths):
     """A config can already name the same file through a relative spelling."""
     root, config_dir, config = paths
     plugin = openclaw.plugin_path(config_dir)
-    relative = os.path.relpath(plugin, os.getcwd())
-    config.write_text(json.dumps({"plugins": {"load": {"paths": [relative]}}}),
+    # Absolute, but spelled with a ".." segment: the same file, different text.
+    # relpath() cannot be used here: Windows mounts the temp tree on another
+    # drive than the working directory.
+    spelling = str(plugin.parent / ".." / plugin.parent.name / plugin.name)
+    config.write_text(json.dumps({"plugins": {"load": {"paths": [spelling]}}}),
                       encoding="utf-8")
 
     changed, _ = openclaw.register(config_path=config_dir)
 
     assert changed is True, "the allow list still needs the id"
     written = json.loads(config.read_text(encoding="utf-8"))
-    assert written["plugins"]["load"]["paths"] == [relative], "no second entry"
+    assert written["plugins"]["load"]["paths"] == [spelling], "no second entry"
     assert written["plugins"]["allow"] == ["sutra"]
 
 
