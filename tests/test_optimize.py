@@ -319,9 +319,16 @@ def test_a_pair_applies_each_prefix_once():
 def test_the_search_result_does_not_change_with_the_prefix_memo():
     """Memoised and recomputed combination searches return the same text."""
     class Uncached(optimize._Applied):
-        def chain(self, strategies):
-            self._done.pop(tuple(item.name for item in strategies), None)
-            return super().chain(strategies)
+        def chain(self, base, strategies):
+            text = base
+            for strategy in strategies:
+                try:
+                    text = strategy.apply(text)
+                except Exception as exc:
+                    return None, f"strategy raised: {exc}"
+                if not isinstance(text, str) or not text:
+                    return None, f"{strategy.name} produced no text"
+            return text, ""
 
     text = "alpha  \r\nbeta\n\n\n\n\ngamma\ndelta\n" * 6
     memoised = optimize.optimize(text, max_passes=4, combine=True, triple=True)
@@ -337,3 +344,62 @@ def test_the_search_result_does_not_change_with_the_prefix_memo():
     assert memoised.applied == recomputed.applied
     assert [item.name for item in memoised.evaluations] == [
         item.name for item in recomputed.evaluations]
+
+
+def test_a_cache_answers_only_for_the_text_it_was_built_from():
+    """A cache built for one text never answers with that text for another.
+
+    A memo keyed only by strategy names would return ``"AB"`` for the second
+    base, so the assertions below check what the strategies were asked to
+    transform, not only the text that came back.
+    """
+    Strategy = optimize.Strategy
+    seen: list[tuple[str, str]] = []
+
+    def stage(name, transform):
+        def apply(text):
+            seen.append((name, text))
+            return transform(text)
+        return Strategy(name=name, apply=apply, note="records its input")
+
+    strategies = (
+        stage("strip", lambda text: text.replace("-", "")),
+        stage("upper", str.upper),
+        stage("squeeze", lambda text: text.replace(" ", "")),
+    )
+    first_base = "a-b"
+    second_base = "c d"
+    cache = optimize._Applied(first_base)
+    assert cache.chain(first_base, strategies) == ("AB", "")
+    assert [name for name, _ in seen] == ["strip", "upper", "squeeze"]
+    seen.clear()
+    # The second base must recompute every level, including the prefixes the
+    # first base cached, instead of answering from the first text.
+    assert cache.chain(second_base, strategies) == ("CD", "")
+    assert seen == [("strip", "c d"), ("upper", "c d"), ("squeeze", "C D")]
+    seen.clear()
+    assert cache.chain(second_base, strategies) == ("CD", "")
+    assert seen == [], "the rebound cache stopped answering for its own text"
+
+
+def test_a_triple_phase_never_follows_an_accepted_pair():
+    """The shared cache is safe because an accepted pair ends the pass.
+
+    ``optimize`` enters the triple phase only under ``if not pairs``, so a pass
+    that accepted a pair never evaluates a three-strategy chain and ``current``
+    cannot move between the two phases.
+    """
+    def remove(token):
+        return lambda text: text.replace(token, "")
+
+    strategies = (
+        optimize.Strategy("aa", remove("aa")),
+        optimize.Strategy("bb", remove("bb")),
+        optimize.Strategy("cc", remove("cc")),
+    )
+    result = optimize.optimize("xx aa yy bb zz\n", strategies=strategies,
+                               min_saved_bytes=3, max_passes=1,
+                               combine=True, triple=True)
+    assert result.applied == ("aa+bb",), result.applied
+    assert all(item.name.count("+") < 2 for item in result.evaluations), [
+        item.name for item in result.evaluations if item.name.count("+") > 1]

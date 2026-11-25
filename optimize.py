@@ -283,29 +283,45 @@ def _evaluate(
 
 
 class _Applied:
-    """Memoise strategy applications for one combination phase.
+    """Memoise strategy applications for one input text.
 
-    Pairs and triples run every ordered combination over the same base text, so
-    the first strategy of a pair is applied once per second strategy and a
-    triple re-applies its two-strategy prefix once per third strategy. The
-    strategies are pure functions of their input, so applying a prefix once and
-    reusing the text leaves the candidates, their order and their ranking
-    exactly as they were.
+    The combination phases run every ordered chain over the same text, so the
+    first strategy of a pair was applied once per second strategy and a triple
+    re-applied its two-strategy prefix once per third strategy. The strategies
+    are pure functions of their input, so applying a prefix once and reusing
+    its text leaves the candidates, their order and their ranking exactly as
+    they were.
+
+    The memo is valid for one text only: a call with a different base empties
+    it instead of answering with text computed from the old one.
     """
 
     def __init__(self, base: str) -> None:
         self._base = base
-        self._done: dict[tuple[str, ...], tuple[str | None, str]] = {}
+        self._done: dict[tuple[int, ...], tuple[str | None, str]] = {}
 
-    def chain(self, strategies: Sequence[Strategy]) -> tuple[str | None, str]:
-        """Return the text after this chain, or ``(None, reason)``."""
-        key = tuple(item.name for item in strategies)
+    def chain(
+        self, base: str, strategies: Sequence[Strategy],
+    ) -> tuple[str | None, str]:
+        """Return the text after ``strategies`` applied to ``base``.
+
+        A cached chain is only valid for the text it was built from, so a call
+        with a different base empties the cache instead of answering from it.
+        The comparison is by identity: every caller passes the text it holds,
+        and a copy with equal content has the same cost as a miss.
+        """
+        if base is not self._base:
+            self._base = base
+            self._done.clear()
+        # Identity keys: two strategies may share a name, and a name shared by
+        # a different strategy would otherwise answer with the wrong text.
+        key = tuple(id(item) for item in strategies)
         if key in self._done:
             return self._done[key]
         if len(strategies) == 1:
             strategy = strategies[0]
             try:
-                text = strategy.apply(self._base)
+                text = strategy.apply(base)
             except Exception as exc:
                 result: tuple[str | None, str] = (None, f"strategy raised: {exc}")
             else:
@@ -313,7 +329,7 @@ class _Applied:
                     None, f"{strategy.name} produced no text")
             self._done[key] = result
             return result
-        prefix, reason = self.chain(strategies[:-1])
+        prefix, reason = self.chain(base, strategies[:-1])
         if prefix is None:
             self._done[key] = (None, reason)
             return self._done[key]
@@ -335,7 +351,7 @@ def _evaluate_chain(
     strategies: Sequence[Strategy],
     validator: Callable[[str, str], tuple[bool, list[str]]],
     min_saved_bytes: int,
-    applied: _Applied | None = None,
+    applied: _Applied,
 ) -> tuple[Evaluation, str | None]:
     """Apply an ordered strategy chain, validating against the run's original.
 
@@ -346,8 +362,7 @@ def _evaluate_chain(
     """
     name = "+".join(item.name for item in strategies)
     started = time.monotonic()
-    cache = applied if applied is not None else _Applied(base)
-    candidate, reason = cache.chain(strategies)
+    candidate, reason = applied.chain(base, strategies)
     if candidate is None:
         elapsed = (time.monotonic() - started) * 1000.0
         return Evaluation(name, 0, elapsed, False, reason), None
@@ -423,6 +438,10 @@ def optimize(
                 accepted.append((evaluation, candidate))
         if not accepted:
             if combine and _size(current) <= PAIR_MAX_BYTES:
+                # One cache serves both phases: the triple phase runs only when
+                # no pair was accepted (``if not pairs``), so ``current`` cannot
+                # have moved between them. A caller that did pass another text
+                # would still be safe: the cache empties itself on a new base.
                 prefixes = _Applied(current)
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:

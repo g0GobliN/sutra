@@ -190,10 +190,14 @@ Inside the pair and triple phases each candidate is an ordered chain, and the
 strategies are pure functions of their input, so the combination phase applies
 every prefix once and reuses its text: three candidates cost three prefix
 applications plus six suffixes instead of two applications per ordered pair.
-The candidates, their order, their ranking and therefore the chosen text are
-unchanged; only the repeated applications disappear. A 42 KB payload in `beast`
-mode takes 56 ms instead of 128 ms on the same machine, with identical
-evaluations and identical output.
+The memo belongs to the text it was built from, and a chain asked about another
+text is recomputed instead of answered from the old one, so a shared cache
+cannot return a candidate built on a stale base. The candidates, their order,
+their ranking and therefore the chosen text are unchanged; only the repeated
+applications disappear. On a 43 KB pretty-printed JSON tool result (160 records,
+six candidates) in `beast` mode, a run takes 566 ms instead of 1535 ms: 426
+strategy applications become 162, with the same 156 evaluations and the same
+output (median of three five-run rounds, the two versions interleaved).
 
 The loop is fail-open: with `SUTRA_MODE=off` the diagram above does not execute
 at all, and a broken strategy or validator can only lose its own candidate,
