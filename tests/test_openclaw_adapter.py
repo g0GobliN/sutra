@@ -694,6 +694,18 @@ def test_a_save_only_lands_on_the_text_it_expected(paths):
     assert config.read_text(encoding="utf-8") == before
 
 
+def test_a_config_with_windows_line_endings_can_be_rewritten(paths):
+    """The comparison reads bytes, so a CRLF config is not 'someone else's edit'."""
+    _, config_dir, config = paths
+    config.write_bytes(b'{\r\n  "theme": "dark"\r\n}\r\n')
+
+    assert openclaw.install(python=sys.executable) == 0
+
+    value = json.loads(config.read_bytes().decode("utf-8"))
+    assert value["theme"] == "dark"
+    assert openclaw.plugin_path(config_dir).is_file()
+
+
 def test_the_copy_of_the_config_keeps_its_bytes(paths):
     """The copy is the file as the host wrote it, line endings and all."""
     _, config_dir, config = paths

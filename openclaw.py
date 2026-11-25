@@ -132,20 +132,34 @@ def config_file(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     return config_layout(config_path)[1]
 
 
-def _read_config_text(file: pathlib.Path) -> str | None:
-    """The config file's text, or None when the file does not exist.
+def _read_config_bytes(file: pathlib.Path) -> bytes | None:
+    """The config file's bytes, or None when the file does not exist.
 
     A file that exists but cannot be read raises: refusing to touch it is the
-    only honest answer, because SUTRA cannot restore text it never saw.
+    only honest answer, because SUTRA cannot restore text it never saw. The
+    bytes are kept as they are because a comparison against what is on disk must
+    not depend on how this platform translates newlines.
     """
     try:
-        return file.read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        # Callers catch OSError to refuse cleanly; a decode failure is the same
-        # refusal, not a traceback.
-        raise OSError(f"{file} is not UTF-8 text: {exc}") from exc
+        return file.read_bytes()
     except FileNotFoundError:
         return None
+
+
+def _decode_config(raw: bytes, file: pathlib.Path) -> str:
+    """The config as text, or a refusal a caller's ``except OSError`` reports."""
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        # A decode failure is a refusal, not a traceback: nothing can be edited
+        # in a file whose text cannot be known.
+        raise OSError(f"{file} is not UTF-8 text: {exc}") from exc
+
+
+def _read_config_text(file: pathlib.Path) -> str | None:
+    """The config file's text, or None when the file does not exist."""
+    raw = _read_config_bytes(file)
+    return None if raw is None else _decode_config(raw, file)
 
 
 def _names_plugin(value: dict, target: str | pathlib.Path) -> bool:
@@ -525,7 +539,8 @@ def install(*, dry_run: bool = False, python: str | None = None,
     # failure or an unusable shape is a refusal, not a rollback. A missing file
     # is an empty config the install may create.
     try:
-        config_text = _read_config_text(file)
+        config_bytes = _read_config_bytes(file)
+        config_text = None if config_bytes is None else _decode_config(config_bytes, file)
     except OSError as exc:
         print_error(f"sutra: cannot read {file} to update it safely: {exc}")
         return 1
@@ -588,8 +603,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 # The write only lands while the file still holds the text this
                 # run read: the comparison and the rename are one syscall apart,
                 # and a concurrent edit is reported instead of overwritten.
-                saved = _save_config(file, pending,
-                                     expect=config_text.encode("utf-8"))
+                saved = _save_config(file, pending, expect=config_bytes)
     except OSError as exc:
         # Roll back so a failed install never leaves a plugin the host cannot
         # discover: the next run would call it present and report success. The
@@ -665,7 +679,7 @@ def uninstall(*, dry_run: bool = False,
         return 0
     file = config_file(config_path)
     try:
-        original = _read_config_text(file)
+        original = _read_config_bytes(file)
     except OSError as exc:
         # Without the text there is nothing to put back if the removal fails.
         print_warning(f"sutra: cannot read {file} to update it safely: {exc}; "
@@ -696,7 +710,7 @@ def uninstall(*, dry_run: bool = False,
                         f"so no entries were changed")
             return 1
         try:
-            _new_file(file, original, mode=original_mode)
+            _new_bytes(file, original, mode=original_mode)
         except OSError as restore:
             print_error(f"sutra: could not remove {path}: {exc}; the config no longer "
                         f"names it ({restore})")
