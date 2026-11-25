@@ -176,8 +176,20 @@ def _names_plugin(value: dict, target: str | pathlib.Path) -> bool:
         return False
     if not isinstance(paths, list):
         return False
-    wanted = str(target)
-    return any(isinstance(item, str) and item == wanted for item in paths)
+    return any(isinstance(item, str) and _same_path(item, target) for item in paths)
+
+
+def _same_path(item: str, target: str | pathlib.Path) -> bool:
+    """True when two spellings name the same file.
+
+    The config stores the path as a string; resolving both sides means a
+    symlinked home or a relative spelling still matches the file the host will
+    load.
+    """
+    try:
+        return pathlib.Path(item).resolve() == pathlib.Path(str(target)).resolve()
+    except (OSError, RuntimeError):
+        return item == str(target)
 
 
 def named_in_config(config_path: str | pathlib.Path | None = None, *,
@@ -224,7 +236,7 @@ def _config_text(value: dict) -> str:
     return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
 
 
-def _backup_config(path: pathlib.Path) -> pathlib.Path | None:
+def _backup_config(path: pathlib.Path) -> tuple[pathlib.Path, bool] | None:
     """Copy the config a rewrite replaces; ``None`` when there is nothing to keep.
 
     A copy that cannot be made raises instead of returning ``None``: the rewrite
@@ -244,9 +256,10 @@ def _backup_config(path: pathlib.Path) -> pathlib.Path | None:
     digest = hashlib.sha256(raw).hexdigest()[:8]
     backup = path.with_name(f"{path.name}.{digest}.sutra-bak")
     if backup.is_file():
-        return backup
+        # Someone else's copy of the same text: the caller must not delete it.
+        return backup, False
     _new_bytes(backup, raw, mode=_file_mode(path))
-    return backup
+    return backup, True
 
 
 def _save_config(path: pathlib.Path, value: dict, *,
@@ -263,13 +276,16 @@ def _save_config(path: pathlib.Path, value: dict, *,
         mode = stat.S_IMODE(path.stat().st_mode)
     except OSError:
         mode = 0o600
-    backup = _backup_config(path)
+    made = _backup_config(path)
+    backup, created = made if made is not None else (None, False)
     try:
         _new_file(path, _config_text(value), mode=mode, expect=expect)
     except _ConfigChanged:
-        # The rewrite did not happen, so this copy describes text that is still
-        # in place: keeping it would leave a stray file per refused run.
-        if backup is not None:
+        # The rewrite did not happen, so a copy this run made describes text
+        # that is still in place: keeping it would leave a stray file per
+        # refused run. A copy that was already there belongs to someone else
+        # and stays.
+        if backup is not None and created:
             try:
                 backup.unlink()
             except OSError as cleanup:
@@ -644,7 +660,9 @@ def uninstall(*, dry_run: bool = False,
             cleaned = unregister(config_path, path=path)
         except (OSError, ValueError) as exc:
             print_warning(f"sutra: could not clean OpenClaw's config: {exc}; "
-                          f"{path} does not exist, but the host may still name it")
+                          f"{path} does not exist, but the host may still name it - "
+                          f"remove {PLUGIN_ID} from plugins.allow and {path} from "
+                          f"plugins.load.paths in {config_file(config_path)}")
             return 1
         if cleaned:
             print_info(f"sutra: took the plugin out of {config_file(config_path)}")
@@ -675,6 +693,10 @@ def uninstall(*, dry_run: bool = False,
         return 1
     if cleaned:
         print_info(f"sutra: took the plugin out of {config_file(config_path)}")
+    # The bytes the removal wrote, read now: the rollback below must detect an
+    # edit made after this point, and reading at rollback time would accept
+    # whatever is on disk by then.
+    written = _read_config_bytes(file) if cleaned else original
     try:
         path.unlink()
     except OSError as exc:
@@ -692,8 +714,7 @@ def uninstall(*, dry_run: bool = False,
         try:
             # The bytes to expect are what the removal wrote: a concurrent edit
             # after that point is detected instead of overwritten.
-            _new_bytes(file, original, mode=original_mode,
-                       expect=_read_config_bytes(file))
+            _new_bytes(file, original, mode=original_mode, expect=written)
         except OSError as restore:
             print_error(f"sutra: could not remove {path}: {exc}; the config no longer "
                         f"names it ({restore})")

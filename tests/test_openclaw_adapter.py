@@ -613,6 +613,45 @@ def test_install_stops_when_it_cannot_keep_the_config_it_replaces(paths, monkeyp
     assert "no space left on device" in capsys.readouterr().err
 
 
+def test_a_refused_save_keeps_a_copy_it_did_not_make(paths, monkeypatch):
+    """A copy of this text can already exist; a refused run must not delete it."""
+    root, config_dir, config = paths
+    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    copy, created = openclaw._backup_config(config)
+    assert created and copy.is_file()
+
+    with pytest.raises(OSError):
+        openclaw._save_config(config, {"theme": "light"}, expect=b"some other text")
+
+    assert copy.is_file(), "the copy held text that is still in place"
+    assert json.loads(config.read_text(encoding="utf-8")) == {"theme": "dark"}
+
+
+def test_uninstall_does_not_overwrite_an_edit_made_while_it_removes(paths, monkeypatch):
+    """The rollback expects the text the removal wrote, not what is there now."""
+    root, config_dir, config = paths
+    plugin = openclaw.plugin_path(config_dir)
+    assert openclaw.install(python=sys.executable, config_path=config_dir) == 0
+    concurrent = '{"plugins": {"load": {"paths": ["elsewhere.js"]}}}\n'
+
+    original_unlink = pathlib.Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self == plugin:
+            # Another writer edits the config between the removal and the
+            # rollback, which is exactly the window the compare must catch.
+            config.write_text(concurrent, encoding="utf-8")
+            raise OSError("busy")
+        return original_unlink(self, *args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(pathlib.Path, "unlink", unlink)
+        result = openclaw.uninstall(config_path=config_dir)
+
+    assert result == 1
+    assert config.read_text(encoding="utf-8") == concurrent, "the edit survived"
+
+
 def test_unregister_leaves_an_entry_it_cannot_trace_to_its_own_file(paths, capsys):
     """Another tree's install owns that entry; removing it disables that one."""
     _, config_dir, config = paths
