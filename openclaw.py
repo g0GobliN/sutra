@@ -136,6 +136,18 @@ def _read_config_text(file: pathlib.Path) -> str | None:
         return None
 
 
+def _names_plugin(value: dict, target: str | pathlib.Path) -> bool:
+    """True when a parsed config names ``target`` in ``plugins.load.paths``."""
+    try:
+        paths = value["plugins"]["load"]["paths"]
+    except (KeyError, TypeError):
+        return False
+    if not isinstance(paths, list):
+        return False
+    wanted = str(target)
+    return any(isinstance(item, str) and item == wanted for item in paths)
+
+
 def named_in_config(config_path: str | pathlib.Path | None = None, *,
                     path: pathlib.Path | None = None) -> bool:
     """True when the host config names the plugin in ``plugins.load.paths``.
@@ -148,14 +160,7 @@ def named_in_config(config_path: str | pathlib.Path | None = None, *,
         value = _load_config(config_file(config_path))
     except (OSError, ValueError):
         return False
-    try:
-        paths = value["plugins"]["load"]["paths"]
-    except (KeyError, TypeError):
-        return False
-    if not isinstance(paths, list):
-        return False
-    target = str(path if path is not None else plugin_path(config_path))
-    return any(isinstance(item, str) and item == target for item in paths)
+    return _names_plugin(value, path if path is not None else plugin_path(config_path))
 
 
 def _parse_config(text: str, path: pathlib.Path) -> dict:
@@ -170,10 +175,14 @@ def _parse_config(text: str, path: pathlib.Path) -> dict:
 
 
 def _load_config(path: pathlib.Path) -> dict:
-    """Read the config as a JSON object; a missing file is an empty config."""
+    """Read the config as a JSON object; only a missing file is empty.
+
+    Any other read failure raises: treating an unreadable config as empty would
+    let a write replace a file SUTRA could not see.
+    """
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError:
+    except FileNotFoundError:
         return {}
     return _parse_config(text, path)
 
@@ -290,7 +299,21 @@ def configured(config_path: str | pathlib.Path | None = None) -> bool:
     return MARKER in text
 
 
-def _new_file(path: pathlib.Path, text: str, *, mode: int = 0o600) -> None:
+def _file_mode(path: pathlib.Path) -> int | None:
+    """The file's permission bits, or None when they cannot be read."""
+    try:
+        return stat.S_IMODE(path.stat().st_mode)
+    except OSError:
+        return None
+
+
+def _new_file(path: pathlib.Path, text: str, *, mode: int | None = 0o600) -> None:
+    """Replace ``path`` with ``text``; ``mode=None`` keeps the file's own mode."""
+    if mode is None:
+        try:
+            mode = stat.S_IMODE(path.stat().st_mode)
+        except OSError:
+            mode = 0o600
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=path.name + ".",
                                      suffix=".tmp")
@@ -308,15 +331,21 @@ def _new_file(path: pathlib.Path, text: str, *, mode: int = 0o600) -> None:
         raise
 
 
-def _restore_plugin(path: pathlib.Path, text: str | None, mode: int | None) -> None:
-    """Put the previous plugin text back when a write half-landed."""
+def _restore_plugin(path: pathlib.Path, text: str | None, mode: int | None) -> bool:
+    """Put the previous plugin text back when a write half-landed.
+
+    Returns whether the file now holds the previous text, so the caller can say
+    so instead of reporting a write failure over a changed file.
+    """
     if text is None or mode is None:
-        return
+        return False
     try:
-        if path.read_text(encoding="utf-8") != text:
-            _new_file(path, text, mode=mode)
+        if path.read_text(encoding="utf-8") == text:
+            return True
+        _new_file(path, text, mode=mode)
     except OSError:
-        pass
+        return False
+    return True
 
 
 def install(*, dry_run: bool = False, python: str | None = None,
@@ -342,6 +371,7 @@ def install(*, dry_run: bool = False, python: str | None = None,
     except OSError as exc:
         print_error(f"sutra: cannot read {file} to update it safely: {exc}")
         return 1
+    config_mode = _file_mode(file) if config_text is not None else None
     if config_text is not None:
         try:
             _apply_registration(_parse_config(config_text, file), path)
@@ -370,7 +400,10 @@ def install(*, dry_run: bool = False, python: str | None = None,
         except OSError as exc:
             # The write is atomic, so the previous plugin is still in place; a
             # half-landed replacement is put back from the copy read above.
-            _restore_plugin(path, previous_text, previous_mode)
+            if not _restore_plugin(path, previous_text, previous_mode):
+                print_error(f"sutra: could not write {path}: {exc}; "
+                            f"the previous plugin was not put back")
+                return 1
             print_error(f"sutra: could not write {path}: {exc}")
             return 1
     else:
@@ -394,18 +427,13 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 path.unlink(missing_ok=True)
             if config_text is not None:
                 # A partial register may have changed the file; put back
-                # exactly what the host had before this run. This also covers a
-                # file the host already named the plugin in, since the text is
-                # the pre-run text either way.
-                _new_file(file, config_text)
+                # exactly what the host had before this run, at the mode it had.
+                _new_file(file, config_text, mode=config_mode)
             else:
                 # The run started with no config, so any file that now exists
-                # was created by this run and must not outlive it.
-                unregister(config_path, path=path)
-            if existed:
-                # The backup belongs to the file this run wrote; make it hold
-                # the text that survived, not the build that was discarded.
-                _new_file(pathlib.Path(str(backup)), previous_text or "")
+                # was created by this run and must not outlive it. Removing it
+                # is the only end state with nothing half-written in it.
+                file.unlink(missing_ok=True)
         except (OSError, ValueError) as restore:
             where = f"the backup is still at {backup}" if existed else "no file exists"
             print_error(
@@ -439,7 +467,7 @@ def uninstall(*, dry_run: bool = False,
         try:
             if unregister(config_path, path=path):
                 print_info(f"sutra: took the plugin out of {config_file(config_path)}")
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             print_warning(f"sutra: could not clean OpenClaw's config: {exc}")
         print_info(f"sutra: {path} does not exist; nothing to uninstall")
         return 0
@@ -707,12 +735,11 @@ def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None =
     block = value.get("plugins")
     if not isinstance(block, dict):
         return _check("config", "fail", f"{file} has no plugins block")
-    load = block.get("load")
-    paths = load.get("paths") if isinstance(load, dict) else None
     # doctor() may be pointed at a plugin file explicitly; the canonical
-    # install location is still what install() names, so accept either.
-    wanted = {str(plugin), str(plugin_path(config_path))}
-    named = isinstance(paths, list) and any(item in wanted for item in paths)
+    # install location is still what install() names, so accept either. The
+    # predicate is discovery's own, so the two cannot disagree.
+    named = any(_names_plugin(value, candidate)
+                for candidate in {plugin, plugin_path(config_path)})
     allow = block.get("allow")
     allowed = isinstance(allow, list) and PLUGIN_ID in allow
     if named and allowed:

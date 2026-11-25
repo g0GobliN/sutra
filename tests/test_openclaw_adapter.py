@@ -363,7 +363,10 @@ def test_the_host_named_config_file_decides_where_the_plugin_goes(tmp_path, monk
     assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home") == 0
     assert plugin_out.is_file()
     # The entry lands in the file the host reads, not in a sibling default name.
-    assert str(plugin_out) in named.read_text(encoding="utf-8")
+    written = json.loads(named.read_text(encoding="utf-8"))
+    assert written["theme"] == "dark", "the host's own keys must survive"
+    assert str(plugin_out) in written["plugins"]["load"]["paths"]
+    assert written["plugins"]["allow"] == ["sutra"]
     assert not (tree / "openclaw.json").exists()
 
 
@@ -377,6 +380,67 @@ def test_an_explicit_config_directory_wins_over_the_environment(tmp_path, monkey
 
     assert openclaw.config_layout(chosen) == (
         chosen, chosen / "openclaw.json", chosen / "plugins" / "sutra.js")
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX permission bits are what this asserts")
+def test_a_rollback_keeps_the_config_file_mode_and_the_backup(tmp_path, monkeypatch, capsys):
+    """Restoring the text must not quietly re-mode a file the user owns."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    config.chmod(0o644)
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.parent.mkdir(parents=True)
+    previous = openclaw.render(python="/usr/bin/python3", home=tmp_path / "home")
+    plugin.write_text(previous + "\n// older build\n", encoding="utf-8")
+    original = plugin.read_text(encoding="utf-8")
+
+    def refuse_save(_file, _value):
+        raise OSError("the config became read-only")
+    monkeypatch.setattr(openclaw, "_save_config", refuse_save)
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir) == 1
+    capsys.readouterr()
+    assert stat.S_IMODE(config.stat().st_mode) == 0o644
+    assert plugin.read_text(encoding="utf-8") == original
+    (backup,) = list(plugin.parent.glob("sutra.js.bak-*"))
+    assert backup.read_text(encoding="utf-8") == original, (
+        "the backup describes the file that survived, not the build that was discarded")
+
+
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="file modes do not make a file unreadable on Windows")
+def test_register_refuses_an_unreadable_config_instead_of_replacing_it(tmp_path, monkeypatch):
+    """An unreadable config is not an empty one: writing would destroy it."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    config.chmod(0o000)
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    try:
+        with pytest.raises(OSError):
+            openclaw.register(config_dir)
+    finally:
+        config.chmod(0o600)
+    assert config.read_text(encoding="utf-8") == '{"theme": "dark"}\n'
+
+
+def test_uninstall_without_the_plugin_survives_a_malformed_config(tmp_path, monkeypatch, capsys):
+    """The no-file branch reports, and never repairs by rewriting what it cannot parse."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    config = config_dir / "openclaw.json"
+    config.write_text("{not json", encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+
+    assert openclaw.uninstall(config_path=config_dir) == 0
+    assert "nothing to uninstall" in capsys.readouterr().out
+    assert config.read_text(encoding="utf-8") == "{not json"
 
 
 @pytest.mark.skipif(sys.platform == "win32",

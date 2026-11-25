@@ -218,7 +218,12 @@ a live OpenCode model session.
 `<config>/plugins/sutra.js`. The config directory defaults to `~/.openclaw`, can
 be redirected with `SUTRA_OPENCLAW_CONFIG`, and otherwise follows the parent of
 `OPENCLAW_CONFIG_PATH`; that variable also names the config file the host reads,
-so the entry is written where OpenClaw will look for it. No host process is needed
+so the entry is written where OpenClaw will look for it. That config file is a
+JSON document SUTRA edits structurally, so the entry is added by rewriting it as
+JSON with two-space indentation: the values and key order survive, hand-written
+whitespace and comments do not, and the file keeps its own permission bits. An
+install refuses to start when that file exists but cannot be read or cannot take
+the entry, rather than writing and rolling back. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file
