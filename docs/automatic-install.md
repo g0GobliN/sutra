@@ -229,11 +229,15 @@ text the rewrite replaced is kept beside it as
 whole-file rewrite is the only way to add one entry and the file belongs to the
 host. The name carries a digest of the text it holds, so each distinct text is
 kept exactly once: a later rewrite after the host has edited its config adds a
-second copy instead of burying the first. A directory passed explicitly decides
-the whole layout, and the install warns when `OPENCLAW_CONFIG_PATH` names a
-different file, because the entry would land where the host does not look.
+second copy instead of burying the first. `OPENCLAW_CONFIG_PATH` decides the file
+whether or not a directory is named, because only the host knows which file it
+opens: a directory argument or `SUTRA_OPENCLAW_CONFIG` moves where the plugin
+goes, and the entry still lands in the file the host reads.
 `doctor` reads the same layout, so pass it the same `--config-path` the install
-used; its `config` check names the file it looked at when the entry is missing. An
+used; its `config` check names the file it looked at when the entry is missing.
+Its `entry` check requires the SUTRA marker and then runs the plugin's
+`register()` against a recording context, so a plugin that loads but throws
+while wiring itself up is reported before the host starts. An
 install refuses to start when that file exists but cannot be read or cannot take
 the entry, rather than writing and rolling back, and it stops before the rewrite
 when that copy cannot be made. The rewrite replaces the file only while it still

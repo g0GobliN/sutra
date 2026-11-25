@@ -33,6 +33,9 @@ def paths(tmp_path, monkeypatch):
     config.write_text('{\n  "theme": "dark"\n}\n', encoding="utf-8")
     # SUTRA_OPENCLAW_CONFIG should point to the config directory, not the file
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    # The host-named file wins over the derived one, so an ambient value would
+    # send every test's entry to the same real file.
+    monkeypatch.delenv("OPENCLAW_CONFIG_PATH", raising=False)
     # Add openclaw binary to PATH so shutil.which("openclaw") finds it
     oc_bin = "/tmp/oc-home/node_modules/.bin"
     monkeypatch.setenv("PATH", f"{oc_bin}:{os.environ.get('PATH', '')}")
@@ -372,16 +375,18 @@ def test_the_host_named_config_file_decides_where_the_plugin_goes(tmp_path, monk
     assert not (tree / "openclaw.json").exists()
 
 
-def test_an_explicit_config_directory_wins_over_the_environment(tmp_path, monkeypatch):
+def test_an_explicit_config_directory_wins_over_the_named_tree(tmp_path, monkeypatch):
+    """The argument decides where the plugin goes; only the host knows its file."""
     chosen = tmp_path / "chosen"
     chosen.mkdir()
     elsewhere = tmp_path / "elsewhere"
     elsewhere.mkdir()
-    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(elsewhere / "custom.json"))
+    named = elsewhere / "custom.json"
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(named))
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(elsewhere))
 
     assert openclaw.config_layout(chosen) == (
-        chosen, chosen / "openclaw.json", chosen / "plugins" / "sutra.js")
+        chosen, named, chosen / "plugins" / "sutra.js")
 
 
 @pytest.mark.skipif(sys.platform == "win32",
@@ -807,18 +812,20 @@ def test_a_second_install_keeps_each_text_it_replaced(paths):
     assert any('"light"' in text for text in texts)
 
 
-def test_install_says_so_when_the_named_file_is_not_the_one_it_uses(paths, tmp_path,
-                                                                  monkeypatch, capsys):
-    """An explicit directory wins, and the install warns where the host reads."""
+def test_an_explicit_directory_still_writes_the_file_the_host_names(paths, tmp_path,
+                                                                    monkeypatch):
+    """The argument moves the plugin; the entry goes where the host reads."""
     _, config_dir, _ = paths
     elsewhere = tmp_path / "elsewhere" / "openclaw.json"
-    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(elsewhere))
 
     assert openclaw.install(python=sys.executable, config_path=config_dir) == 0
-    out = capsys.readouterr().out
-    assert "OPENCLAW_CONFIG_PATH names" in out
     assert (config_dir / "openclaw.json").is_file()
-    assert not elsewhere.exists()
+
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(elsewhere))
+    elsewhere.parent.mkdir(parents=True, exist_ok=True)
+    assert openclaw.install(python=sys.executable, config_path=config_dir) == 0
+    assert elsewhere.is_file(), "the host reads this file, so the entry belongs in it"
+    assert str(config_dir / "plugins" / "sutra.js") in elsewhere.read_text(encoding="utf-8")
 
 
 def test_the_entry_declares_the_host_contract_and_hides_the_wrapper(paths):

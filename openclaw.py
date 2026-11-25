@@ -89,32 +89,30 @@ def config_layout(config_path: str | pathlib.Path | None = None
     Every other helper reads this one resolution, so an install, the doctor,
     and discovery cannot disagree about which tree or file they mean:
 
-    * an explicit ``config_path`` names SUTRA's config directory *and* the file
-      in it, and wins over both variables: a caller that names a tree means that
-      tree, so the environment cannot redirect the file elsewhere;
-    * ``SUTRA_OPENCLAW_CONFIG`` names the same directory for the environment;
-    * ``OPENCLAW_CONFIG_PATH`` names the file the host reads, and its parent
-      is the tree SUTRA writes into unless the directory was named otherwise;
-    * otherwise ``~/.openclaw``.
+    * an explicit ``config_path`` names SUTRA's config directory, and wins over
+      ``SUTRA_OPENCLAW_CONFIG``;
+    * ``SUTRA_OPENCLAW_CONFIG`` names that directory for the environment;
+    * otherwise the tree is the parent of ``OPENCLAW_CONFIG_PATH``, or
+      ``~/.openclaw`` when that variable is unset.
 
-    The host-named file always wins over the derived ``openclaw.json``: a
-    directory variable says where the plugin goes, and only the host knows which
-    file it reads. Deriving the file from the directory in that case would name
-    the plugin in a file the host never opens.
+    ``OPENCLAW_CONFIG_PATH`` names the file the host reads, so it decides the
+    file whether or not a directory was named: a directory variable says where
+    the plugin goes, and only the host knows which file it opens. Writing the
+    entry anywhere else would name the plugin in a file nothing reads, so the
+    tree and the file are resolved independently and a pair that differs is a
+    legitimate layout rather than a mistake.
     """
-    named: pathlib.Path | None = None
+    env_file = os.environ.get("OPENCLAW_CONFIG_PATH")
+    named: pathlib.Path | None = pathlib.Path(env_file).expanduser() if env_file else None
+    override = os.environ.get("SUTRA_OPENCLAW_CONFIG")
     if config_path is not None:
         tree = pathlib.Path(config_path).expanduser()
+    elif override:
+        tree = pathlib.Path(override).expanduser()
+    elif named is not None:
+        tree = named.parent
     else:
-        env_file = os.environ.get("OPENCLAW_CONFIG_PATH")
-        named = pathlib.Path(env_file).expanduser() if env_file else None
-        override = os.environ.get("SUTRA_OPENCLAW_CONFIG")
-        if override:
-            tree = pathlib.Path(override).expanduser()
-        elif named is not None:
-            tree = named.parent
-        else:
-            tree = pathlib.Path.home() / ".openclaw"
+        tree = pathlib.Path.home() / ".openclaw"
     file = named if named is not None else tree / "openclaw.json"
     return tree, file, tree / "plugins" / PLUGIN_NAME
 
@@ -534,13 +532,6 @@ def install(*, dry_run: bool = False, python: str | None = None,
     if up_to_date and _config_names_plugin(file, path):
         print_info(f"sutra: {path} already has the current OpenClaw plugin; nothing to do")
         return 0
-    # An explicit directory decides the whole layout, but the host reads the file
-    # OPENCLAW_CONFIG_PATH names. Naming the plugin somewhere the host never looks
-    # is worth a warning rather than a silent divergence.
-    named = os.environ.get("OPENCLAW_CONFIG_PATH")
-    if config_path is not None and named and pathlib.Path(named).expanduser() != file:
-        print_warning(f"sutra: OPENCLAW_CONFIG_PATH names {named}; this install uses "
-                      f"{file} because the config directory was given explicitly")
     # Prove the config can take the entry before anything is written: a read
     # failure or an unusable shape is a refusal, not a rollback. A missing file
     # is an empty config the install may create.
@@ -910,6 +901,27 @@ if (shape.id !== "sutra" || shape.register !== "function" || shape.contracts?.to
   console.error(JSON.stringify(shape))
   process.exit(2)
 }
+// The shape alone says nothing about whether the plugin can wire itself up, so
+// hand register a context that records instead of injecting: nothing spawns, and
+// a plugin whose register throws is reported here rather than at host startup.
+const recorded = { hooks: [], tools: [] }
+const context = {
+  api: {
+    on(event) { recorded.hooks.push(event) },
+    registerTool(tool) { recorded.tools.push(tool) },
+  },
+  logger: { info() {}, warn() {}, error() {} },
+}
+try {
+  entry.register(context)
+} catch (error) {
+  console.error("register threw: " + (error?.message ?? String(error)))
+  process.exit(3)
+}
+if (recorded.hooks.length === 0 && recorded.tools.length === 0) {
+  console.error("register wired up nothing")
+  process.exit(4)
+}
 """
 
 
@@ -944,9 +956,14 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
         return _check("entry", "fail", f"the plugin could not be loaded: {exc}")
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no output").strip()[-200:]
-        if '"id"' in detail and '"sutra"' not in detail:
+        if result.returncode == 2:
+            if '"id"' in detail and '"sutra"' not in detail:
+                return _check("entry", "fail",
+                              f"the plugin loads under a different id: {detail}")
             return _check("entry", "fail",
-                          f"the plugin loads under a different id: {detail}")
+                          f"the plugin loads but does not declare its contract: {detail}")
+        if result.returncode == 3:
+            return _check("entry", "fail", f"the plugin's register() throws: {detail}")
         return _check("entry", "fail", f"the plugin loads but registers nothing: {detail}")
     return _check("entry", "pass", "loads under require() with register() and contracts.tools")
 

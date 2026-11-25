@@ -174,6 +174,41 @@ def test_an_entry_that_loads_without_registering_is_reported(tmp_path):
 
     check = openclaw._entry_check(esm, node)
     assert check["status"] == "fail", check
+    assert "does not declare its contract" in check["detail"]
+
+
+def test_an_entry_whose_register_throws_is_reported(tmp_path):
+    """The shape says nothing about wiring up; the probe runs register itself."""
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    plugin = tmp_path / "sutra.js"
+    plugin.write_text(
+        openclaw.MARKER + "\nmodule.exports = { id: 'sutra', contracts: { tools: true },"
+        " register() { throw new Error('no context') } }\n",
+        encoding="utf-8")
+
+    check = openclaw._entry_check(plugin, node)
+    assert check["status"] == "fail", check
+    assert "register() throws" in check["detail"]
+
+
+def test_an_entry_that_registers_nothing_is_reported(tmp_path):
+    node = shutil.which("node")
+    if node is None:
+        import pytest
+
+        pytest.skip("node is not installed")
+    plugin = tmp_path / "sutra.js"
+    plugin.write_text(
+        openclaw.MARKER + "\nmodule.exports = { id: 'sutra', contracts: { tools: true },"
+        " register() {} }\n",
+        encoding="utf-8")
+
+    check = openclaw._entry_check(plugin, node)
+    assert check["status"] == "fail", check
     assert "registers nothing" in check["detail"]
 
 
