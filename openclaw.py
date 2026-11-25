@@ -140,6 +140,10 @@ def _read_config_text(file: pathlib.Path) -> str | None:
     """
     try:
         return file.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        # Callers catch OSError to refuse cleanly; a decode failure is the same
+        # refusal, not a traceback.
+        raise OSError(f"{file} is not UTF-8 text: {exc}") from exc
     except FileNotFoundError:
         return None
 
@@ -212,23 +216,27 @@ def _backup_config(path: pathlib.Path) -> pathlib.Path | None:
     if not path.is_file():
         return None
     raw = path.read_bytes()
-    # The copy is named after the text it holds, so every distinct text gets its
-    # own file: a second rewrite keeps the host's edited text instead of burying
-    # it under the first copy, and the same text is never copied twice.
+    # The copy is named after the bytes it holds, so every distinct text gets
+    # its own file: a second rewrite keeps the host's edited text instead of
+    # burying it under the first copy, and the same text is never copied twice.
+    # The bytes are written as they are, so the copy does not depend on the
+    # file being text SUTRA can decode.
     digest = hashlib.sha256(raw).hexdigest()[:8]
     backup = path.with_name(f"{path.name}.{digest}.sutra-bak")
     if backup.is_file():
         return backup
-    _new_file(backup, raw.decode("utf-8"), mode=_file_mode(path))
+    _new_bytes(backup, raw, mode=_file_mode(path))
     return backup
 
 
-def _save_config(path: pathlib.Path, value: dict) -> pathlib.Path | None:
+def _save_config(path: pathlib.Path, value: dict, *,
+                 expect: bytes | None = None) -> pathlib.Path | None:
     """Replace the host config atomically, keeping the file's own mode.
 
     Returns the copy of the text this rewrite replaced. The file is JSON and a
     whole rewrite loses hand-written spacing, key order and any comment a host
-    tolerates, so the copy is what the user needs back.
+    tolerates, so the copy is what the user needs back. ``expect`` makes the
+    replacement a compare-and-swap; see ``_new_bytes``.
     """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
@@ -236,7 +244,7 @@ def _save_config(path: pathlib.Path, value: dict) -> pathlib.Path | None:
     except OSError:
         mode = 0o600
     backup = _backup_config(path)
-    _new_file(path, _config_text(value), mode=mode)
+    _new_file(path, _config_text(value), mode=mode, expect=expect)
     return backup
 
 
@@ -252,14 +260,19 @@ def _create_config(path: pathlib.Path, value: dict) -> None:
     data = _config_text(value).encode("utf-8")
     handle = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        while data:
-            written = os.write(handle, data)
-            if written <= 0:
-                raise OSError(f"could not write {path}: the write made no progress")
-            data = data[written:]
-        os.fsync(handle)
-    finally:
-        os.close(handle)
+        with os.fdopen(handle, "wb") as stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException as exc:
+        # The exclusive create proved the file is this run's; a half-written one
+        # is not a config, so it goes rather than being left unparsable. A
+        # failed removal is reported instead of hidden.
+        try:
+            _discard(path)
+        except OSError as cleanup:
+            raise OSError(f"{path} was left half-written ({exc}); {cleanup}") from exc
+        raise
 
 
 def _plugins_block(value: dict) -> dict:
@@ -320,18 +333,16 @@ def _apply_removal(value: dict, target: pathlib.Path) -> bool:
         if isinstance(paths, list) and str(target) in paths:
             load["paths"] = [item for item in paths if item != str(target)]
             changed = True
-    # The allowed id is dropped whenever nothing that loads it remains, not only
-    # when this call removed a path: a file written by a failed install, or a
-    # path removed by hand, would otherwise leave an id behind that the next
-    # install inherits without having created it. Every file SUTRA writes is
-    # named ``sutra.js``, so a remaining path with that name is this same plugin.
+    # The id goes only when this call removed the path it belongs to, and only
+    # when no other load path still names a plugin file. ``plugins.allow`` is a
+    # permission list, not a loader: an id left without a path is harmless,
+    # while dropping an id another mechanism needs disables that install.
     allow = block.get("allow")
     remaining = load.get("paths") if isinstance(load, dict) else None
     still_installed = (isinstance(remaining, list)
                        and any(_is_plugin_file(item) for item in remaining))
-    if isinstance(allow, list) and PLUGIN_ID in allow and not still_installed:
+    if changed and isinstance(allow, list) and PLUGIN_ID in allow and not still_installed:
         block["allow"] = [item for item in allow if item != PLUGIN_ID]
-        changed = True
     return changed
 
 
@@ -414,8 +425,34 @@ def _file_mode(path: pathlib.Path) -> int | None:
         return None
 
 
-def _new_file(path: pathlib.Path, text: str, *, mode: int | None = 0o600) -> None:
+class _ConfigChanged(OSError):
+    """The host config changed between the read and the write."""
+
+
+def _discard(path: pathlib.Path) -> None:
+    """Remove a file this run created; a failure here is worth reporting."""
+    try:
+        path.unlink()
+    except OSError as exc:
+        raise OSError(f"could not remove {path}: {exc}") from exc
+
+
+def _new_file(path: pathlib.Path, text: str, *, mode: int | None = 0o600,
+              expect: bytes | None = None) -> None:
     """Replace ``path`` with ``text``; ``mode=None`` keeps the file's own mode."""
+    _new_bytes(path, text.encode("utf-8"), mode=mode, expect=expect)
+
+
+def _new_bytes(path: pathlib.Path, data: bytes, *, mode: int | None = 0o600,
+               expect: bytes | None = None) -> None:
+    """Replace ``path`` with ``data``, keeping its mode unless one is given.
+
+    ``expect`` makes the replacement a compare-and-swap: the file is replaced
+    only while it still holds those bytes, checked with the rename as the very
+    next step. A writer that lands in the one syscall between them still wins;
+    POSIX has no portable compare-and-swap for a rename, so that window is
+    documented rather than pretended away.
+    """
     if mode is None:
         try:
             mode = stat.S_IMODE(path.stat().st_mode)
@@ -427,8 +464,15 @@ def _new_file(path: pathlib.Path, text: str, *, mode: int | None = 0o600) -> Non
     try:
         if hasattr(os, "fchmod"):
             os.fchmod(fd, mode)
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(text)
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
+        if expect is not None:
+            try:
+                current = path.read_bytes()
+            except OSError:
+                current = None
+            if current != expect:
+                raise _ConfigChanged(f"{path} changed while SUTRA was writing it")
         os.replace(temporary, path)
     except BaseException:
         try:
@@ -532,31 +576,6 @@ def install(*, dry_run: bool = False, python: str | None = None,
             return 1
     saved = None
     created = False
-    if changed and config_text is not None:
-        # Compare and swap: replace the file only while it still holds the text
-        # this run read. A concurrent edit is reported instead of overwritten,
-        # and there is nothing to put back on failure - the write is one
-        # `os.replace` of a complete temp file, so the old text stays in place.
-        try:
-            current = _read_config_text(file)
-        except OSError as exc:
-            current = None
-            refused = f"cannot re-read {file} before updating it: {exc}"
-        else:
-            refused = (f"{file} changed while SUTRA was installing"
-                       if current != config_text else None)
-        if refused is not None:
-            try:
-                if existed:
-                    _restore_plugin(path, previous_text, previous_mode)
-                else:
-                    path.unlink()
-            except OSError as restore:
-                print_error(f"sutra: {refused}; the plugin was not named and could "
-                            f"not be removed ({restore})")
-                return 1
-            print_error(f"sutra: {refused}; the plugin was not named")
-            return 1
     try:
         if changed:
             if config_text is None:
@@ -566,7 +585,11 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 _create_config(file, pending)
                 created = True
             else:
-                saved = _save_config(file, pending)
+                # The write only lands while the file still holds the text this
+                # run read: the comparison and the rename are one syscall apart,
+                # and a concurrent edit is reported instead of overwritten.
+                saved = _save_config(file, pending,
+                                     expect=config_text.encode("utf-8"))
     except OSError as exc:
         # Roll back so a failed install never leaves a plugin the host cannot
         # discover: the next run would call it present and report success. The
@@ -667,8 +690,10 @@ def uninstall(*, dry_run: bool = False,
         # and could overwrite an edit made in between, or re-add entries the
         # user has since removed.
         if original is None:
-            print_error(f"sutra: could not remove {path}: {exc}; {file} did not exist "
-                        f"before the removal, so there is nothing to put back")
+            # Without a config file there were no entries to remove, so nothing
+            # was stripped and there is nothing to put back.
+            print_error(f"sutra: could not remove {path}: {exc}; {file} did not exist, "
+                        f"so no entries were changed")
             return 1
         try:
             _new_file(file, original, mode=original_mode)

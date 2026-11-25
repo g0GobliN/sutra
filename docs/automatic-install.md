@@ -237,8 +237,10 @@ used; its `config` check names the file it looked at when the entry is missing. 
 install refuses to start when that file exists but cannot be read or cannot take
 the entry, rather than writing and rolling back, and it stops before the rewrite
 when that copy cannot be made. The rewrite replaces the file only while it still
-holds the text the install read; when another process edits it in between, the
-install reports that and leaves the newer text alone. A config that does not exist yet is created
+holds the text the install read, compared immediately before the rename, so the
+window in which another writer could lose its change is one system call wide;
+when another process edits the file in between, the install reports that and
+leaves the newer text alone. A config that does not exist yet is created
 exclusively: if another process creates it during the install, SUTRA reports
 that and leaves the file alone instead of overwriting it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up

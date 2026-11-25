@@ -399,7 +399,7 @@ def test_a_rollback_keeps_the_config_file_mode_and_the_backup(tmp_path, monkeypa
     plugin.write_text(previous + "\n// older build\n", encoding="utf-8")
     original = plugin.read_text(encoding="utf-8")
 
-    def refuse_save(_file, _value):
+    def refuse_save(_file, _value, **_kwargs):
         raise OSError("the config became read-only")
     monkeypatch.setattr(openclaw, "_save_config", refuse_save)
 
@@ -504,7 +504,7 @@ def test_a_failed_save_restores_the_previous_plugin_and_keeps_its_backup(tmp_pat
 
     # The config is valid, so the install gets as far as writing the plugin;
     # only the config save fails, which is what the rollback must survive.
-    def refuse_save(_file, _value):
+    def refuse_save(_file, _value, **_kwargs):
         raise OSError("the config became read-only")
     monkeypatch.setattr(openclaw, "_save_config", refuse_save)
     plugin.parent.mkdir(parents=True)
@@ -664,22 +664,70 @@ def test_a_config_edited_during_the_install_is_left_alone(paths, monkeypatch, ca
 
     assert openclaw.install(python=sys.executable) == 1
     err = capsys.readouterr().err
-    assert "changed while SUTRA was installing" in err
+    assert "changed while SUTRA was writing it" in err
     assert config.read_text(encoding="utf-8") == '{"theme": "concurrent"}\n'
     assert not openclaw.plugin_path(config_dir).exists()
 
 
-def test_unregister_clears_an_allow_entry_nothing_loads(paths):
-    """An id no remaining path loads is SUTRA's to remove, whether or not it wrote it."""
+def test_unregister_leaves_an_id_it_did_not_remove(paths):
+    """`allow` is a permission list, not a loader: an id without a path is
+    harmless, while dropping one another mechanism needs disables that install."""
     _, config_dir, config = paths
     config.write_text(json.dumps(
         {"plugins": {"load": {"paths": []}, "allow": ["sutra", "other"]}},
         indent=2) + "\n", encoding="utf-8")
 
-    assert openclaw.unregister(config_path=config_dir) is True
+    assert openclaw.unregister(config_path=config_dir) is False
 
     assert json.loads(config.read_text(encoding="utf-8")) == {
-        "plugins": {"load": {"paths": []}, "allow": ["other"]}}
+        "plugins": {"load": {"paths": []}, "allow": ["sutra", "other"]}}
+
+
+def test_a_save_only_lands_on_the_text_it_expected(paths):
+    """Compare and swap: a file that moved on is left exactly as it is."""
+    _, config_dir, config = paths
+    before = config.read_text(encoding="utf-8")
+
+    with pytest.raises(openclaw._ConfigChanged):
+        openclaw._save_config(config, {"theme": "light"}, expect=b"another text\n")
+
+    assert config.read_text(encoding="utf-8") == before
+
+
+def test_the_copy_of_the_config_keeps_its_bytes(paths):
+    """The copy is the file as the host wrote it, line endings and all."""
+    _, config_dir, config = paths
+    config.write_bytes(b'{"theme": "dark"}\r\n')
+
+    backup = openclaw._save_config(config, {"theme": "light"})
+
+    assert backup is not None
+    assert backup.read_bytes() == b'{"theme": "dark"}\r\n'
+
+
+def test_install_refuses_a_config_it_cannot_decode(paths, capsys):
+    """A config that is not UTF-8 is a clean refusal, not a traceback."""
+    _, config_dir, config = paths
+    config.write_bytes(b'{"theme": "d\xffark"}\n')
+
+    assert openclaw.install(python=sys.executable) == 1
+    err = capsys.readouterr().err
+    assert "is not UTF-8 text" in err
+    assert not openclaw.plugin_path(config_dir).exists()
+
+
+def test_a_half_written_config_is_removed(tmp_path, monkeypatch):
+    """The exclusive create owns the file, so a failed write must not leave it."""
+    config = tmp_path / "openclaw.json"
+
+    def failing_fsync(_fd):
+        raise OSError("the disk went away")
+    monkeypatch.setattr(openclaw.os, "fsync", failing_fsync)
+
+    with pytest.raises(OSError):
+        openclaw._create_config(config, {"theme": "dark"})
+
+    assert not config.exists()
 
 
 def test_a_second_install_keeps_each_text_it_replaced(paths):
