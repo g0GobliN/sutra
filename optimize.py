@@ -305,12 +305,11 @@ class _Applied:
     ) -> tuple[str | None, str]:
         """Return the text after ``strategies`` applied to ``base``.
 
-        A cached chain is only valid for the text it was built from, so a call
-        with a different base empties the cache instead of answering from it.
-        The comparison is by identity: every caller passes the text it holds,
-        and a copy with equal content has the same cost as a miss.
+        A cached chain is only valid for the text it was built from, so the
+        base is compared by value: an equal copy of the text answers from the
+        cache, and a different text empties it instead of answering from it.
         """
-        if base is not self._base:
+        if base != self._base:
             self._base = base
             self._done.clear()
         # Identity keys: two strategies may share a name, and a name shared by

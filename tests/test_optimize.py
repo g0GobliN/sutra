@@ -318,8 +318,13 @@ def test_a_pair_applies_each_prefix_once():
 
 def test_the_search_result_does_not_change_with_the_prefix_memo():
     """Memoised and recomputed combination searches return the same text."""
+    cache_sizes: list[int] = []
+
     class Uncached(optimize._Applied):
         def chain(self, base, strategies):
+            # A recomputed chain never touches the memo: record how much of it
+            # was there on every call, and require it to stay empty.
+            cache_sizes.append(len(self._done))
             text = base
             for strategy in strategies:
                 try:
@@ -344,6 +349,9 @@ def test_the_search_result_does_not_change_with_the_prefix_memo():
     assert memoised.applied == recomputed.applied
     assert [item.name for item in memoised.evaluations] == [
         item.name for item in recomputed.evaluations]
+    # The recomputation never read an entry either: a hit is only possible for
+    # a key some earlier call wrote, and every call saw an empty memo.
+    assert cache_sizes and set(cache_sizes) == {0}, cache_sizes
 
 
 def test_a_cache_answers_only_for_the_text_it_was_built_from():
@@ -380,6 +388,28 @@ def test_a_cache_answers_only_for_the_text_it_was_built_from():
     seen.clear()
     assert cache.chain(second_base, strategies) == ("CD", "")
     assert seen == [], "the rebound cache stopped answering for its own text"
+
+
+def test_an_equal_copy_of_the_text_answers_from_the_cache():
+    """The cache is bound to the text's value, not to the string object."""
+    Strategy = optimize.Strategy
+    seen: list[str] = []
+
+    def stage(name, transform):
+        def apply(text):
+            seen.append(name)
+            return transform(text)
+        return Strategy(name=name, apply=apply, note="counts its applications")
+
+    strip = stage("strip", lambda text: text.replace("-", ""))
+    cache = optimize._Applied("a-b")
+    assert cache.chain("a-b", (strip,)) == ("ab", "")
+    assert seen == ["strip"]
+    seen.clear()
+    copy = "a-b\n".rstrip("\n")
+    assert copy == cache._base and copy is not cache._base
+    assert cache.chain(copy, (strip,)) == ("ab", "")
+    assert seen == [], "an equal copy was recomputed instead of answered"
 
 
 def test_a_triple_phase_never_follows_an_accepted_pair():
