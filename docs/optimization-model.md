@@ -199,6 +199,22 @@ six candidates) in `beast` mode, a run makes 426 strategy applications before
 the change and 162 after, for the same 156 candidate evaluations in the same
 order and the same output bytes — about 2.8× faster on the machine measured.
 
+The combination phase is also skipped when no single strategy changed the text
+in that pass. A chain applies each strategy to the text the previous one
+produced, so if every single strategy left the text alone then every pair and
+every triple does too, and enumerating them could only reproduce the input. The
+decision reads the evaluations the pass has already made, over the same
+strategy sequence the pair and triple loops iterate, so it costs no extra
+application and cannot disagree with the chains that would run. On a 37 KiB
+JSON-lines payload where the five formatting strategies and the language pass
+all found nothing, the skip took a `beast` run from 162 strategy applications
+and 156 candidate evaluations to six applications and seven evaluations, with
+byte-identical output. A single that rewrites the text without saving enough
+still opens the phase, so a pair that only shrinks the payload after a rejected
+rewrite is still found; with `min_saved_bytes=0` the skip is not taken, because
+an unchanged candidate counts as accepted there and the recorded `applied` list
+would change.
+
 The loop is fail-open: with `SUTRA_MODE=off` the diagram above does not execute
 at all, and a broken strategy or validator can only lose its own candidate,
 never the caller's text.
