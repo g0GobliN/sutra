@@ -652,6 +652,22 @@ def test_uninstall_does_not_overwrite_an_edit_made_while_it_removes(paths, monke
     assert config.read_text(encoding="utf-8") == concurrent, "the edit survived"
 
 
+def test_an_entry_written_with_another_spelling_is_not_duplicated(paths):
+    """A config can already name the same file through a relative spelling."""
+    root, config_dir, config = paths
+    plugin = openclaw.plugin_path(config_dir)
+    relative = os.path.relpath(plugin, os.getcwd())
+    config.write_text(json.dumps({"plugins": {"load": {"paths": [relative]}}}),
+                      encoding="utf-8")
+
+    changed, _ = openclaw.register(config_path=config_dir)
+
+    assert changed is True, "the allow list still needs the id"
+    written = json.loads(config.read_text(encoding="utf-8"))
+    assert written["plugins"]["load"]["paths"] == [relative], "no second entry"
+    assert written["plugins"]["allow"] == ["sutra"]
+
+
 def test_unregister_leaves_an_entry_it_cannot_trace_to_its_own_file(paths, capsys):
     """Another tree's install owns that entry; removing it disables that one."""
     _, config_dir, config = paths

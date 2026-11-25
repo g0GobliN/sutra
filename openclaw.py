@@ -345,7 +345,10 @@ def _apply_registration(value: dict, target: pathlib.Path) -> bool:
     if not isinstance(allow, list):
         raise ValueError("the config's plugins.allow value is not a list")
     changed = False
-    if str(target) not in paths:
+    # Compared the same way the lookup does, so a config that already names the
+    # plugin through a symlinked or relative spelling is not given a second
+    # entry on every run.
+    if not any(isinstance(item, str) and _same_path(item, target) for item in paths):
         paths.append(str(target))
         changed = True
     if PLUGIN_ID not in allow:
@@ -370,9 +373,13 @@ def _apply_removal(value: dict, target: pathlib.Path) -> bool:
     if not isinstance(load, dict):
         return False
     paths = load.get("paths")
-    if not isinstance(paths, list) or str(target) not in paths:
+    if not isinstance(paths, list):
         return False
-    load["paths"] = [item for item in paths if item != str(target)]
+    kept = [item for item in paths
+            if not (isinstance(item, str) and _same_path(item, target))]
+    if len(kept) == len(paths):
+        return False
+    load["paths"] = kept
     return True
 
 
