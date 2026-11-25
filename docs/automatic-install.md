@@ -223,7 +223,10 @@ from the command line, because only the host knows which file it opens; the
 entry therefore lands where OpenClaw will look for it. That config file is a
 JSON document SUTRA edits structurally, so the entry is added by rewriting it as
 JSON with two-space indentation: the values and key order survive, hand-written
-whitespace and comments do not, and the file keeps its own permission bits. An
+whitespace and comments do not, and the file keeps its own permission bits. The
+text the rewrite replaced is kept beside it as `openclaw.json.sutra-bak`, and
+the install prints that path, because a whole-file rewrite is the only way to
+add one entry and the file belongs to the host. An
 install refuses to start when that file exists but cannot be read or cannot take
 the entry, rather than writing and rolling back. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up

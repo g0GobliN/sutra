@@ -198,14 +198,35 @@ def _config_text(value: dict) -> str:
     return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
 
 
-def _save_config(path: pathlib.Path, value: dict) -> None:
-    """Replace the host config atomically, keeping the file's own mode."""
+def _backup_config(path: pathlib.Path) -> pathlib.Path | None:
+    """Copy the config a rewrite replaces; ``None`` when there is nothing to keep."""
+    if not path.is_file():
+        return None
+    backup = path.with_name(f"{path.name}.sutra-bak")
+    try:
+        shutil.copy2(path, backup)
+    except OSError:
+        # No copy, but the rewrite itself may still succeed; the caller reports
+        # the absence rather than pretending a backup exists.
+        return None
+    return backup
+
+
+def _save_config(path: pathlib.Path, value: dict) -> pathlib.Path | None:
+    """Replace the host config atomically, keeping the file's own mode.
+
+    Returns the copy of the text this rewrite replaced. The file is JSON and a
+    whole rewrite loses hand-written spacing, key order and any comment a host
+    tolerates, so the copy is what the user needs back.
+    """
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         mode = stat.S_IMODE(path.stat().st_mode)
     except OSError:
         mode = 0o600
+    backup = _backup_config(path)
     _new_file(path, _config_text(value), mode=mode)
+    return backup
 
 
 def _plugins_block(value: dict) -> dict:
@@ -447,9 +468,14 @@ def install(*, dry_run: bool = False, python: str | None = None,
         except OSError as exc:
             print_error(f"sutra: could not write {path}: {exc}")
             return 1
+    # Sample the file's existence here, before the save: another `sutra install`
+    # writes byte-identical text, so text equality alone cannot tell a config
+    # this run created from one it merely agrees with.
+    config_absent = not file.exists()
+    saved = None
     try:
         if changed:
-            _save_config(file, pending)
+            saved = _save_config(file, pending)
     except OSError as exc:
         # Roll back so a failed install never leaves a plugin the host cannot
         # discover: the next run would call it present and report success. The
@@ -470,9 +496,9 @@ def install(*, dry_run: bool = False, python: str | None = None,
                 # A partial save may have changed the file; put back exactly
                 # what the host had before this run, at the mode it had.
                 _new_file(file, config_text, mode=config_mode)
-            elif not _discard_config(file, pending_text):
-                # The run started with no config, so only a file holding this
-                # run's own text may be removed.
+            elif config_absent and not _discard_config(file, pending_text):
+                # Only a file that was absent when this run saved, and that
+                # still holds this run's own text, can be one this run created.
                 print_warning(f"sutra: {file} was not created by this run; leaving it in place")
         except OSError as restore:
             where = f"the backup is still at {backup}" if existed else "no file exists"
@@ -493,6 +519,8 @@ def install(*, dry_run: bool = False, python: str | None = None,
         print_success(f"sutra: named the plugin in {file} so OpenClaw discovers and loads it")
     else:
         print_info(f"sutra: {file} already names the plugin")
+    if saved is not None:
+        print_info(f"sutra: the config before this change is at {saved}")
     print_info("sutra: restart OpenClaw so it loads the plugin")
     return 0
 
@@ -530,7 +558,19 @@ def uninstall(*, dry_run: bool = False,
         return 1
     if cleaned:
         print_info(f"sutra: took the plugin out of {config_file(config_path)}")
-    path.unlink()
+    try:
+        path.unlink()
+    except OSError as exc:
+        # The entries are already gone, so failing here would leave a host that
+        # no longer names a file the user cannot delete. Put them back instead.
+        try:
+            register(config_path, path=path)
+        except (OSError, ValueError) as restore:
+            print_error(f"sutra: could not remove {path}: {exc}; the config no longer "
+                        f"names it ({restore})")
+            return 1
+        print_error(f"sutra: could not remove {path}: {exc}; it is still named in the config")
+        return 1
     print_success(f"sutra: removed the OpenClaw plugin at {path}")
     return 0
 
@@ -915,7 +955,12 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None,
     resolved = _doctor_interpreter(text, checks, report)
     if resolved is None:
         return report
-    _doctor_runtime(*resolved, node=node, checks=checks)
+    try:
+        _doctor_runtime(*resolved, node=node, checks=checks)
+    except OSError as exc:
+        # A temporary directory or the package link can fail before any probe
+        # appends a check; the report is still finished with that failure in it.
+        checks.append(_check("runtime", "fail", f"the protocol probe did not run: {exc}"))
     failed = any(check["status"] == "fail" for check in checks)
     skipped = any(check["status"] == "skip" for check in checks)
     report["status"] = "fail" if failed else ("partial" if skipped else "pass")

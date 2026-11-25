@@ -8,6 +8,7 @@ scripted-provider run documented in docs/automatic-install.md.
 
 import json
 import os
+import pathlib
 import shlex
 import shutil
 import stat
@@ -627,7 +628,7 @@ def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
                                            home=config_dir / "home"), encoding="utf-8")
     script = (
         "const plugin = require(process.env.SUTRA_PLUGIN);"
-        "console.log(JSON.stringify({keys: Object.keys(plugin),"
+        "process.stdout.write(JSON.stringify({keys: Object.keys(plugin),"
         " wrapper: typeof plugin.Sutra}))"
     )
     result = subprocess.run([node, "-e", script], capture_output=True, text=True,
@@ -637,3 +638,82 @@ def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
     seen = json.loads(result.stdout)
     assert seen["wrapper"] == "function"
     assert "Sutra" not in seen["keys"]
+
+
+def test_a_rewrite_keeps_a_copy_of_the_config_it_replaced(paths, capsys):
+    """A whole-file rewrite is the only way to add an entry, so the text goes first."""
+    _, config_dir, config = paths
+    before = config.read_text(encoding="utf-8")
+
+    backup = openclaw._save_config(config, {"theme": "light"})
+
+    assert backup is not None
+    assert backup.name == f"{config.name}.sutra-bak"
+    assert backup.read_text(encoding="utf-8") == before
+    assert json.loads(config.read_text(encoding="utf-8")) == {"theme": "light"}
+
+
+def test_install_reports_the_config_it_replaced(paths, capsys):
+    _, config_dir, _config = paths
+
+    assert openclaw.install(python="/usr/bin/python3", home=paths[0] / "home",
+                            config_path=config_dir) == 0
+
+    out = capsys.readouterr().out
+    assert ".sutra-bak" in out
+
+
+def test_a_plugin_that_cannot_be_removed_stays_named_in_the_config(paths, monkeypatch, capsys):
+    """The entries are the only thing that finds the file, so they go back."""
+    root, config_dir, config = paths
+    assert openclaw.install(python="/usr/bin/python3", home=root / "home",
+                            config_path=config_dir) == 0
+    plugin = openclaw.plugin_path(config_dir)
+    capsys.readouterr()
+
+    def refuse_to_delete(_self, *_args, **_kwargs):
+        raise OSError("read-only file system")
+    with monkeypatch.context() as patch:
+        patch.setattr(pathlib.Path, "unlink", refuse_to_delete)
+        assert openclaw.uninstall(config_path=config_dir) == 1
+
+    assert plugin.is_file()
+    assert str(plugin) in config.read_text(encoding="utf-8")
+    assert "still named in the config" in capsys.readouterr().err
+
+
+def test_doctor_finishes_when_the_protocol_probe_cannot_start(paths, monkeypatch, capsys):
+    """A probe that cannot set itself up still leaves a complete report."""
+    root, config_dir, _config = paths
+    assert openclaw.install(python="/usr/bin/python3", home=root / "home",
+                            config_path=config_dir) == 0
+
+    def cannot_start(*_args, **_kwargs):
+        raise OSError("no temporary directory")
+    monkeypatch.setattr(openclaw, "_doctor_runtime", cannot_start)
+
+    report = openclaw.doctor(path=str(openclaw.plugin_path(config_dir)),
+                             node="/nonexistent/node")
+
+    runtime = next(item for item in report["checks"] if item["name"] == "runtime")
+    assert runtime["status"] == "fail"
+    assert "no temporary directory" in runtime["detail"]
+    assert report["status"] == "fail"
+
+
+def test_doctor_agrees_with_an_install_whose_tree_and_file_differ(tmp_path, monkeypatch):
+    """Both sides read one resolver, so a split tree and file still agree."""
+    tree = tmp_path / "tree"
+    named = tmp_path / "host" / "openclaw.json"
+    named.parent.mkdir()
+    named.write_text('{"plugins": {"load": {"paths": []}, "allow": []}}\n', encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(tree))
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(named))
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home") == 0
+
+    assert json.loads(named.read_text(encoding="utf-8"))["plugins"]["load"]["paths"] == [
+        str(tree / "plugins" / "sutra.js")]
+    report = openclaw.doctor(node="/nonexistent/node")
+    config_check = next(item for item in report["checks"] if item["name"] == "config")
+    assert config_check["status"] == "pass"
