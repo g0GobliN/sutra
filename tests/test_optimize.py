@@ -316,30 +316,31 @@ def test_a_pair_applies_each_prefix_once():
     assert len(calls) == 12, calls
 
 
+class _UncachedApplied(optimize._Applied):
+    """An ``_Applied`` whose memo never answers and never grows."""
+
+    lookups = 0
+
+    def _lookup(self, key):
+        type(self).lookups += 1
+        return None
+
+    def _store(self, key, value):
+        pass
+
+
 def test_the_search_result_does_not_change_with_the_prefix_memo():
-    """Memoised and recomputed combination searches return the same text."""
-    cache_sizes: list[int] = []
+    """A cache that always misses returns the same search result.
 
-    class Uncached(optimize._Applied):
-        def chain(self, base, strategies):
-            # A recomputed chain never touches the memo: record how much of it
-            # was there on every call, and require it to stay empty.
-            cache_sizes.append(len(self._done))
-            text = base
-            for strategy in strategies:
-                try:
-                    text = strategy.apply(text)
-                except Exception as exc:
-                    return None, f"strategy raised: {exc}"
-                if not isinstance(text, str) or not text:
-                    return None, f"{strategy.name} produced no text"
-            return text, ""
-
+    Only the memo access is disabled: ``chain`` still performs its base check
+    and recurses through the same application path as the real cache.
+    """
     text = "alpha  \r\nbeta\n\n\n\n\ngamma\ndelta\n" * 6
     memoised = optimize.optimize(text, max_passes=4, combine=True, triple=True)
 
     real = optimize._Applied
-    optimize._Applied = Uncached
+    _UncachedApplied.lookups = 0
+    optimize._Applied = _UncachedApplied
     try:
         recomputed = optimize.optimize(text, max_passes=4, combine=True, triple=True)
     finally:
@@ -349,17 +350,45 @@ def test_the_search_result_does_not_change_with_the_prefix_memo():
     assert memoised.applied == recomputed.applied
     assert [item.name for item in memoised.evaluations] == [
         item.name for item in recomputed.evaluations]
-    # The recomputation never read an entry either: a hit is only possible for
-    # a key some earlier call wrote, and every call saw an empty memo.
-    assert cache_sizes and set(cache_sizes) == {0}, cache_sizes
+    assert _UncachedApplied.lookups > 0, "the uncached run never probed its memo"
+
+
+def test_a_pair_accepted_before_the_triple_phase_matches_a_fresh_search():
+    """A run that accepts a pair before the triple phase matches a fresh run."""
+    def remove(token):
+        return lambda text: text.replace(token, "")
+
+    strategies = (
+        optimize.Strategy("aa", remove("aa")),
+        optimize.Strategy("bb", remove("bb")),
+        optimize.Strategy("cc", remove("cc")),
+    )
+    text = "xx aa yy bb zz\n"
+    kwargs = dict(strategies=strategies, min_saved_bytes=3, max_passes=1,
+                  combine=True, triple=True)
+    memoised = optimize.optimize(text, **kwargs)
+
+    real = optimize._Applied
+    optimize._Applied = _UncachedApplied
+    try:
+        recomputed = optimize.optimize(text, **kwargs)
+    finally:
+        optimize._Applied = real
+
+    assert memoised.applied == ("aa+bb",), memoised.applied
+    assert memoised.text == recomputed.text
+    assert memoised.applied == recomputed.applied
+    assert [item.name for item in memoised.evaluations] == [
+        item.name for item in recomputed.evaluations]
+    assert all(item.name.count("+") < 2 for item in memoised.evaluations)
 
 
 def test_a_cache_answers_only_for_the_text_it_was_built_from():
-    """A cache built for one text never answers with that text for another.
+    """A second text is computed fresh and the first text keeps its memo.
 
-    A memo keyed only by strategy names would return ``"AB"`` for the second
-    base, so the assertions below check what the strategies were asked to
-    transform, not only the text that came back.
+    A cache that rebound its base would lose the first text's prefix, and a
+    memo keyed only by strategy names would answer the second text with text
+    built from the first. Both are excluded here.
     """
     Strategy = optimize.Strategy
     seen: list[tuple[str, str]] = []
@@ -385,13 +414,16 @@ def test_a_cache_answers_only_for_the_text_it_was_built_from():
     # first base cached, instead of answering from the first text.
     assert cache.chain(second_base, strategies) == ("CD", "")
     assert seen == [("strip", "c d"), ("upper", "c d"), ("squeeze", "C D")]
+    assert cache._base == first_base, "the cache rebound to another text"
     seen.clear()
-    assert cache.chain(second_base, strategies) == ("CD", "")
-    assert seen == [], "the rebound cache stopped answering for its own text"
+    # The first text still answers from its own memo: the call about the other
+    # text did not discard or poison it.
+    assert cache.chain(first_base, strategies) == ("AB", "")
+    assert seen == [], "a call with another text discarded the original memo"
 
 
 def test_an_equal_copy_of_the_text_answers_from_the_cache():
-    """The cache is bound to the text's value, not to the string object."""
+    """The cache is bound to the text value, not to the string object."""
     Strategy = optimize.Strategy
     seen: list[str] = []
 
@@ -402,14 +434,17 @@ def test_an_equal_copy_of_the_text_answers_from_the_cache():
         return Strategy(name=name, apply=apply, note="counts its applications")
 
     strip = stage("strip", lambda text: text.replace("-", ""))
-    cache = optimize._Applied("a-b")
-    assert cache.chain("a-b", (strip,)) == ("ab", "")
+    base = "a-b"
+    cache = optimize._Applied(base)
+    assert cache.chain(base, (strip,)) == ("ab", "")
     assert seen == ["strip"]
     seen.clear()
-    copy = "a-b\n".rstrip("\n")
-    assert copy == cache._base and copy is not cache._base
+    copy = "".join(["a-", "b"])
+    assert copy == base and copy is not base
     assert cache.chain(copy, (strip,)) == ("ab", "")
     assert seen == [], "an equal copy was recomputed instead of answered"
+    assert cache.chain(base, (strip,)) == ("ab", "")
+    assert seen == [], "the cache stopped answering for its own text"
 
 
 def test_a_triple_phase_never_follows_an_accepted_pair():

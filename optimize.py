@@ -292,8 +292,11 @@ class _Applied:
     its text leaves the candidates, their order and their ranking exactly as
     they were.
 
-    The memo is valid for one text only: a call with a different base empties
-    it instead of answering with text computed from the old one.
+    The cache answers only for the text it was built from: ``_base`` is set in
+    the constructor and never reassigned. A chain asked about any other text is
+    computed from that text without consulting or extending the memo, so a
+    prefix built on a stale base can never be served and the memo for the
+    original text stays intact.
     """
 
     def __init__(self, base: str) -> None:
@@ -305,43 +308,54 @@ class _Applied:
     ) -> tuple[str | None, str]:
         """Return the text after ``strategies`` applied to ``base``.
 
-        A cached chain is only valid for the text it was built from, so the
-        base is compared by value: an equal copy of the text answers from the
-        cache, and a different text empties it instead of answering from it.
+        The base is compared by value: an equal copy of the cached text answers
+        from the memo, while any different text is computed fresh and leaves
+        the memo untouched.
         """
         if base != self._base:
-            self._base = base
-            self._done.clear()
+            return self._apply(base, strategies, memo=False)
+        return self._apply(self._base, strategies, memo=True)
+
+    def _lookup(self, key: tuple[int, ...]) -> tuple[str | None, str] | None:
+        """Return the memoised result for ``key``, or ``None`` on a miss."""
+        return self._done.get(key)
+
+    def _store(self, key: tuple[int, ...], value: tuple[str | None, str]) -> None:
+        """Remember ``value`` for ``key``."""
+        self._done[key] = value
+
+    def _apply(
+        self, base: str, strategies: Sequence[Strategy], *, memo: bool,
+    ) -> tuple[str | None, str]:
+        """Apply a chain to ``base``, consulting the memo only when allowed."""
         # Identity keys: two strategies may share a name, and a name shared by
         # a different strategy would otherwise answer with the wrong text.
         key = tuple(id(item) for item in strategies)
-        if key in self._done:
-            return self._done[key]
+        if memo:
+            cached = self._lookup(key)
+            if cached is not None:
+                return cached
         if len(strategies) == 1:
-            strategy = strategies[0]
-            try:
-                text = strategy.apply(base)
-            except Exception as exc:
-                result: tuple[str | None, str] = (None, f"strategy raised: {exc}")
-            else:
-                result = (text, "") if isinstance(text, str) and text else (
-                    None, f"{strategy.name} produced no text")
-            self._done[key] = result
-            return result
-        prefix, reason = self.chain(base, strategies[:-1])
-        if prefix is None:
-            self._done[key] = (None, reason)
-            return self._done[key]
-        strategy = strategies[-1]
-        try:
-            text = strategy.apply(prefix)
-        except Exception as exc:
-            result = (None, f"strategy raised: {exc}")
+            result = self._apply_one(base, strategies[0])
         else:
-            result = (text, "") if isinstance(text, str) and text else (
-                None, f"{strategy.name} produced no text")
-        self._done[key] = result
+            prefix, reason = self._apply(base, strategies[:-1], memo=memo)
+            if prefix is None:
+                result = (None, reason)
+            else:
+                result = self._apply_one(prefix, strategies[-1])
+        if memo:
+            self._store(key, result)
         return result
+
+    @staticmethod
+    def _apply_one(base: str, strategy: Strategy) -> tuple[str | None, str]:
+        try:
+            text = strategy.apply(base)
+        except Exception as exc:
+            return None, f"strategy raised: {exc}"
+        if isinstance(text, str) and text:
+            return text, ""
+        return None, f"{strategy.name} produced no text"
 
 
 def _evaluate_chain(
@@ -439,8 +453,7 @@ def optimize(
             if combine and _size(current) <= PAIR_MAX_BYTES:
                 # One cache serves both phases: the triple phase runs only when
                 # no pair was accepted (``if not pairs``), so ``current`` cannot
-                # have moved between them. A caller that did pass another text
-                # would still be safe: the cache empties itself on a new base.
+                # have moved between them.
                 prefixes = _Applied(current)
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:
