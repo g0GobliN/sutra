@@ -365,4 +365,10 @@ const entry = {
 // it looks for `id` and `register(ctx)`. The SDK helper is optional and
 // needs top-level await, which require() cannot load.
 module.exports = entry
-module.exports.Sutra = Sutra
+// The wrapper is reachable by name for the tests and the doctor probe, but it
+// is non-enumerable: a host that walks the entry's keys must see only the
+// plugin contract it expects, not a second export on the same object.
+Object.defineProperty(module.exports, "Sutra", {
+  value: Sutra,
+  enumerable: false,
+})

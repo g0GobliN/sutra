@@ -88,22 +88,28 @@ def config_layout(config_path: str | pathlib.Path | None = None
     Every other helper reads this one resolution, so an install, the doctor,
     and discovery cannot disagree about which tree or file they mean:
 
-    * an explicit ``config_path`` names SUTRA's config directory;
+    * an explicit ``config_path`` names SUTRA's config directory, and wins
+      over both variables;
     * ``SUTRA_OPENCLAW_CONFIG`` names the same directory for the environment;
     * ``OPENCLAW_CONFIG_PATH`` names the file the host reads, and its parent
-      is the tree SUTRA writes into;
+      is the tree SUTRA writes into unless the directory was named otherwise;
     * otherwise ``~/.openclaw``.
+
+    The host-named file always wins over the derived ``openclaw.json``: a
+    directory variable says where the plugin goes, and only the host knows which
+    file it reads. Deriving the file from the directory in that case would name
+    the plugin in a file the host never opens.
     """
     named: pathlib.Path | None = None
     if config_path is not None:
         tree = pathlib.Path(config_path).expanduser()
     else:
-        override = os.environ.get("SUTRA_OPENCLAW_CONFIG")
         env_file = os.environ.get("OPENCLAW_CONFIG_PATH")
+        named = pathlib.Path(env_file).expanduser() if env_file else None
+        override = os.environ.get("SUTRA_OPENCLAW_CONFIG")
         if override:
             tree = pathlib.Path(override).expanduser()
-        elif env_file:
-            named = pathlib.Path(env_file).expanduser()
+        elif named is not None:
             tree = named.parent
         else:
             tree = pathlib.Path.home() / ".openclaw"
@@ -187,6 +193,11 @@ def _load_config(path: pathlib.Path) -> dict:
     return _parse_config(text, path)
 
 
+def _config_text(value: dict) -> str:
+    """The exact text a save writes, so a caller can recognise its own output."""
+    return json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+
+
 def _save_config(path: pathlib.Path, value: dict) -> None:
     """Replace the host config atomically, keeping the file's own mode."""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -194,8 +205,7 @@ def _save_config(path: pathlib.Path, value: dict) -> None:
         mode = stat.S_IMODE(path.stat().st_mode)
     except OSError:
         mode = 0o600
-    text = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
-    _new_file(path, text, mode=mode)
+    _new_file(path, _config_text(value), mode=mode)
 
 
 def _plugins_block(value: dict) -> dict:
@@ -251,10 +261,10 @@ def unregister(config_path: str | pathlib.Path | None = None, *, path: pathlib.P
     """Take the plugin file and id back out of the config; return whether it changed."""
     target = path if path is not None else plugin_path(config_path)
     file = config_file(config_path)
-    try:
-        value = _load_config(file)
-    except ValueError:
-        return False
+    # A config SUTRA cannot parse may still name the plugin. Reporting "nothing
+    # to change" would let a caller delete the file out from under a host that
+    # still points at it, so the parse error travels to the caller.
+    value = _load_config(file)
     block = value.get("plugins")
     if not isinstance(block, dict):
         return False
@@ -348,6 +358,25 @@ def _restore_plugin(path: pathlib.Path, text: str | None, mode: int | None) -> b
     return True
 
 
+def _discard_config(file: pathlib.Path, written: str | None) -> bool:
+    """Remove a config file this run created; leave a foreign one alone.
+
+    The text is compared first because the file may have been created by
+    something else after this run started: deleting it would destroy a config
+    SUTRA never wrote, which is worse than leaving half of an install behind.
+    """
+    try:
+        if file.read_text(encoding="utf-8") != written:
+            return False
+    except FileNotFoundError:
+        return True
+    try:
+        file.unlink()
+    except OSError:
+        return False
+    return True
+
+
 def install(*, dry_run: bool = False, python: str | None = None,
             home: str | pathlib.Path | None = None,
             config_path: str | pathlib.Path | None = None) -> int:
@@ -372,12 +401,18 @@ def install(*, dry_run: bool = False, python: str | None = None,
         print_error(f"sutra: cannot read {file} to update it safely: {exc}")
         return 1
     config_mode = _file_mode(file) if config_text is not None else None
-    if config_text is not None:
-        try:
-            _apply_registration(_parse_config(config_text, file), path)
-        except ValueError as exc:
-            print_error(f"sutra: cannot name the plugin in {file}: {exc}")
-            return 1
+    # Parse and extend the snapshot once, before anything is written: a read
+    # failure or an unusable shape is a refusal, not a rollback. The same value
+    # is what the write later saves, so naming the plugin never re-reads the
+    # file - a second read is a window in which another writer's config could
+    # be overwritten, and then deleted by the rollback.
+    try:
+        pending = _parse_config(config_text, file) if config_text is not None else {}
+        changed = _apply_registration(pending, path)
+    except ValueError as exc:
+        print_error(f"sutra: cannot name the plugin in {file}: {exc}")
+        return 1
+    pending_text = _config_text(pending)
     if dry_run:
         print_info(f"sutra: dry run, would write the OpenClaw plugin to {path} (no file was written)")
         return 0
@@ -413,8 +448,9 @@ def install(*, dry_run: bool = False, python: str | None = None,
             print_error(f"sutra: could not write {path}: {exc}")
             return 1
     try:
-        changed, file = register(config_path, path=path)
-    except (OSError, ValueError) as exc:
+        if changed:
+            _save_config(file, pending)
+    except OSError as exc:
         # Roll back so a failed install never leaves a plugin the host cannot
         # discover: the next run would call it present and report success. The
         # backup is moved last, so a failure here keeps the only copy on disk.
@@ -422,19 +458,23 @@ def install(*, dry_run: bool = False, python: str | None = None,
             # The file comes back first: if that fails, the config entries are
             # still there and the host can still find whatever it names.
             if existed and previous_text is not None and previous_mode is not None:
+                # `_new_file`, not `installer._write`: the latter copies the
+                # current file to a second timestamped backup, which would bury
+                # the run's only copy of the previous plugin. The backup already
+                # taken holds exactly this text, so it still describes the file
+                # sitting beside it.
                 _new_file(path, previous_text, mode=previous_mode)
             elif not existed:
                 path.unlink(missing_ok=True)
             if config_text is not None:
-                # A partial register may have changed the file; put back
-                # exactly what the host had before this run, at the mode it had.
+                # A partial save may have changed the file; put back exactly
+                # what the host had before this run, at the mode it had.
                 _new_file(file, config_text, mode=config_mode)
-            else:
-                # The run started with no config, so any file that now exists
-                # was created by this run and must not outlive it. Removing it
-                # is the only end state with nothing half-written in it.
-                file.unlink(missing_ok=True)
-        except (OSError, ValueError) as restore:
+            elif not _discard_config(file, pending_text):
+                # The run started with no config, so only a file holding this
+                # run's own text may be removed.
+                print_warning(f"sutra: {file} was not created by this run; leaving it in place")
+        except OSError as restore:
             where = f"the backup is still at {backup}" if existed else "no file exists"
             print_error(
                 f"sutra: could not name the plugin in OpenClaw's config: {exc}; "
@@ -465,10 +505,13 @@ def uninstall(*, dry_run: bool = False,
         # The entries outlive the file: clean them, or the host keeps a path
         # that nothing writes.
         try:
-            if unregister(config_path, path=path):
-                print_info(f"sutra: took the plugin out of {config_file(config_path)}")
+            cleaned = unregister(config_path, path=path)
         except (OSError, ValueError) as exc:
-            print_warning(f"sutra: could not clean OpenClaw's config: {exc}")
+            print_warning(f"sutra: could not clean OpenClaw's config: {exc}; "
+                          f"{path} does not exist, but the host may still name it")
+            return 1
+        if cleaned:
+            print_info(f"sutra: took the plugin out of {config_file(config_path)}")
         print_info(f"sutra: {path} does not exist; nothing to uninstall")
         return 0
     text = path.read_text(encoding="utf-8")
@@ -720,7 +763,8 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
     return _check("entry", "pass", "loads under require() with register() and contracts.tools")
 
 
-def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None = None) -> dict:
+def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None = None,
+                  *, canonical: bool = True) -> dict:
     """Is the plugin file actually named in the config OpenClaw reads?
 
     A file in ``<config>/plugins`` is inert until ``plugins.load.paths`` names it
@@ -735,11 +779,12 @@ def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None =
     block = value.get("plugins")
     if not isinstance(block, dict):
         return _check("config", "fail", f"{file} has no plugins block")
-    # doctor() may be pointed at a plugin file explicitly; the canonical
-    # install location is still what install() names, so accept either. The
-    # predicate is discovery's own, so the two cannot disagree.
-    named = any(_names_plugin(value, candidate)
-                for candidate in {plugin, plugin_path(config_path)})
+    # The canonical install location is what ``install`` names, so a plugin
+    # given by path is accepted either way. ``doctor`` that was pointed at an
+    # explicit file passes ``canonical=False``: the host loads that path or
+    # nothing, and accepting the canonical one would pass a file it never reads.
+    candidates = [plugin, plugin_path(config_path)] if canonical else [plugin]
+    named = any(_names_plugin(value, candidate) for candidate in candidates)
     allow = block.get("allow")
     allowed = isinstance(allow, list) and PLUGIN_ID in allow
     if named and allowed:
@@ -862,7 +907,7 @@ def doctor(*, path: str | pathlib.Path | None = None, node: str | None = None,
     text = _doctor_plugin_file(plugin, checks, report)
     if text is None:
         return report
-    checks.append(_config_check(plugin, config_path))
+    checks.append(_config_check(plugin, config_path, canonical=path is None))
     checks.append(_entry_check(plugin, node))
     host = shutil.which("openclaw")
     checks.append(_check("host", "pass" if host else "skip",

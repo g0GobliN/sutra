@@ -430,7 +430,7 @@ def test_register_refuses_an_unreadable_config_instead_of_replacing_it(tmp_path,
     assert config.read_text(encoding="utf-8") == '{"theme": "dark"}\n'
 
 
-def test_uninstall_without_the_plugin_survives_a_malformed_config(tmp_path, monkeypatch, capsys):
+def test_uninstall_without_the_plugin_reports_a_config_it_cannot_clean(tmp_path, monkeypatch, capsys):
     """The no-file branch reports, and never repairs by rewriting what it cannot parse."""
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
@@ -438,8 +438,8 @@ def test_uninstall_without_the_plugin_survives_a_malformed_config(tmp_path, monk
     config.write_text("{not json", encoding="utf-8")
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
 
-    assert openclaw.uninstall(config_path=config_dir) == 0
-    assert "nothing to uninstall" in capsys.readouterr().out
+    assert openclaw.uninstall(config_path=config_dir) == 1
+    assert "could not clean" in capsys.readouterr().out
     assert config.read_text(encoding="utf-8") == "{not json"
 
 
@@ -479,21 +479,6 @@ def test_install_refuses_an_unusable_config_before_writing_anything(tmp_path, mo
     assert config.read_text(encoding="utf-8") == original
 
 
-def test_a_failed_registration_rolls_the_plugin_back(tmp_path, monkeypatch):
-    config_dir = tmp_path / "openclaw"
-    config_dir.mkdir()
-    config = config_dir / "openclaw.json"
-    config.write_text('{"plugins": {"load": {"paths": "not-a-list"}}}\n', encoding="utf-8")
-    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
-
-    code = openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
-                            config_path=config_dir)
-    assert code == 1
-    # Nothing is left behind: a later install must not call this file present.
-    assert not openclaw.plugin_path(config_dir).exists()
-    assert "not-a-list" in config.read_text(encoding="utf-8")
-
-
 def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
@@ -509,7 +494,7 @@ def test_uninstall_clears_the_config_when_the_file_is_already_gone(tmp_path, mon
     assert not openclaw.named_in_config(config_dir)
 
 
-def test_a_failed_registration_restores_the_previous_plugin_and_keeps_its_backup(tmp_path, monkeypatch):
+def test_a_failed_save_restores_the_previous_plugin_and_keeps_its_backup(tmp_path, monkeypatch):
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
     (config_dir / "openclaw.json").write_text('{"theme": "dark"}\n', encoding="utf-8")
@@ -555,3 +540,100 @@ def test_uninstall_keeps_the_file_when_the_config_cannot_be_cleaned(tmp_path, mo
         assert plugin.exists()
     finally:
         config_dir.chmod(0o700)
+
+
+def test_the_host_named_file_wins_over_a_named_directory(tmp_path, monkeypatch):
+    """A directory variable says where the plugin goes; the host says which file it reads."""
+    plugin_tree = tmp_path / "plugins-tree"
+    plugin_tree.mkdir()
+    host = tmp_path / "host"
+    host.mkdir()
+    named = host / "custom.json"
+    named.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(plugin_tree))
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(named))
+
+    tree, file, plugin = openclaw.config_layout()
+    assert (tree, file, plugin) == (plugin_tree, named, plugin_tree / "plugins" / "sutra.js")
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home") == 0
+    written = json.loads(named.read_text(encoding="utf-8"))
+    assert str(plugin) in written["plugins"]["load"]["paths"]
+    assert not (plugin_tree / "openclaw.json").exists(), (
+        "the entry belongs in the file the host reads, not in one derived beside it")
+
+
+def test_a_failed_save_leaves_a_config_someone_else_created(tmp_path, monkeypatch, capsys):
+    """The rollback may remove only a file holding this run's own text."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    config = config_dir / "openclaw.json"
+    foreign = '{"theme": "light"}\n'
+
+    def create_then_fail(file, _value):
+        file.write_text(foreign, encoding="utf-8")
+        raise OSError("the config became read-only")
+    monkeypatch.setattr(openclaw, "_save_config", create_then_fail)
+
+    assert openclaw.install(python="/usr/bin/python3", home=tmp_path / "home",
+                            config_path=config_dir) == 1
+    out = capsys.readouterr().out
+    assert config.read_text(encoding="utf-8") == foreign, (
+        "a config this run did not write must survive the rollback")
+    assert not openclaw.plugin_path(config_dir).exists()
+    assert "not created by this run" in out
+
+
+def test_uninstall_keeps_the_plugin_when_the_config_cannot_be_parsed(tmp_path, monkeypatch, capsys):
+    """A config SUTRA cannot parse may still name the plugin, so the file stays."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    (config_dir / "openclaw.json").write_text("{not json", encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+    plugin = openclaw.plugin_path(config_dir)
+    plugin.parent.mkdir(parents=True)
+    plugin.write_text(openclaw.render(python="/usr/bin/python3",
+                                      home=tmp_path / "home"), encoding="utf-8")
+
+    assert openclaw.uninstall(config_path=config_dir) == 1
+    assert "could not clean" in capsys.readouterr().out
+    assert plugin.exists(), "the host may still point at this path"
+
+
+def test_the_config_check_requires_the_file_doctor_was_given(tmp_path, monkeypatch):
+    """Only the path the host loads counts when doctor was given one explicitly."""
+    config_dir = tmp_path / "openclaw"
+    config_dir.mkdir()
+    canonical = openclaw.plugin_path(config_dir)
+    (config_dir / "openclaw.json").write_text(json.dumps(
+        {"plugins": {"load": {"paths": [str(canonical)]}, "allow": ["sutra"]}}) + "\n",
+        encoding="utf-8")
+    monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
+
+    given = tmp_path / "somewhere" / "sutra.js"
+    assert openclaw._config_check(given, config_dir)["status"] == "pass"
+    assert openclaw._config_check(given, config_dir, canonical=False)["status"] == "fail"
+
+
+def test_the_entry_keeps_its_test_wrapper_out_of_its_keys(paths):
+    """The wrapper is reachable by name without becoming part of the plugin entry."""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node is not installed")
+    _, config_dir, _config = paths
+    plugin_file = config_dir / "entry.js"
+    plugin_file.write_text(openclaw.render(python=sys.executable,
+                                           home=config_dir / "home"), encoding="utf-8")
+    script = (
+        "const plugin = require(process.env.SUTRA_PLUGIN);"
+        "console.log(JSON.stringify({keys: Object.keys(plugin),"
+        " wrapper: typeof plugin.Sutra}))"
+    )
+    result = subprocess.run([node, "-e", script], capture_output=True, text=True,
+                            timeout=30,
+                            env=dict(os.environ, SUTRA_PLUGIN=str(plugin_file)))
+    assert result.returncode == 0, result.stderr
+    seen = json.loads(result.stdout)
+    assert seen["wrapper"] == "function"
+    assert "Sutra" not in seen["keys"]
