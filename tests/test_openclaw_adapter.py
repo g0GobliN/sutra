@@ -825,7 +825,9 @@ def test_an_explicit_directory_still_writes_the_file_the_host_names(paths, tmp_p
     elsewhere.parent.mkdir(parents=True, exist_ok=True)
     assert openclaw.install(python=sys.executable, config_path=config_dir) == 0
     assert elsewhere.is_file(), "the host reads this file, so the entry belongs in it"
-    assert str(config_dir / "plugins" / "sutra.js") in elsewhere.read_text(encoding="utf-8")
+    # Parsed, not matched as text: Windows stores the path with escaped separators.
+    written = json.loads(elsewhere.read_text(encoding="utf-8"))
+    assert str(config_dir / "plugins" / "sutra.js") in written["plugins"]["load"]["paths"]
 
 
 def test_the_entry_declares_the_host_contract_and_hides_the_wrapper(paths):
