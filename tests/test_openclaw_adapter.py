@@ -96,7 +96,8 @@ def test_uninstall_takes_the_config_entries_back(paths):
     assert not path.exists()
     value = json.loads(config.read_text(encoding="utf-8"))
     assert str(path) not in value["plugins"]["load"]["paths"]
-    assert "sutra" not in value["plugins"]["allow"]
+    assert value["plugins"]["allow"] == ["sutra"], (
+        "the id is a permission, not a loader: removing it can disable another install")
     assert value["theme"] == "dark"
 
 
@@ -711,15 +712,16 @@ def test_a_config_another_process_created_that_names_the_plugin_is_success(
     assert "names the plugin" in capsys.readouterr().out
 
 
-def test_unregister_leaves_an_id_it_did_not_remove(paths):
+def test_unregister_never_edits_the_allow_list(paths):
     """`allow` is a permission list, not a loader: an id without a path is
-    harmless, while dropping one another mechanism needs disables that install."""
+    harmless, while dropping one another install needs disables that one."""
     _, config_dir, config = paths
+    plugin = openclaw.plugin_path(config_dir)
     config.write_text(json.dumps(
-        {"plugins": {"load": {"paths": []}, "allow": ["sutra", "other"]}},
+        {"plugins": {"load": {"paths": [str(plugin)]}, "allow": ["sutra", "other"]}},
         indent=2) + "\n", encoding="utf-8")
 
-    assert openclaw.unregister(config_path=config_dir) is False
+    assert openclaw.unregister(config_path=config_dir) is True
 
     assert json.loads(config.read_text(encoding="utf-8")) == {
         "plugins": {"load": {"paths": []}, "allow": ["sutra", "other"]}}

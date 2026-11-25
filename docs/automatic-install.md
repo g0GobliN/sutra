@@ -251,7 +251,9 @@ to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file
 and leaves a backup, while a foreign `sutra.js` is refused. `sutra uninstall
---client openclaw` removes only that generated file.
+--client openclaw` removes only that generated file and its load path; it leaves
+`plugins.allow` alone, because the id is a permission rather than a loader and a
+second tree may rely on it.
 
 `test_openclaw_adapter.py` covers replacement, recovery through the real MCP
 server, pass-through, idempotence, fail-open and uninstall;

@@ -340,42 +340,26 @@ def _apply_registration(value: dict, target: pathlib.Path) -> bool:
     return changed
 
 
-def _is_plugin_file(item: str) -> bool:
-    """Whether a config entry names a file SUTRA writes: ``<tree>/plugins/sutra.js``."""
-    try:
-        return pathlib.PurePath(item).name == PLUGIN_NAME
-    except (TypeError, ValueError):
-        return False
-
-
 def _apply_removal(value: dict, target: pathlib.Path) -> bool:
     """Take the plugin path back out of a parsed config; return whether it changed.
 
-    The allowed id is kept while any other load path still names a plugin file:
-    an entry SUTRA cannot trace to the file it is removing may belong to another
-    tree's install, and removing it would disable that one instead.
+    Only the path this run owns is removed. ``plugins.allow`` is left exactly as
+    it is: it is a permission list, not a loader, so an id without a load path
+    grants nothing, while removing it can disable a plugin another tree or
+    another mechanism installed under the same id - and a config entry SUTRA
+    cannot trace to its own file has no safe interpretation.
     """
     block = value.get("plugins")
     if not isinstance(block, dict):
         return False
-    changed = False
     load = block.get("load")
-    if isinstance(load, dict):
-        paths = load.get("paths")
-        if isinstance(paths, list) and str(target) in paths:
-            load["paths"] = [item for item in paths if item != str(target)]
-            changed = True
-    # The id goes only when this call removed the path it belongs to, and only
-    # when no other load path still names a plugin file. ``plugins.allow`` is a
-    # permission list, not a loader: an id left without a path is harmless,
-    # while dropping an id another mechanism needs disables that install.
-    allow = block.get("allow")
-    remaining = load.get("paths") if isinstance(load, dict) else None
-    still_installed = (isinstance(remaining, list)
-                       and any(_is_plugin_file(item) for item in remaining))
-    if changed and isinstance(allow, list) and PLUGIN_ID in allow and not still_installed:
-        block["allow"] = [item for item in allow if item != PLUGIN_ID]
-    return changed
+    if not isinstance(load, dict):
+        return False
+    paths = load.get("paths")
+    if not isinstance(paths, list) or str(target) not in paths:
+        return False
+    load["paths"] = [item for item in paths if item != str(target)]
+    return True
 
 
 def register(config_path: str | pathlib.Path | None = None, *, path: pathlib.Path | None = None) -> tuple[bool, str]:
