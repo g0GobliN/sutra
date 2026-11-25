@@ -43,8 +43,10 @@ evidence, and a binary alone never upgrades a client's capability tier.
 
 OpenClaw is also detected from its generated plugin. `sutra install --client
 openclaw` is allowed before the host exists, so `<config>/plugins/sutra.js` is
-concrete evidence of the config tree; `<config>` defaults to `~/.openclaw` and
-honors `SUTRA_OPENCLAW_CONFIG`, while its config file is `<config>/openclaw.json`.
+concrete evidence of the config tree. `<config>` is `SUTRA_OPENCLAW_CONFIG` when
+set, otherwise the parent of `OPENCLAW_CONFIG_PATH` when the host names its own
+config file, otherwise `~/.openclaw`; the config file is `OPENCLAW_CONFIG_PATH`
+itself when set, otherwise `<config>/openclaw.json`.
 
 | Client | Tier when installed | Mechanism |
 |---|---|---|
@@ -213,13 +215,49 @@ a live OpenCode model session.
 ### OpenClaw
 
 `sutra install --client openclaw` generates
-`<config>/plugins/sutra.js`; the config directory defaults to `~/.openclaw`
-and can be redirected with `SUTRA_OPENCLAW_CONFIG`. No host process is needed
+`<config>/plugins/sutra.js`. The config directory defaults to `~/.openclaw`, can
+be redirected with `SUTRA_OPENCLAW_CONFIG`, and otherwise follows the parent of
+`OPENCLAW_CONFIG_PATH`. That variable names the config file the host reads
+whenever it is set, even when the directory came from `SUTRA_OPENCLAW_CONFIG` or
+from the command line, because only the host knows which file it opens; the
+entry therefore lands where OpenClaw will look for it. That config file is a
+JSON document SUTRA edits structurally, so the entry is added by rewriting it as
+JSON with two-space indentation: the values and key order survive, hand-written
+whitespace and comments do not, and the file keeps its own permission bits. The
+text the rewrite replaced is kept beside it as
+`openclaw.json.<digest>.sutra-bak`, and the install prints that path, because a
+whole-file rewrite is the only way to add one entry and the file belongs to the
+host. The name carries a digest of the text it holds, so each distinct text is
+kept exactly once: a later rewrite after the host has edited its config adds a
+second copy instead of burying the first. `OPENCLAW_CONFIG_PATH` decides the file
+whether or not a directory is named, because only the host knows which file it
+opens: a directory argument or `SUTRA_OPENCLAW_CONFIG` moves where the plugin
+goes, and the entry still lands in the file the host reads.
+`doctor` reads the same layout, so pass it the same `--config-path` the install
+used; its `config` check names the file it looked at when the entry is missing.
+Its `entry` check requires the SUTRA marker and then runs the plugin's
+`register()` against a recording context, so a plugin that loads but throws
+while wiring itself up is reported before the host starts. An
+install refuses to start when that file exists but cannot be read or cannot take
+the entry, rather than writing and rolling back, and it stops before the rewrite
+when that copy cannot be made. The rewrite replaces the file only while it still
+holds the text the install read, compared immediately before the rename, so the
+window in which another writer could lose its change is one system call wide;
+when another process edits the file in between, the install reports that and
+leaves the newer text alone. A config that does not exist yet is created
+exclusively: if another process creates it during the install, SUTRA reports
+that and leaves the file alone instead of overwriting it, and treats it as done
+when that file already names the plugin. A plugin file this run wrote stays in
+place when the config write fails, because the two writes are separate and a
+re-run will register it: a plugin whose text is already current is only
+reported as "nothing to do" when the config names it. No host process is needed
 to write the plugin, so it can be installed before OpenClaw and is picked up
 when OpenClaw starts. The generated file embeds the configuring interpreter
 and the dedicated store home; a reinstall updates only a SUTRA-generated file
 and leaves a backup, while a foreign `sutra.js` is refused. `sutra uninstall
---client openclaw` removes only that generated file.
+--client openclaw` removes only that generated file and its load path; it leaves
+`plugins.allow` alone, because the id is a permission rather than a loader and a
+second tree may rely on it.
 
 `test_openclaw_adapter.py` covers replacement, recovery through the real MCP
 server, pass-through, idempotence, fail-open and uninstall;

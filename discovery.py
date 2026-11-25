@@ -145,20 +145,26 @@ def _codex_config() -> pathlib.Path | None:
 
 
 def _openclaw_config() -> pathlib.Path | None:
-    """OpenClaw's config file, or the SUTRA plugin already written into it.
+    """The SUTRA plugin OpenClaw loads, or the host config that would name it.
 
-    The plugin can be installed before the OpenClaw host exists, so it is
-    concrete evidence of the config tree in the same way OpenCode's generated
-    plugin is. The config directory honors ``SUTRA_OPENCLAW_CONFIG`` and
-    otherwise defaults to ``~/.openclaw``.
+    The plugin is the more specific evidence: an install writes it and then
+    names it in the host config, so a row that reported the config file would
+    stop pointing at SUTRA's own artifact. The host config alone still counts
+    when only the host has been set up. The config directory honors
+    ``SUTRA_OPENCLAW_CONFIG`` and otherwise defaults to ``~/.openclaw``.
     """
     try:
         from . import openclaw
-        config = openclaw.openclaw_config_dir() / "openclaw.json"
-        if config.is_file():
-            return config
         plugin = openclaw.plugin_path()
-        return plugin if plugin.is_file() else None
+        if plugin.is_file():
+            return plugin
+        # A host config only counts when it names SUTRA: uninstall leaves the
+        # file behind, and an empty config is not evidence of an installed host.
+        if openclaw.named_in_config():
+            return openclaw.config_file()
+        # A config SUTRA cannot read or parse may be a host this machine has;
+        # reporting "not installed" from a parse error hides the host instead.
+        return openclaw.config_file() if openclaw.unreadable_config() else None
     except Exception:
         return None
 

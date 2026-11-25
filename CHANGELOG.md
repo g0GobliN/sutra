@@ -36,6 +36,14 @@
   could because it keeps the original tool result.
 
 ### Fixed
+- OpenClaw: a plugin file written into the config tree was never loaded. OpenClaw only
+  discovers a standalone file that the host config names in `plugins.load.paths` and allows in
+  `plugins.allow`, the loader calls `require()`, and its plugin doctor refuses a tool registration
+  without `contracts.tools`; `sutra install --client openclaw` now writes the config entries (and
+  `sutra uninstall` removes them), the plugin is CommonJS, and the entry declares the contract.
+  The plugin is discovered and enabled, but on OpenClaw 2026.11.6 its `after_tool_call` hook still
+  does not fire on the local agent path, so the trim there remains unproven.
+
 
 - A rewrite whose marker would cost at least the bytes it removed is now refused
   (`recovery-marker-cost-kept`): the marker is about 230 bytes, so a trim of 117 bytes

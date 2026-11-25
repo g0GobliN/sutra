@@ -103,11 +103,16 @@ def test_hermes_config_yields_automatic_tier_without_a_binary(isolated):
     assert row["executable"] is None
 
 
-def test_openclaw_config_file_is_evidence_without_a_binary(isolated):
+def test_openclaw_config_naming_the_plugin_is_evidence_without_a_binary(isolated):
     root, home, _ = isolated
     config = home / ".openclaw" / "openclaw.json"
     config.parent.mkdir(parents=True)
-    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+    plugin = home / ".openclaw" / "plugins" / "sutra.js"
+    # json.dumps, not an f-string: a Windows path needs escaped backslashes.
+    config.write_text(
+        json.dumps({"plugins": {"load": {"paths": [str(plugin)]},
+                                "allow": ["sutra"]}}) + "\n",
+        encoding="utf-8")
 
     row = discovery.detect(["openclaw"])[0]
     assert row["installed"] is True
@@ -116,6 +121,29 @@ def test_openclaw_config_file_is_evidence_without_a_binary(isolated):
     assert row["config"] == str(config)
     assert row["evidence"] == [f"config {config}"]
     assert row["mechanism"].startswith("generated ")
+
+
+def test_an_openclaw_config_that_does_not_name_sutra_is_not_evidence(isolated):
+    root, home, _ = isolated
+    config = home / ".openclaw" / "openclaw.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"theme": "dark"}\n', encoding="utf-8")
+
+    row = discovery.detect(["openclaw"])[0]
+    assert row["installed"] is False, row
+    assert row["config"] is None, row
+
+
+def test_an_openclaw_config_that_cannot_be_parsed_is_still_evidence(isolated):
+    """A config SUTRA cannot read is a host it cannot inspect, not an absent one."""
+    root, home, _ = isolated
+    config = home / ".openclaw" / "openclaw.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"plugins": ', encoding="utf-8")
+
+    row = discovery.detect(["openclaw"])[0]
+    assert row["installed"] is True, row
+    assert row["config"] == str(config)
 
 
 def test_openclaw_generated_plugin_is_evidence_before_the_host_exists(isolated):
