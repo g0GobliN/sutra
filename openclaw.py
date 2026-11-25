@@ -103,17 +103,9 @@ def config_file(config_path: str | pathlib.Path | None = None) -> pathlib.Path:
     OpenClaw names it ``openclaw.json`` inside its config directory; an explicit
     ``OPENCLAW_CONFIG_PATH`` points at the file itself.
     """
-    if config_path is not None:
-        return openclaw_config_dir(config_path) / "openclaw.json"
-    # The tree that holds the plugin also holds the file it is named in;
-    # OPENCLAW_CONFIG_PATH is the host's own pointer and applies only when
-    # SUTRA does not force a tree of its own.
-    if os.environ.get("SUTRA_OPENCLAW_CONFIG"):
-        return openclaw_config_dir() / "openclaw.json"
-    named = os.environ.get("OPENCLAW_CONFIG_PATH")
-    if named:
-        return pathlib.Path(named).expanduser()
-    return openclaw_config_dir() / "openclaw.json"
+    # The file is always inside the tree openclaw_config_dir() resolves, which
+    # honours SUTRA's override and then the host's own OPENCLAW_CONFIG_PATH.
+    return openclaw_config_dir(config_path) / "openclaw.json"
 
 
 def named_in_config(config_path: str | pathlib.Path | None = None, *,
@@ -294,8 +286,15 @@ def install(*, dry_run: bool = False, python: str | None = None,
     # Read the previous plugin and whether the host already named it before
     # anything is written: a rollback must not depend on how the writer ordered
     # its own backup, and it must not strip entries a working install owns.
-    previous_mode = stat.S_IMODE(path.stat().st_mode) if existed else None
-    previous_text = path.read_text(encoding="utf-8") if existed else None
+    previous_mode = None
+    previous_text = None
+    if existed:
+        try:
+            previous_mode = stat.S_IMODE(path.stat().st_mode)
+            previous_text = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            print_error(f"sutra: cannot read {path} to update it safely: {exc}")
+            return 1
     was_registered = named_in_config(config_path, path=path)
     if existed:
         backup = installer._write(path, text)  # timestamped backup beside the file
@@ -308,18 +307,15 @@ def install(*, dry_run: bool = False, python: str | None = None,
         # discover: the next run would call it present and report success. The
         # backup is moved last, so a failure here keeps the only copy on disk.
         try:
-            if was_registered:
-                # The host already named this plugin before this run: leaving
-                # the entries alone keeps the restored file discoverable.
-                pass
-            else:
-                unregister(config_path, path=path)
-            if existed:
-                assert previous_text is not None and previous_mode is not None
+            # The file comes back first: if that fails, the config entries are
+            # still there and the host can still find whatever it names.
+            if existed and previous_text is not None and previous_mode is not None:
                 _new_file(path, previous_text, mode=previous_mode)
-            else:
+            elif not existed:
                 path.unlink(missing_ok=True)
-        except OSError as restore:
+            if not was_registered:
+                unregister(config_path, path=path)
+        except (OSError, ValueError) as restore:
             where = f"the backup is still at {backup}" if existed else "no file exists"
             print_error(
                 f"sutra: could not name the plugin in OpenClaw's config: {exc}; "
@@ -568,7 +564,7 @@ console.log("openclaw doctor hook ok")
 
 
 _ENTRY_PROBE = """
-const entry = require(process.argv[1])
+const entry = require(process.argv[process.argv.length - 1])
 const shape = { id: entry?.id, register: typeof entry?.register, contracts: entry?.contracts }
 if (shape.id !== "sutra" || shape.register !== "function" || shape.contracts?.tools !== true) {
   console.error(JSON.stringify(shape))
