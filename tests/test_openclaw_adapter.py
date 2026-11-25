@@ -634,8 +634,8 @@ def test_uninstall_keeps_the_plugin_when_the_config_cannot_be_parsed(tmp_path, m
     assert plugin.exists(), "the host may still point at this path"
 
 
-def test_the_config_check_requires_the_file_doctor_was_given(tmp_path, monkeypatch):
-    """Only the path the host loads counts when doctor was given one explicitly."""
+def test_the_config_check_requires_the_file_it_was_given(tmp_path, monkeypatch):
+    """Only the path asked about counts: the host loads that path or nothing."""
     config_dir = tmp_path / "openclaw"
     config_dir.mkdir()
     canonical = openclaw.plugin_path(config_dir)
@@ -645,8 +645,38 @@ def test_the_config_check_requires_the_file_doctor_was_given(tmp_path, monkeypat
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
 
     given = tmp_path / "somewhere" / "sutra.js"
-    assert openclaw._config_check(given, config_dir)["status"] == "pass"
-    assert openclaw._config_check(given, config_dir, exact=True)["status"] == "fail"
+    assert openclaw._config_check(given, config_dir)["status"] == "fail"
+    assert openclaw._config_check(canonical, config_dir)["status"] == "pass"
+
+
+def test_a_second_install_keeps_the_first_copy_of_the_config(paths):
+    """The backup holds the host's own text; a later rewrite cannot bury it."""
+    _, config_dir, config = paths
+    assert openclaw.install(python=sys.executable) == 0
+    backup = config_dir / "openclaw.json.sutra-bak"
+    first = backup.read_text(encoding="utf-8")
+    assert '"dark"' in first
+
+    # The host edits its config and installs again: the copy still holds the
+    # text from before SUTRA first touched the file, not the previous rewrite.
+    config.write_text('{\n  "theme": "light"\n}\n', encoding="utf-8")
+    openclaw.plugin_path(config_dir).unlink()
+    assert openclaw.install(python=sys.executable) == 0
+    assert backup.read_text(encoding="utf-8") == first
+
+
+def test_install_says_so_when_the_named_file_is_not_the_one_it_uses(paths, tmp_path,
+                                                                  monkeypatch, capsys):
+    """An explicit directory wins, and the install warns where the host reads."""
+    _, config_dir, _ = paths
+    elsewhere = tmp_path / "elsewhere" / "openclaw.json"
+    monkeypatch.setenv("OPENCLAW_CONFIG_PATH", str(elsewhere))
+
+    assert openclaw.install(python=sys.executable, config_path=config_dir) == 0
+    out = capsys.readouterr().out
+    assert "OPENCLAW_CONFIG_PATH names" in out
+    assert (config_dir / "openclaw.json").is_file()
+    assert not elsewhere.exists()
 
 
 def test_the_entry_declares_the_host_contract_and_hides_the_wrapper(paths):

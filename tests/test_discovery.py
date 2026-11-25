@@ -134,6 +134,18 @@ def test_an_openclaw_config_that_does_not_name_sutra_is_not_evidence(isolated):
     assert row["config"] is None, row
 
 
+def test_an_openclaw_config_that_cannot_be_parsed_is_still_evidence(isolated):
+    """A config SUTRA cannot read is a host it cannot inspect, not an absent one."""
+    root, home, _ = isolated
+    config = home / ".openclaw" / "openclaw.json"
+    config.parent.mkdir(parents=True)
+    config.write_text('{"plugins": ', encoding="utf-8")
+
+    row = discovery.detect(["openclaw"])[0]
+    assert row["installed"] is True, row
+    assert row["config"] == str(config)
+
+
 def test_openclaw_generated_plugin_is_evidence_before_the_host_exists(isolated):
     root, home, _ = isolated
     plugin = home / ".openclaw" / "plugins" / "sutra.js"

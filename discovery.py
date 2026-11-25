@@ -160,7 +160,11 @@ def _openclaw_config() -> pathlib.Path | None:
             return plugin
         # A host config only counts when it names SUTRA: uninstall leaves the
         # file behind, and an empty config is not evidence of an installed host.
-        return openclaw.config_file() if openclaw.named_in_config() else None
+        if openclaw.named_in_config():
+            return openclaw.config_file()
+        # A config SUTRA cannot read or parse may be a host this machine has;
+        # reporting "not installed" from a parse error hides the host instead.
+        return openclaw.config_file() if openclaw.unreadable_config() else None
     except Exception:
         return None
 
