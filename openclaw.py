@@ -442,8 +442,14 @@ def unreadable_config(config_path: str | pathlib.Path | None = None) -> bool:
     return False
 
 
-def unregister(config_path: str | pathlib.Path | None = None, *, path: pathlib.Path | None = None) -> bool:
-    """Take the plugin file and id back out of the config; return whether it changed."""
+def _unregister(config_path: str | pathlib.Path | None = None, *,
+                path: pathlib.Path | None = None) -> tuple[bool, bytes | None]:
+    """Take the plugin out of the config; return (changed, the bytes written).
+
+    The bytes are the exact text a caller can expect to find afterwards, so a
+    rollback once the plugin file proves undeletable compares against what this
+    removal wrote instead of whatever is on disk by then.
+    """
     target = path if path is not None else plugin_path(config_path)
     file = config_file(config_path)
     # A config SUTRA cannot parse may still name the plugin. Reporting "nothing
@@ -451,12 +457,19 @@ def unregister(config_path: str | pathlib.Path | None = None, *, path: pathlib.P
     # still points at it, so the parse error travels to the caller.
     value = _load_config(file)
     changed = _apply_removal(value, target)
-    if changed:
-        # A caller that deletes the plugin file must know the entries are
-        # really gone; swallowing the write error here is what leaves a host
-        # naming a path that no longer exists.
-        _save_config(file, value)
-    return changed
+    if not changed:
+        return False, None
+    # A caller that deletes the plugin file must know the entries are really
+    # gone; swallowing the write error here is what leaves a host naming a path
+    # that no longer exists.
+    _save_config(file, value)
+    return True, _config_text(value).encode("utf-8")
+
+
+def unregister(config_path: str | pathlib.Path | None = None, *,
+               path: pathlib.Path | None = None) -> bool:
+    """Take the plugin file and id back out of the config; return whether it changed."""
+    return _unregister(config_path, path=path)[0]
 
 
 def render(python: str | None = None, home: str | pathlib.Path | None = None,
@@ -719,7 +732,7 @@ def uninstall(*, dry_run: bool = False,
         return 1
     original_mode = _file_mode(file)
     try:
-        cleaned = unregister(config_path, path=path)
+        cleaned, written = _unregister(config_path, path=path)
     except (OSError, ValueError) as exc:
         # Deleting the file would leave the host naming a path that is gone.
         print_warning(f"sutra: could not clean OpenClaw's config: {exc}; "
@@ -727,10 +740,10 @@ def uninstall(*, dry_run: bool = False,
         return 1
     if cleaned:
         print_info(f"sutra: took the plugin out of {config_file(config_path)}")
-    # The bytes the removal wrote, read now: the rollback below must detect an
-    # edit made after this point, and reading at rollback time would accept
-    # whatever is on disk by then.
-    written = _read_config_bytes(file) if cleaned else original
+    # What the rollback may replace: the bytes this removal wrote, or the text
+    # it read when the config was left alone. Anything else on disk by rollback
+    # time is someone else's edit.
+    expected = written if cleaned else original
     try:
         path.unlink()
     except OSError as exc:
@@ -748,7 +761,7 @@ def uninstall(*, dry_run: bool = False,
         try:
             # The bytes to expect are what the removal wrote: a concurrent edit
             # after that point is detected instead of overwritten.
-            _new_bytes(file, original, mode=original_mode, expect=written)
+            _new_bytes(file, original, mode=original_mode, expect=expected)
         except OSError as restore:
             print_error(f"sutra: could not remove {path}: {exc}; the config no longer "
                         f"names it ({restore})")
@@ -999,7 +1012,11 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
     # An absolute path: `require()` resolves a bare name against node's own
     # search path, which would load a different file or none.
     plugin = plugin.resolve()
-    env = dict(os.environ, SUTRA_ENTRY_PLUGIN=str(plugin))
+    # The probe runs the plugin's own register(), so point its store at a
+    # scratch directory: a doctor run must not read or write the real one.
+    store = tempfile.mkdtemp(prefix="sutra-doctor-")
+    env = dict(os.environ, SUTRA_ENTRY_PLUGIN=str(plugin),
+               SUTRA_HOME=store, SUTRA_STORE_DIR=store)
     try:
         # The path travels in the environment: as an argv entry, a path that
         # starts with a dash or holds a space reaching node's own parser is a
@@ -1009,6 +1026,8 @@ def _entry_check(plugin: pathlib.Path, node: str | None) -> dict:
                                 cwd=str(plugin.parent), env=env)
     except (OSError, subprocess.SubprocessError) as exc:
         return _check("entry", "fail", f"the plugin could not be loaded: {exc}")
+    finally:
+        shutil.rmtree(store, ignore_errors=True)
     if result.returncode != 0:
         detail = (result.stderr or result.stdout or "no output").strip()[-200:]
         if result.returncode == 2:
@@ -1030,6 +1049,10 @@ def _config_check(plugin: pathlib.Path, config_path: str | pathlib.Path | None =
     and ``plugins.allow`` carries its id; this check is what separates "written"
     from "the host will load it".
     """
+    if not plugin.is_file():
+        # Nothing is installed, so a config that names no plugin is correct:
+        # reporting it as a failure would make a clean uninstall look broken.
+        return _check("config", "skip", f"{plugin} does not exist; nothing to load")
     file = config_file(config_path)
     try:
         value = _load_config(file)

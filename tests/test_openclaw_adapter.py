@@ -713,8 +713,18 @@ def test_the_config_check_requires_the_file_it_was_given(tmp_path, monkeypatch):
     monkeypatch.setenv("SUTRA_OPENCLAW_CONFIG", str(config_dir))
 
     given = tmp_path / "somewhere" / "sutra.js"
+    given.parent.mkdir()
+    given.write_text("// plugin\n", encoding="utf-8")
+    canonical.parent.mkdir(parents=True)
+    canonical.write_text("// plugin\n", encoding="utf-8")
     assert openclaw._config_check(given, config_dir)["status"] == "fail"
     assert openclaw._config_check(canonical, config_dir)["status"] == "pass"
+
+
+def test_the_config_check_does_not_apply_without_a_plugin_file(paths):
+    """A clean uninstall leaves a config that names nothing, which is correct."""
+    root, config_dir, config = paths
+    assert openclaw._config_check(openclaw.plugin_path(config_dir), config_dir)["status"] == "skip"
 
 
 def test_a_config_edited_during_the_install_is_left_alone(paths, monkeypatch, capsys):
