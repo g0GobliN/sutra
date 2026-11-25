@@ -186,6 +186,19 @@ The loop below is what the code runs, in the order it runs it:
 | Update adaptive policy | `failure.Ledger` disables a strategy for one payload shape after three consecutive hard failures and re-enables it on success; `SUTRA_MODE` selects the effort level. Learned policies are still deferred — see the limits below |
 | Stop conditions | `max_passes` or no accepted candidate; no clock in the decision, so identical input gives identical output |
 
+Inside the pair and triple phases each candidate is an ordered chain, and the
+strategies are pure functions of their input, so the combination phase applies
+every prefix once and reuses its text: three candidates cost three prefix
+applications plus six suffixes instead of two applications per ordered pair.
+The memo belongs to the text it was built from, and a chain asked about another
+text is recomputed instead of answered from the old one, so a shared cache
+cannot return a candidate built on a stale base. The candidates, their order,
+their ranking and therefore the chosen text are unchanged; only the repeated
+applications disappear. On a 43 KB pretty-printed JSON tool result (160 records,
+six candidates) in `beast` mode, a run makes 426 strategy applications before
+the change and 162 after, for the same 156 candidate evaluations in the same
+order and the same output bytes — about 2.8× faster on the machine measured.
+
 The loop is fail-open: with `SUTRA_MODE=off` the diagram above does not execute
 at all, and a broken strategy or validator can only lose its own candidate,
 never the caller's text.

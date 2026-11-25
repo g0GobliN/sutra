@@ -282,12 +282,89 @@ def _evaluate(
     return Evaluation(strategy.name, saved, elapsed, True), candidate
 
 
+class _Applied:
+    """Memoise strategy applications for one input text.
+
+    The combination phases run every ordered chain over the same text, so the
+    first strategy of a pair was applied once per second strategy and a triple
+    re-applied its two-strategy prefix once per third strategy. The strategies
+    are pure functions of their input, so applying a prefix once and reusing
+    its text leaves the candidates, their order and their ranking exactly as
+    they were.
+
+    The cache answers only for the text it was built from: ``_base`` is set in
+    the constructor and never reassigned. A chain asked about any other text is
+    computed from that text without consulting or extending the memo, so a
+    prefix built on a stale base can never be served and the memo for the
+    original text stays intact.
+    """
+
+    def __init__(self, base: str) -> None:
+        self._base = base
+        self._done: dict[tuple[int, ...], tuple[str | None, str]] = {}
+
+    def chain(
+        self, base: str, strategies: Sequence[Strategy],
+    ) -> tuple[str | None, str]:
+        """Return the text after ``strategies`` applied to ``base``.
+
+        The base is compared by value: an equal copy of the cached text answers
+        from the memo, while any different text is computed fresh and leaves
+        the memo untouched.
+        """
+        if base != self._base:
+            return self._apply(base, strategies, memo=False)
+        return self._apply(self._base, strategies, memo=True)
+
+    def _lookup(self, key: tuple[int, ...]) -> tuple[str | None, str] | None:
+        """Return the memoised result for ``key``, or ``None`` on a miss."""
+        return self._done.get(key)
+
+    def _store(self, key: tuple[int, ...], value: tuple[str | None, str]) -> None:
+        """Remember ``value`` for ``key``."""
+        self._done[key] = value
+
+    def _apply(
+        self, base: str, strategies: Sequence[Strategy], *, memo: bool,
+    ) -> tuple[str | None, str]:
+        """Apply a chain to ``base``, consulting the memo only when allowed."""
+        # Identity keys: two strategies may share a name, and a name shared by
+        # a different strategy would otherwise answer with the wrong text.
+        key = tuple(id(item) for item in strategies)
+        if memo:
+            cached = self._lookup(key)
+            if cached is not None:
+                return cached
+        if len(strategies) == 1:
+            result = self._apply_one(base, strategies[0])
+        else:
+            prefix, reason = self._apply(base, strategies[:-1], memo=memo)
+            if prefix is None:
+                result = (None, reason)
+            else:
+                result = self._apply_one(prefix, strategies[-1])
+        if memo:
+            self._store(key, result)
+        return result
+
+    @staticmethod
+    def _apply_one(base: str, strategy: Strategy) -> tuple[str | None, str]:
+        try:
+            text = strategy.apply(base)
+        except Exception as exc:
+            return None, f"strategy raised: {exc}"
+        if isinstance(text, str) and text:
+            return text, ""
+        return None, f"{strategy.name} produced no text"
+
+
 def _evaluate_chain(
     base: str,
     original: str,
     strategies: Sequence[Strategy],
     validator: Callable[[str, str], tuple[bool, list[str]]],
     min_saved_bytes: int,
+    applied: _Applied,
 ) -> tuple[Evaluation, str | None]:
     """Apply an ordered strategy chain, validating against the run's original.
 
@@ -298,69 +375,11 @@ def _evaluate_chain(
     """
     name = "+".join(item.name for item in strategies)
     started = time.monotonic()
-    candidate = base
-    try:
-        for strategy in strategies:
-            candidate = strategy.apply(candidate)
-            if not isinstance(candidate, str) or not candidate:
-                elapsed = (time.monotonic() - started) * 1000.0
-                return Evaluation(name, 0, elapsed, False,
-                                  f"{strategy.name} produced no text"), None
-    except Exception as exc:
+    candidate, reason = applied.chain(base, strategies)
+    if candidate is None:
         elapsed = (time.monotonic() - started) * 1000.0
-        return Evaluation(name, 0, elapsed, False,
-                          f"strategy raised: {exc}"), None
+        return Evaluation(name, 0, elapsed, False, reason), None
     elapsed = (time.monotonic() - started) * 1000.0
-    saved = _size(base) - _size(candidate)
-    try:
-        ok, reasons = validator(original, candidate)
-    except Exception as exc:
-        return Evaluation(name, saved, elapsed, False,
-                          f"validator raised: {exc}"), None
-    if not ok:
-        reason = (reasons[0] if reasons else "validator rejected")
-        return Evaluation(name, saved, elapsed, False,
-                          reason[:_MAX_REASON_CHARS]), None
-    if saved < min_saved_bytes:
-        return Evaluation(
-            name, saved, elapsed, False,
-            f"saved {saved} bytes, below the {min_saved_bytes}-byte minimum",
-        ), None
-    return Evaluation(name, saved, elapsed, True), candidate
-
-
-def _evaluate_pair(
-    base: str,
-    original: str,
-    first: Strategy,
-    second: Strategy,
-    validator: Callable[[str, str], tuple[bool, list[str]]],
-    min_saved_bytes: int,
-) -> tuple[Evaluation, str | None]:
-    """Try two strategies in order, validating against the original text.
-
-    This is the aggressive-mode combination search: when no single strategy is
-    accepted any more, a pair can still be strictly smaller, and validating
-    the result against the text at the start of the run keeps the cumulative
-    guarantee the single-strategy path already has.
-    """
-    name = f"{first.name}+{second.name}"
-    started = time.monotonic()
-    try:
-        intermediate = first.apply(base)
-        if not isinstance(intermediate, str) or not intermediate:
-            elapsed = (time.monotonic() - started) * 1000.0
-            return Evaluation(name, 0, elapsed, False,
-                              "first strategy produced no text"), None
-        candidate = second.apply(intermediate)
-    except Exception as exc:
-        elapsed = (time.monotonic() - started) * 1000.0
-        return Evaluation(name, 0, elapsed, False,
-                          f"strategy raised: {exc}"), None
-    elapsed = (time.monotonic() - started) * 1000.0
-    if not isinstance(candidate, str) or not candidate:
-        return Evaluation(name, 0, elapsed, False,
-                          "candidate is not text"), None
     saved = _size(base) - _size(candidate)
     try:
         ok, reasons = validator(original, candidate)
@@ -432,14 +451,18 @@ def optimize(
                 accepted.append((evaluation, candidate))
         if not accepted:
             if combine and _size(current) <= PAIR_MAX_BYTES:
+                # One cache serves both phases: the triple phase runs only when
+                # no pair was accepted (``if not pairs``), so ``current`` cannot
+                # have moved between them.
+                prefixes = _Applied(current)
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:
                     for second in candidates:
                         if first is second:
                             continue
-                        pair_evaluation, pair_text = _evaluate_pair(
-                            current, text, first, second, check,
-                            min_saved_bytes)
+                        pair_evaluation, pair_text = _evaluate_chain(
+                            current, text, (first, second), check,
+                            min_saved_bytes, prefixes)
                         evaluations.append(pair_evaluation)
                         if pair_text is not None:
                             pairs.append((pair_evaluation, pair_text))
@@ -454,7 +477,7 @@ def optimize(
                                     continue
                                 combo_evaluation, combo_text = _evaluate_chain(
                                     current, text, (first, second, third),
-                                    check, min_saved_bytes)
+                                    check, min_saved_bytes, prefixes)
                                 evaluations.append(combo_evaluation)
                                 if combo_text is not None:
                                     triples.append((combo_evaluation, combo_text))
