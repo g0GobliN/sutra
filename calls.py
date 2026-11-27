@@ -22,7 +22,15 @@ compression engine:
    encoded that way produces no key, so no call is ever treated as a repeat on
    a guess.
 2. **A suggestion, never an execution.** This module never returns bytes. It
-   returns a recovery id, and the host decides what to do with it.
+   returns a recovery id, and the host decides what to do with it. Only a tool
+   whose effect is its output is ever recorded: a write, a command or a fetch
+   leaves the world changed, so the same bytes are not the same outcome.
+2b. **The dependency stamp decides, not the name.** A read is only suggested
+   while the files its arguments name still carry the size, mtime and hash they
+   had when the result was stored. A record whose stamp cannot be reproduced —
+   an older entry, or a relative path under a different working directory — is
+   never suggested, because the index cannot prove the read would be the same
+   one.
 3. **Bounded memory.** At most ``MAX_SESSIONS`` sessions and
    ``MAX_ENTRIES_PER_SESSION`` keys each, oldest first. The file is small and
    rewritten whole.
@@ -41,6 +49,7 @@ import threading
 import time
 
 from . import config as _config
+from . import redundancy as _redundancy
 from . import replay as _replay
 from . import store as _store
 
@@ -113,7 +122,7 @@ def _read(path: str) -> dict[str, dict[str, list]]:
         for entry_key, value in entries.items():
             if not isinstance(entry_key, str) or not isinstance(value, list):
                 continue
-            if len(value) != 2 or not isinstance(value[0], str):
+            if len(value) != 4 or not isinstance(value[0], str):
                 continue
             kept[entry_key] = value
         sessions[session] = kept
@@ -142,7 +151,8 @@ def _write(path: str, sessions: dict[str, dict[str, list]]) -> None:
         try:
             os.unlink(temporary)
         except OSError:
-            pass
+            logger.debug("sutra: a temporary call index was left behind",
+                         exc_info=True)
         raise
 
 
@@ -171,12 +181,14 @@ def remember(session_id: str, tool_name: str, arguments: object, entry_id: str,
         return False
     target = path(cfg)
     stamp = time.time() if now is None else now
+    cwd = os.getcwd()
+    recorded = _dependencies(arguments, cwd)
     try:
         with _LOCK:
             sessions = _read(target)
             entries = sessions.setdefault(session_id, {})
             entries.pop(entry_key, None)
-            entries[entry_key] = [entry_id, stamp]
+            entries[entry_key] = [entry_id, stamp, recorded, cwd]
             _prune(sessions)
             _write(target, sessions)
         return True
@@ -206,7 +218,12 @@ def lookup(session_id: str, tool_name: str, arguments: object,
     record = entries.get(entry_key)
     if not record:
         return None
-    entry_id = record[0]
+    entry_id, recorded, recorded_cwd = record[0], record[2], record[3]
+    if not _still_dependencies(arguments, recorded, recorded_cwd):
+        # The read would no longer see what it saw; stop offering it so the
+        # next call does the work instead of restoring an outdated result.
+        _forget_stale(target, session_id, entry_key, entry_id)
+        return None
     try:
         found = _store.store_from_env().get(entry_id, now=now)
     except Exception:  # a store we cannot reach means "run the call"
@@ -216,6 +233,30 @@ def lookup(session_id: str, tool_name: str, arguments: object,
         return entry_id
     _forget_stale(target, session_id, entry_key, entry_id)
     return None
+
+
+def _dependencies(arguments: object, cwd: str) -> str:
+    """The stamp of the files this call names, as the caller wrote them."""
+    paths = _replay.argument_paths(arguments)
+    if not paths:
+        return ""
+    return _redundancy.snapshot(paths, root=cwd).digest()
+
+
+def _still_dependencies(arguments: object, recorded: str, recorded_cwd: str) -> bool:
+    """True when the read would see the same files it saw when it was recorded.
+
+    A call that names no path has no dependency to compare, and a stamp that
+    cannot be reproduced — because the process is now in another directory and
+    the call named relative paths — is treated as changed, so the call runs.
+    """
+    paths = _replay.argument_paths(arguments)
+    if not paths:
+        return recorded == ""
+    cwd = os.getcwd()
+    if cwd != recorded_cwd and any(not os.path.isabs(item) for item in paths):
+        return False
+    return _dependencies(arguments, cwd) == recorded
 
 
 def _forget_stale(target: str, session_id: str, entry_key: str, entry_id: str) -> None:

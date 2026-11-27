@@ -1105,6 +1105,15 @@ def _pre_execute(argv: list[str]) -> int:
         print(allow)
         return 0
     session_id = str(payload.get("session_id") or "")
+    if not session_id:
+        # The index is per session, so a host that sends none disables the
+        # deny path entirely. Say it once per call instead of failing quietly.
+        print_error(
+            "sutra pre-execute: the payload carries no session id, so no call "
+            "can be recognised as a repeat"
+        )
+        print(allow)
+        return 0
     try:
         entry_id = _calls.lookup(session_id, tool_name, arguments)
     except Exception:  # an index we cannot read is not a reason to block a call

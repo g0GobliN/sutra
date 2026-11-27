@@ -277,3 +277,59 @@ def test_a_seam_payload_without_an_arguments_field_is_allowed(
 
     assert code == 0
     assert report == {"decision": "allow"}
+
+
+# -- the dependency stamp decides, not the name ----------------------------
+
+
+def test_a_read_is_not_suggested_after_the_file_changes(
+        isolated_store, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "notes.txt"
+    target.write_text("one", encoding="utf-8")
+    entry_id = retain()
+
+    assert calls.remember("s1", "read_file", {"path": "notes.txt"}, entry_id) is True
+    assert calls.lookup("s1", "read_file", {"path": "notes.txt"}) == entry_id
+
+    target.write_text("two", encoding="utf-8")
+
+    assert calls.lookup("s1", "read_file", {"path": "notes.txt"}) is None
+
+
+def test_a_stamp_from_another_directory_cannot_be_reproduced(
+        isolated_store, tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / "notes.txt").write_text("one", encoding="utf-8")
+    monkeypatch.chdir(home)
+    entry_id = retain()
+    assert calls.remember("s1", "read_file", {"path": "notes.txt"}, entry_id) is True
+
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+
+    assert calls.lookup("s1", "read_file", {"path": "notes.txt"}) is None
+
+
+def test_a_record_without_a_stamp_is_never_suggested(isolated_store, tmp_path,
+                                                     monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    entry_id = retain()
+    index = tmp_path / "store" / "calls.json"
+    index.parent.mkdir(parents=True, exist_ok=True)
+    index.write_text(json.dumps({"s1": {"key": [entry_id, 1.0]}}), encoding="utf-8")
+
+    assert calls.lookup("s1", "read_file", {"path": "a"}) is None
+
+
+def test_a_call_that_names_no_file_is_suggested_while_the_store_holds_it(
+        isolated_store, monkeypatch):
+    monkeypatch.chdir(isolated_store.parent)
+    entry_id = retain()
+    assert calls.remember("s1", "read_file", {"url": "https://example.test/x"},
+                          entry_id) is True
+
+    assert calls.lookup("s1", "read_file",
+                        {"url": "https://example.test/x"}) == entry_id

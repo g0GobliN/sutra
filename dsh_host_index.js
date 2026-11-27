@@ -97,24 +97,27 @@ export function apply(ctx, rawConfig) {
   const config = { ...DEFAULTS, ...(rawConfig ?? {}) }
 
   ctx.on('tools/pre-execute', async (exec, next) => {
-    const decision = await next()
+    // Ask the store first: a deny means the downstream chain never runs, so
+    // computing its decision would be work spent on a call that cannot happen.
     try {
-      if (decision.kind !== 'allow') return decision
       const sessionId = sessionOf(exec)
-      if (!sessionId || exec.arguments === undefined) return decision
-      const reply = await seam(
-        config,
-        ['-m', 'sutra', 'pre-execute'],
-        JSON.stringify({ session_id: sessionId, tool_name: exec.name, arguments: exec.arguments }),
-      )
-      if (reply === null || reply.decision !== 'deny' || typeof reply.id !== 'string') return decision
-      const reason = typeof reply.reason === 'string' && reply.reason
-        ? reply.reason
-        : `sutra: this exact ${exec.name} call already ran in this session; its result is stored as ${reply.id}. Restore it with sutra_restore ${reply.id} and continue.`
-      return { kind: 'deny', reason }
+      if (sessionId && exec.arguments !== undefined) {
+        const reply = await seam(
+          config,
+          ['-m', 'sutra', 'pre-execute'],
+          JSON.stringify({ session_id: sessionId, tool_name: exec.name, arguments: exec.arguments }),
+        )
+        if (reply !== null && reply.decision === 'deny' && typeof reply.id === 'string') {
+          const reason = typeof reply.reason === 'string' && reply.reason
+            ? reply.reason
+            : `sutra: this exact ${exec.name} call already ran in this session; its result is stored as ${reply.id}. Restore it with sutra_restore ${reply.id} and continue.`
+          return { kind: 'deny', reason }
+        }
+      }
     } catch {
-      return decision
+      // An unreachable seam is not a reason to block a call; fall through.
     }
+    return next()
   })
 
   ctx.on('tools/post-execute', async (exec, result, next) => {
