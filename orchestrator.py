@@ -242,12 +242,28 @@ def _caveman_strategy() -> optimize.Strategy:
         "remove filler, verbosity and duplicate prose; SPC-validated")
 
 
-def _plan_strategies(plan: str) -> list[optimize.Strategy]:
+def _strategy_registry() -> dict[str, optimize.Strategy]:
+    """One instance per built-in strategy, built once for one search.
+
+    The plans of a search share these objects, which is what lets the search
+    memo answer for the same object and input text a second time: the
+    combination plan runs the strategies the formatting plan just ran. A
+    registry per search also keeps the memo from ever conflating two distinct
+    strategies that happen to share an apply function.
+    """
+    registry: dict[str, optimize.Strategy] = {
+        item.name: item for item in optimize.default_strategies()}
+    registry["language"] = _caveman_strategy()
+    return registry
+
+
+def _plan_strategies(plan: str,
+                     registry: dict[str, optimize.Strategy]) -> list[optimize.Strategy]:
     strategies: list[optimize.Strategy] = []
     if "format" in plan:
-        strategies.extend(_format_strategies())
+        strategies.extend(registry[item.name] for item in optimize.default_strategies())
     if "caveman" in plan:
-        strategies.append(_caveman_strategy())
+        strategies.append(registry["language"])
     return strategies
 
 
@@ -324,8 +340,9 @@ class Report:
 
 def _plans(policy: ModePolicy) -> tuple[Plan, ...]:
     plans: list[Plan] = []
+    registry = _strategy_registry()
     for name in policy.plans:
-        strategies = _plan_strategies(name)
+        strategies = _plan_strategies(name, registry)
         if strategies:
             plans.append(Plan(name=name, strategies=tuple(strategies)))
     return tuple(plans)
@@ -368,7 +385,9 @@ def _ordered_plans(text: str, plans: tuple[Plan, ...],
 
 
 def _run_plan(text: str, plan: Plan, policy: ModePolicy,
-              ledger: object | None) -> PlanResult:
+              ledger: object | None,
+              memo: optimize._Memo | None = None) -> PlanResult:
+    """Run one plan. ``memo`` is shared by every plan of one search."""
     started = time.monotonic()
     try:
         report = optimize.optimize(
@@ -380,6 +399,7 @@ def _run_plan(text: str, plan: Plan, policy: ModePolicy,
             ledger=ledger,  # type: ignore[arg-type]
             combine=policy.combine,
             triple=policy.triple and plan.name != "caveman",
+            memo=memo,
         )
     except Exception as exc:  # a broken plan is rejected, never fatal
         elapsed = (time.monotonic() - started) * 1000.0
@@ -527,7 +547,12 @@ def optimize_text(text: str, *, cfg: config.Config | None = None,
                       decision={"reason": "payload above search size bound"})
     started = time.monotonic()
     plans = _ordered_plans(text, _plans(policy), policy.budget_ms)
-    results = [_run_plan(text, plan, policy, ledger) for plan in plans]
+    # Every plan starts from the same text and the plans share strategies
+    # (``format`` is a prefix of ``format+caveman``), so one memo across the
+    # search computes each (strategy, input text) once. It changes no
+    # candidate: a strategy is a pure function of its input.
+    memo: optimize._Memo = {}
+    results = [_run_plan(text, plan, policy, ledger, memo) for plan in plans]
     chosen, decision = _decide(results, policy, original_bytes,
                                overhead_source=getattr(
                                    cfg, "search_overhead", "nominal"))

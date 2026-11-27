@@ -539,3 +539,65 @@ def test_a_zero_minimum_keeps_the_combination_phase():
     names = [item.name for item in result.evaluations]
     assert "no-text-0+no-text-1" in names, names
     assert "combination" not in names, names
+
+
+def _counting_memo_test() -> tuple[str, str]:
+    """A payload and a marker that a shared memo keeps out of the text."""
+    return ("row one  \r\nrow two  \r\n\r\n\r\nrow three\n" * 40, "row one")
+
+
+def test_a_shared_memo_applies_each_strategy_once_per_input_text():
+    text, _ = _counting_memo_test()
+    seen: list[tuple[object, str]] = []
+
+    class Counter:
+        def __init__(self, name, inner):
+            self.name = name
+            self.inner = inner
+
+        def __call__(self, value):
+            seen.append((self.inner, value))
+            return self.inner(value)
+
+    strategies = [
+        optimize.Strategy(item.name, Counter(item.name, item.apply), item.note)
+        for item in optimize.default_strategies()
+    ]
+    memo = {}
+    first = optimize.optimize(text, max_passes=2, strategies=strategies, memo=memo)
+    applied_first = len(seen)
+    second = optimize.optimize(text, max_passes=2, strategies=strategies, memo=memo)
+    assert len(seen) == applied_first, "the second run reused every result"
+    assert first.text == second.text
+    assert first.applied == second.applied
+
+
+def test_the_memo_does_not_change_the_report():
+    text, _ = _counting_memo_test()
+    plain = optimize.optimize(text, max_passes=4, combine=True, triple=True)
+    memoised = optimize.optimize(
+        text, max_passes=4, combine=True, triple=True, memo={})
+    assert plain.text == memoised.text
+    assert plain.applied == memoised.applied
+    assert [(e.name, e.saved_bytes, e.accepted, e.reason)
+            for e in plain.evaluations] == [
+        (e.name, e.saved_bytes, e.accepted, e.reason)
+        for e in memoised.evaluations]
+
+
+def test_two_strategies_that_share_one_function_are_not_conflated():
+    seen: list[str] = []
+
+    def rewrite(value):
+        seen.append(value)
+        return value + "!"
+
+    first = optimize.Strategy("first", rewrite)
+    second = optimize.Strategy("second", rewrite)
+    memo: dict = {}
+    optimize.optimize("body", max_passes=1, strategies=[first], memo=memo)
+    optimize.optimize("body", max_passes=1, strategies=[second], memo=memo)
+    assert seen == ["body", "body"], "each strategy ran on its own"
+    assert len(memo) == 2, "one entry per strategy, not one per function"
+    optimize.optimize("body", max_passes=1, strategies=[first], memo=memo)
+    assert seen == ["body", "body"], "the repeat came from the memo"

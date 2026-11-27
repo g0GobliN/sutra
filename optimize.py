@@ -243,11 +243,40 @@ def default_strategies() -> tuple[Strategy, ...]:
     )
 
 
+_Memo = dict[tuple[int, str], str]
+
+
+def _apply(strategy: Strategy, text: str, memo: _Memo | None = None) -> str:
+    """Apply one strategy, reusing a result already computed for this input.
+
+    The cache is keyed by the strategy object and the exact input text, so it
+    can only answer for the same strategy: two strategies that share an apply
+    function but carry different state get separate entries, and a caller's
+    own strategy never receives another's result. Sharing across the plans of
+    one search therefore requires those plans to use the same objects, which
+    ``orchestrator._strategy_registry`` arranges. Only text is cached: a
+    strategy that raises still raises for the pass that asked, and a result
+    that is not text is returned by the pass that asked and asked again next
+    time.
+    """
+    if memo is None:
+        return strategy.apply(text)
+    key = (id(strategy), text)
+    cached = memo.get(key)
+    if cached is not None:
+        return cached
+    result = strategy.apply(text)
+    if isinstance(result, str):
+        memo[key] = result
+    return result
+
+
 def _evaluate(
     text: str,
     strategy: Strategy,
     validator: Callable[[str, str], tuple[bool, list[str]]],
     min_saved_bytes: int,
+    memo: _Memo | None = None,
 ) -> tuple[Evaluation, str | None, str | None]:
     """Try one strategy.
 
@@ -258,7 +287,7 @@ def _evaluate(
     """
     started = time.monotonic()
     try:
-        candidate = strategy.apply(text)
+        candidate = _apply(strategy, text, memo)
     except Exception as exc:  # a broken strategy must not break the loop
         elapsed = (time.monotonic() - started) * 1000.0
         return Evaluation(strategy.name, 0, elapsed, False,
@@ -305,9 +334,10 @@ class _Applied:
     original text stays intact.
     """
 
-    def __init__(self, base: str) -> None:
+    def __init__(self, base: str, memo: _Memo | None = None) -> None:
         self._base = base
         self._done: dict[tuple[int, ...], tuple[str | None, str]] = {}
+        self._memo = memo
 
     def chain(
         self, base: str, strategies: Sequence[Strategy],
@@ -342,21 +372,22 @@ class _Applied:
             if cached is not None:
                 return cached
         if len(strategies) == 1:
-            result = self._apply_one(base, strategies[0])
+            result = self._apply_one(base, strategies[0], self._memo)
         else:
             prefix, reason = self._apply(base, strategies[:-1], memo=memo)
             if prefix is None:
                 result = (None, reason)
             else:
-                result = self._apply_one(prefix, strategies[-1])
+                result = self._apply_one(prefix, strategies[-1], self._memo)
         if memo:
             self._store(key, result)
         return result
 
     @staticmethod
-    def _apply_one(base: str, strategy: Strategy) -> tuple[str | None, str]:
+    def _apply_one(base: str, strategy: Strategy,
+                   memo: _Memo | None = None) -> tuple[str | None, str]:
         try:
-            text = strategy.apply(base)
+            text = _apply(strategy, base, memo)
         except Exception as exc:
             return None, f"strategy raised: {exc}"
         if isinstance(text, str) and text:
@@ -420,6 +451,7 @@ def optimize(
     ledger: failure.Ledger | None = None,
     combine: bool = False,
     triple: bool = False,
+    memo: _Memo | None = None,
 ) -> Report:
     """Run the bounded optimization loop over ``text``.
 
@@ -452,7 +484,7 @@ def optimize(
                     "skipped: disabled for this payload shape after repeated failures"))
                 continue
             evaluation, candidate, produced = _evaluate(
-                current, strategy, check, min_saved_bytes)
+                current, strategy, check, min_saved_bytes, memo)
             evaluations.append(evaluation)
             if produced is not None and produced != current:
                 moved = True
@@ -478,7 +510,7 @@ def optimize(
                 # One cache serves both phases: the triple phase runs only when
                 # no pair was accepted (``if not pairs``), so ``current`` cannot
                 # have moved between them.
-                prefixes = _Applied(current)
+                prefixes = _Applied(current, memo)
                 pairs: list[tuple[Evaluation, str]] = []
                 for first in candidates:
                     for second in candidates:
