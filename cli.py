@@ -1065,6 +1065,60 @@ def _shorten_results(argv: list[str]) -> int:
     return 0
 
 
+def _pre_execute(argv: list[str]) -> int:
+    """Decide whether a tool call repeats one whose result is already stored.
+
+    A host that can stop a tool call before it runs asks this seam, because no
+    host SUTRA integrates with lets a plugin hand back a substitute result.
+    The answer is either "run it" or "do not: this exact call already produced
+    bytes that are still in the store, and the agent can restore them with
+    ``sutra_restore``". Nothing is executed here and no result is returned.
+
+    Every path that is not a verified hit answers "allow": a tool call must
+    never be lost to the optimization layer.
+    """
+    from . import calls as _calls
+
+    parser = argparse.ArgumentParser(
+        prog="sutra pre-execute",
+        description="Answer whether a tool call repeats a stored one (JSON on stdin).",
+    )
+    parser.parse_args(argv)
+    allow = json.dumps({"decision": "allow"})
+    try:
+        payload = json.load(sys.stdin)
+    except (OSError, ValueError):
+        print(allow)
+        return 0
+    if not isinstance(payload, dict):
+        print(allow)
+        return 0
+    tool_name = payload.get("tool_name")
+    arguments = payload.get("arguments")
+    if not isinstance(tool_name, str) or not tool_name or arguments is None:
+        print(allow)
+        return 0
+    session_id = str(payload.get("session_id") or "")
+    try:
+        entry_id = _calls.lookup(session_id, tool_name, arguments)
+    except Exception:  # an index we cannot read is not a reason to block a call
+        print(allow)
+        return 0
+    if entry_id is None:
+        print(allow)
+        return 0
+    print(json.dumps({
+        "decision": "deny",
+        "id": entry_id,
+        "reason": (
+            f"sutra: this exact {tool_name} call already ran in this session and "
+            f"its result is stored as {entry_id}. Running it again would read the "
+            f"same bytes; restore them with sutra_restore {entry_id} and continue."
+        ),
+    }))
+    return 0
+
+
 def _process_result(argv: list[str]) -> int:
     """Rewrite one tool result a host hands over as its own payload.
 
@@ -1096,13 +1150,16 @@ def _process_result(argv: list[str]) -> int:
         return 1
     tool_name = str(payload.get("tool_name") or "")
     session_id = str(args.session or payload.get("session_id") or "")
+    arguments = payload.get("arguments")
     rewritten = []
     changed = False
     for text in payload["texts"]:
         if not isinstance(text, str):
             rewritten.append(text)
             continue
-        shorter = _core.process_result(text, tool_name=tool_name, session_id=session_id)
+        shorter = _core.process_result(
+            text, tool_name=tool_name, session_id=session_id,
+            arguments=arguments)
         rewritten.append(shorter)
         changed = changed or shorter != text
     print(json.dumps({"texts": rewritten, "changed": changed}))
@@ -1330,6 +1387,8 @@ def main(argv: list[str] | None = None) -> int:
         return _shorten_results(argv[1:])
     if argv[:1] == ["process-result"]:
         return _process_result(argv[1:])
+    if argv[:1] == ["pre-execute"]:
+        return _pre_execute(argv[1:])
     if argv[:1] == ["proxy"]:
         from .proxy import run as run_proxy
         return run_proxy(argv[1:])

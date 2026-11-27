@@ -1,5 +1,6 @@
 // The SUTRA host bundle: every stage this harness exposes, in one package.
 //
+//   tools/pre-execute   answer whether this call already produced a stored result
 //   tools/post-execute  rewrite a tool result the model is about to read
 //   mcpManager.register expose sutra_restore so a marker's id can be exchanged
 //                       for the exact bytes the store kept
@@ -25,6 +26,12 @@ const DEFAULTS = {
   home: join(homedir(), '.dsh', 'sutra'),
   timeoutMs: 4000,
   minTextBytes: 2048,
+}
+
+/** The session id a call is keyed on, when the host exposes one. */
+function sessionOf(exec) {
+  const id = exec?.agent?.session?.id
+  return typeof id === 'string' ? id : ''
 }
 
 /** Run one seam call; null means "nothing to do", never an error. */
@@ -89,6 +96,27 @@ function textBlocks(content) {
 export function apply(ctx, rawConfig) {
   const config = { ...DEFAULTS, ...(rawConfig ?? {}) }
 
+  ctx.on('tools/pre-execute', async (exec, next) => {
+    const decision = await next()
+    try {
+      if (decision.kind !== 'allow') return decision
+      const sessionId = sessionOf(exec)
+      if (!sessionId || exec.arguments === undefined) return decision
+      const reply = await seam(
+        config,
+        ['-m', 'sutra', 'pre-execute'],
+        JSON.stringify({ session_id: sessionId, tool_name: exec.name, arguments: exec.arguments }),
+      )
+      if (reply === null || reply.decision !== 'deny' || typeof reply.id !== 'string') return decision
+      const reason = typeof reply.reason === 'string' && reply.reason
+        ? reply.reason
+        : `sutra: this exact ${exec.name} call already ran in this session; its result is stored as ${reply.id}. Restore it with sutra_restore ${reply.id} and continue.`
+      return { kind: 'deny', reason }
+    } catch {
+      return decision
+    }
+  })
+
   ctx.on('tools/post-execute', async (exec, result, next) => {
     const decision = await next()
     try {
@@ -101,7 +129,14 @@ export function apply(ctx, rawConfig) {
       const reply = await seam(
         config,
         ['-m', 'sutra', 'process-result'],
-        JSON.stringify({ tool_name: exec.name, texts: big.map(({ block }) => block.text) }),
+        JSON.stringify({
+          tool_name: exec.name,
+          session_id: sessionOf(exec),
+          // Only one stored text can be restored in place of one call, so the
+          // call is recorded only when the whole result is that single text.
+          arguments: big.length === 1 ? exec.arguments : undefined,
+          texts: big.map(({ block }) => block.text),
+        }),
       )
       if (reply === null || reply.changed !== true) return decision
       const content = source.slice()

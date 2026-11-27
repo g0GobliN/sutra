@@ -68,8 +68,15 @@ path is not an optimization engine and is not disabled by `off`.
   structured read-only tools naming a regular file in the same session, with
   the dependency stamp still matching. Tests, lint, type checks, security scans,
   writes, commands, directory listings and remote fetches are never reused, in
-  any mode. A post-tool hook (Claude Code, Codex, MCP, CLI) cannot skip a call
-  that already ran, so those surfaces compress results instead of skipping
+  any mode. A host with a pre-execution stage asks `sutra pre-execute` about
+  the call: the answer is `allow`, or `deny` quoting the recovery id of the
+  result that identical call already produced, which the agent exchanges for
+  the exact bytes with `sutra_restore`. The index is keyed on the tool name and
+  the canonical JSON of its arguments inside one session, keeps a bounded
+  number of calls, and verifies the store before it suggests one, so a pruned
+  or expired entry is never offered. A post-tool hook (Claude Code, Codex, MCP,
+  CLI) cannot skip a call that already ran, so those surfaces compress results
+  instead of skipping
   them. See [redundancy.md](redundancy.md).
 - **Request trimming** happens on the Hermes `llm_request` stage when
   `SUTRA_PROMPT=1`: older tool results in the outbound copy are shortened to a
