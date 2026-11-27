@@ -669,9 +669,12 @@ def _exact_knapsack(candidates: Sequence[Item], costs: Mapping[str, int],
 
     Only one row of best values is needed: the recurrence reads capacities
     below the one it writes, so walking downward in place never reads a value
-    this item produced. One byte per (item, capacity) records the takes the
-    reconstruction needs, which is what keeps the answer identical to the
-    matrix form without keeping the matrix.
+    this item produced. A take is recorded inside the same tolerance the
+    matrix form uses, but the value only moves up, exactly as the matrix form
+    keeps ``max(skip, candidate)`` — assigning the candidate on a take inside
+    that tolerance would store less than the optimum. One byte per (item,
+    capacity) records the takes the reconstruction needs, which is what keeps
+    the answer identical to the matrix form without keeping the matrix.
     """
     ordered = sorted(candidates, key=lambda item: item.id)
     best = [0.0] * (budget + 1)
@@ -682,10 +685,12 @@ def _exact_knapsack(candidates: Sequence[Item], costs: Mapping[str, int],
         row = bytearray(budget + 1)
         if cost <= budget:
             for capacity in range(budget, cost - 1, -1):
+                skip = best[capacity]
                 candidate = best[capacity - cost] + value
-                if candidate >= best[capacity] - 1e-15:
-                    best[capacity] = candidate
+                if candidate >= skip - 1e-15:
                     row[capacity] = 1
+                    if candidate > skip:
+                        best[capacity] = candidate
         taken.append(row)
     chosen: list[str] = []
     capacity = budget
