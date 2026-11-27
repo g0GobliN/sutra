@@ -665,31 +665,34 @@ def _conflict(batch: Sequence[Item], budget: int, unit: str,
 
 def _exact_knapsack(candidates: Sequence[Item], costs: Mapping[str, int],
                     score: Mapping[str, float], budget: int) -> tuple[str, ...]:
-    """0/1 knapsack by value, O(n * budget) time and memory; ids break ties."""
+    """0/1 knapsack by value, O(n * budget) time and one row of values.
+
+    Only one row of best values is needed: the recurrence reads capacities
+    below the one it writes, so walking downward in place never reads a value
+    this item produced. One byte per (item, capacity) records the takes the
+    reconstruction needs, which is what keeps the answer identical to the
+    matrix form without keeping the matrix.
+    """
     ordered = sorted(candidates, key=lambda item: item.id)
-    count = len(ordered)
-    table = [[0.0] * (budget + 1) for _ in range(count + 1)]
-    take = [[False] * (budget + 1) for _ in range(count + 1)]
-    for index, item in enumerate(ordered, start=1):
+    best = [0.0] * (budget + 1)
+    taken: list[bytearray] = []
+    for item in ordered:
         cost = costs[item.id]
         value = score[item.id]
-        previous = table[index - 1]
-        row = table[index]
-        decisions = take[index]
-        for capacity in range(budget + 1):
-            row[capacity] = previous[capacity]
-            if cost <= capacity:
-                candidate = previous[capacity - cost] + value
-                if candidate >= row[capacity] - 1e-15:
-                    row[capacity] = max(row[capacity], candidate)
-                    decisions[capacity] = True
+        row = bytearray(budget + 1)
+        if cost <= budget:
+            for capacity in range(budget, cost - 1, -1):
+                candidate = best[capacity - cost] + value
+                if candidate >= best[capacity] - 1e-15:
+                    best[capacity] = candidate
+                    row[capacity] = 1
+        taken.append(row)
     chosen: list[str] = []
     capacity = budget
-    for index in range(count, 0, -1):
-        if take[index][capacity]:
-            item = ordered[index - 1]
-            chosen.append(item.id)
-            capacity -= costs[item.id]
+    for index in range(len(ordered) - 1, -1, -1):
+        if taken[index][capacity]:
+            chosen.append(ordered[index].id)
+            capacity -= costs[ordered[index].id]
     return tuple(reversed(chosen))
 
 
