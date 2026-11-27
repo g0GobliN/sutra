@@ -325,3 +325,84 @@ def test_near_duplicate_with_distinct_vocabulary_is_kept():
     assert "twin" in dropped and "distinct" not in dropped
     assert ("twin", "kept") in selection.duplicates
     assert "distinct" in selection.selected
+
+
+def _matrix_knapsack(candidates, costs, score, budget):
+    """The two-table solver this module used, kept to check the one-row form."""
+    ordered = sorted(candidates, key=lambda item: item.id)
+    count = len(ordered)
+    table = [[0.0] * (budget + 1) for _ in range(count + 1)]
+    take = [[False] * (budget + 1) for _ in range(count + 1)]
+    for index, candidate in enumerate(ordered, start=1):
+        cost = costs[candidate.id]
+        value = score[candidate.id]
+        previous = table[index - 1]
+        row = table[index]
+        decisions = take[index]
+        for capacity in range(budget + 1):
+            row[capacity] = previous[capacity]
+            if cost <= capacity:
+                option = previous[capacity - cost] + value
+                if option >= row[capacity] - 1e-15:
+                    row[capacity] = max(row[capacity], option)
+                    decisions[capacity] = True
+    chosen = []
+    capacity = budget
+    for index in range(count, 0, -1):
+        if take[index][capacity]:
+            candidate = ordered[index - 1]
+            chosen.append(candidate.id)
+            capacity -= costs[candidate.id]
+    return tuple(reversed(chosen))
+
+
+def test_the_one_row_knapsack_chooses_what_the_matrix_chose():
+    generator = random.Random(20261127)
+    for _ in range(400):
+        size = generator.randint(0, 12)
+        budget = generator.randint(0, 60)
+        candidates = []
+        for index in range(size):
+            cost = generator.choice([0, 1, 2, 5, 9, 17, 40])
+            candidates.append(context.Item(
+                id=f"item-{index:02d}", content="text",
+                token_cost=cost, relevance=round(generator.random(), 1),
+                importance=round(generator.random(), 1)))
+        if not candidates:
+            continue
+        costs = {item.id: item.cost() for item in candidates}
+        score = context.values(candidates)
+        before = _matrix_knapsack(candidates, costs, score, budget)
+        after = context._exact_knapsack(candidates, costs, score, budget)
+        assert after == before, (size, budget, costs, score)
+        total = sum(score[item_id] for item_id in before)
+        assert sum(score[item_id] for item_id in after) == pytest.approx(total)
+        assert sum(costs[item_id] for item_id in after) <= budget
+
+
+def test_values_a_hair_apart_choose_the_same_set_as_the_matrix():
+    """Sub-tolerance differences are where an in-place row can drift.
+
+    The matrix form keeps ``max(skip, candidate)``, so a candidate a hair below
+    the skip records the take without changing the value. This covers scores in
+    ``[0, 1]`` that differ by less than the tolerance, which the coarser test
+    above never produces.
+    """
+    generator = random.Random(20261128)
+    for _ in range(200):
+        budget = generator.randint(2, 40)
+        size = generator.randint(2, 10)
+        candidates = []
+        for index in range(size):
+            candidates.append(context.Item(
+                id=f"item-{index:02d}", content="text",
+                token_cost=generator.choice([1, 2, 3, 5]),
+                relevance=0.5, importance=0.5))
+        costs = {item.id: item.cost() for item in candidates}
+        score = {
+            item.id: 0.5 + generator.randrange(4) * 2e-16
+            for item in candidates
+        }
+        before = _matrix_knapsack(candidates, costs, score, budget)
+        after = context._exact_knapsack(candidates, costs, score, budget)
+        assert after == before, (budget, costs, score)
