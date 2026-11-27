@@ -1094,7 +1094,13 @@ def _pre_execute(argv: list[str]) -> int:
         print(allow)
         return 0
     tool_name = payload.get("tool_name")
-    arguments = payload.get("arguments")
+    # A payload that carries no arguments field at all is not a call we can
+    # identify, and one that carries null arguments has no identity either.
+    # Both run: the index only ever answers questions about exact calls.
+    if "arguments" not in payload:
+        print(allow)
+        return 0
+    arguments = payload["arguments"]
     if not isinstance(tool_name, str) or not tool_name or arguments is None:
         print(allow)
         return 0
@@ -1150,10 +1156,14 @@ def _process_result(argv: list[str]) -> int:
         return 1
     tool_name = str(payload.get("tool_name") or "")
     session_id = str(args.session or payload.get("session_id") or "")
-    arguments = payload.get("arguments")
+    texts = payload["texts"]
+    # The call identity covers a whole result. It travels only with a result
+    # that has exactly one text entry to store, because the recovery id it
+    # would produce can bring back one entry, not a set of them.
+    arguments = payload.get("arguments") if len(texts) == 1 else None
     rewritten = []
     changed = False
-    for text in payload["texts"]:
+    for text in texts:
         if not isinstance(text, str):
             rewritten.append(text)
             continue

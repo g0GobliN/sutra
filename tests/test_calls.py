@@ -9,7 +9,9 @@ check that keeps a stale suggestion from being made, and the CLI contract.
 
 import io
 import json
+import os
 import sys
+import types
 
 import pytest
 
@@ -206,3 +208,72 @@ def test_a_rewrite_without_arguments_records_nothing(isolated_store):
 
     assert outcome.changed is True
     assert calls.lookup("s1", "read_file", {"path": "a"}) is None
+
+
+# -- only a read may be replaced by the bytes it already produced ----------
+
+
+def test_only_an_inspection_tool_can_be_skipped():
+    assert calls.reusable("read_file") is True
+    assert calls.reusable("filesystem.read") is True
+    assert calls.reusable("grep") is True
+    assert calls.reusable("write_file") is False
+    assert calls.reusable("bash") is False
+    assert calls.reusable("read_write") is False
+
+
+def test_a_write_tool_is_never_recorded_or_suggested(isolated_store):
+    entry_id = retain()
+
+    assert calls.remember("s1", "write_file", {"path": "a"}, entry_id) is False
+    assert calls.lookup("s1", "write_file", {"path": "a"}) is None
+
+
+def test_the_index_is_locked_down_where_fchmod_does_not_exist(isolated_store):
+    target = isolated_store.parent / "calls.json"
+    target.write_text("{}", encoding="utf-8")
+    shim = types.SimpleNamespace(chmod=os.chmod)
+    handle = os.open(target, os.O_RDONLY)
+    try:
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(calls, "os", shim)
+            calls._lock_down(handle, str(target))
+    finally:
+        os.close(handle)
+
+
+def test_a_result_with_several_texts_records_nothing(isolated_store):
+    from sutra import core
+
+    text = payload_text()
+    result = {"content": [{"type": "text", "text": text},
+                          {"type": "text", "text": text}]}
+
+    core.process_result(result, tool_name="read_file", session_id="s1",
+                        arguments={"path": "a"})
+
+    assert calls.lookup("s1", "read_file", {"path": "a"}) is None
+
+
+def test_the_cli_records_nothing_for_a_result_with_several_texts(
+        isolated_store, monkeypatch):
+    from sutra import cli
+
+    payload = {"tool_name": "read_file", "session_id": "s1",
+               "arguments": {"path": "a"},
+               "texts": [payload_text(), payload_text()]}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+    out = io.StringIO()
+    monkeypatch.setattr(sys, "stdout", out)
+
+    assert cli.main(["process-result"]) == 0
+    assert json.loads(out.getvalue())["changed"] is True
+    assert calls.lookup("s1", "read_file", {"path": "a"}) is None
+
+
+def test_a_seam_payload_without_an_arguments_field_is_allowed(
+        isolated_store, monkeypatch):
+    code, report = run({"session_id": "s1", "tool_name": "read_file"}, monkeypatch)
+
+    assert code == 0
+    assert report == {"decision": "allow"}

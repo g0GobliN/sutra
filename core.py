@@ -389,7 +389,13 @@ def process_result(result: Any, *, tool_name: str | None = None,
         if isinstance(result, dict):
             changed = False
             new = dict(result)
-            for container, key in _text_slots(new):
+            slots = _text_slots(new)
+            # A call identity belongs to the whole result. One stored entry can
+            # only stand for that result when there is a single text slot to
+            # store, so a multi-slot result records nothing to avoid offering a
+            # restore that would bring back one slot of several.
+            arguments = arguments if len(slots) == 1 else None
+            for container, key in slots:
                 outcome = process_text(
                     container[key], cfg=cfg, tool_name=tool_name or "",
                     session_id=session_id or "", arguments=arguments)

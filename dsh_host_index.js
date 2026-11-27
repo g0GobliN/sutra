@@ -132,9 +132,9 @@ export function apply(ctx, rawConfig) {
         JSON.stringify({
           tool_name: exec.name,
           session_id: sessionOf(exec),
-          // Only one stored text can be restored in place of one call, so the
-          // call is recorded only when the whole result is that single text.
-          arguments: big.length === 1 ? exec.arguments : undefined,
+          // The call identity always travels; the seam decides whether the
+          // result it produced has a single entry worth recording.
+          arguments: exec.arguments,
           texts: big.map(({ block }) => block.text),
         }),
       )

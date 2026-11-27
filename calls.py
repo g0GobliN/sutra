@@ -41,6 +41,7 @@ import threading
 import time
 
 from . import config as _config
+from . import replay as _replay
 from . import store as _store
 
 logger = logging.getLogger(__name__)
@@ -79,11 +80,28 @@ def path(cfg: _config.Config | None = None) -> str:
     return os.path.join(cfg.store_dir, FILE_NAME)
 
 
+def reusable(tool_name: str) -> bool:
+    """True when skipping this tool call can only skip a read.
+
+    Denying a call replaces its effect with the bytes it would have returned.
+    That is only sound for a tool whose effect *is* its output: a write, a
+    command or a network call leaves the world changed, so the same bytes are
+    not the same outcome. The predicate is the one the replay index already
+    uses, so both features agree on what counts as an inspection and a change
+    to either list moves both.
+    """
+    return _replay.readable_name(tool_name)
+
+
 def _read(path: str) -> dict[str, dict[str, list]]:
     try:
         with open(path, "r", encoding="utf-8") as handle:
             document = json.load(handle)
+    except FileNotFoundError:
+        return {}
     except (OSError, ValueError):
+        logger.debug("sutra: could not read the call index; every repeat will run",
+                     exc_info=True)
         return {}
     if not isinstance(document, dict):
         return {}
@@ -102,13 +120,21 @@ def _read(path: str) -> dict[str, dict[str, list]]:
     return sessions
 
 
+def _lock_down(handle: int, temporary: str) -> None:
+    """Restrict the file to its owner, with the tool the platform provides."""
+    if hasattr(os, "fchmod"):
+        os.fchmod(handle, 0o600)
+    else:  # Windows has no fchmod; chmod after creation is the same promise
+        os.chmod(temporary, 0o600)
+
+
 def _write(path: str, sessions: dict[str, dict[str, list]]) -> None:
     directory = os.path.dirname(path) or "."
     os.makedirs(directory, mode=0o700, exist_ok=True)
     payload = json.dumps(sessions, sort_keys=True, separators=(",", ":"))
     handle, temporary = tempfile.mkstemp(dir=directory, prefix=".calls-", suffix=".tmp")
     try:
-        os.fchmod(handle, 0o600)
+        _lock_down(handle, temporary)
         with os.fdopen(handle, "w", encoding="utf-8", newline="") as stream:
             stream.write(payload)
         os.replace(temporary, path)
@@ -138,7 +164,7 @@ def remember(session_id: str, tool_name: str, arguments: object, entry_id: str,
     if not entry_id:
         return False
     entry_key = key(session_id, tool_name, arguments)
-    if entry_key is None:
+    if entry_key is None or not reusable(tool_name):
         return False
     cfg = cfg or _config.resolve()
     if not cfg.enabled or not cfg.reuse_active:
@@ -164,7 +190,7 @@ def lookup(session_id: str, tool_name: str, arguments: object,
            *, cfg: _config.Config | None = None, now: float | None = None) -> str | None:
     """The recovery id of a result this call already produced, when still usable."""
     entry_key = key(session_id, tool_name, arguments)
-    if entry_key is None:
+    if entry_key is None or not reusable(tool_name):
         return None
     cfg = cfg or _config.resolve()
     if not cfg.enabled or not cfg.reuse_active:
@@ -188,8 +214,30 @@ def lookup(session_id: str, tool_name: str, arguments: object,
         return None
     if found.status == "ok" and found.entry is not None:
         return entry_id
-    forget(session_id, tool_name, arguments, cfg=cfg)
+    _forget_stale(target, session_id, entry_key, entry_id)
     return None
+
+
+def _forget_stale(target: str, session_id: str, entry_key: str, entry_id: str) -> None:
+    """Drop one key, but only while it still points at the entry we rejected.
+
+    The delete re-reads under the lock and checks the id first, so a call
+    re-recorded for this key between the verification and this cleanup keeps
+    its new entry instead of losing it to a stale decision.
+    """
+    try:
+        with _LOCK:
+            sessions = _read(target)
+            entries = sessions.get(session_id)
+            record = entries.get(entry_key) if entries else None
+            if not record or record[0] != entry_id:
+                return
+            entries.pop(entry_key, None)
+            if not entries:
+                sessions.pop(session_id, None)
+            _write(target, sessions)
+    except (OSError, ValueError):
+        logger.debug("sutra: could not forget a stale call", exc_info=True)
 
 
 def forget(session_id: str, tool_name: str, arguments: object,

@@ -74,8 +74,13 @@ path is not an optimization engine and is not disabled by `off`.
   the exact bytes with `sutra_restore`. The index is keyed on the tool name and
   the canonical JSON of its arguments inside one session, keeps a bounded
   number of calls, and verifies the store before it suggests one, so a pruned
-  or expired entry is never offered. A post-tool hook (Claude Code, Codex, MCP,
-  CLI) cannot skip a call that already ran, so those surfaces compress results
+  or expired entry is never offered. Only a tool whose effect is its output can
+  be skipped this way: the same read-only predicate the reuse index uses gates
+  the index, so a write, a command or a fetch is recorded and suggested never,
+  because its bytes are not its outcome. Retaining a call identity also needs a
+  result of a single text entry, since one recovery id restores one entry. A
+  post-tool hook (Claude Code, Codex, MCP, CLI) cannot skip a call that already
+  ran, so those surfaces compress results
   instead of skipping
   them. See [redundancy.md](redundancy.md).
 - **Request trimming** happens on the Hermes `llm_request` stage when
