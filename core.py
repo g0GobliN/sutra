@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from . import calls as _calls
 from . import config as _config
 from . import engine, metrics, recovery, reuse as _reuse
 from . import store as _store
@@ -272,7 +273,8 @@ def _record_reuse(hit: _reuse.Hit, marker: str, *, cfg: _config.Config,
 
 
 def process_text(text: str, *, cfg: _config.Config | None = None,
-                 tool_name: str = "", session_id: str = "") -> Outcome:
+                 tool_name: str = "", session_id: str = "",
+                 arguments: Any = None) -> Outcome:
     """Compress one string through the existing engine and store.
 
     The one entry point for text-shaped hosts (CLI, MCP). Never raises: an
@@ -283,6 +285,10 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
     Exact repeats within one session are served from the reuse index before
     any compression work: the earlier id is verified against the store first,
     and anything that fails verification takes the normal path.
+
+    ``arguments``, when the host has them, records which call this text came
+    from, so a pre-execution seam can avoid running that call again. It is
+    never used to match text: a call is identified by its own arguments.
     """
     cfg = cfg or _config.resolve()
     original_bytes = engine.utf8_byte_length(text)
@@ -317,6 +323,15 @@ def process_text(text: str, *, cfg: _config.Config | None = None,
         _reuse.remember(text, session_id=session_id, entry_id=str(stats["id"]),
                         visible_bytes=int(stats.get("compressed_bytes") or 0),
                         cfg=cfg)
+    if arguments is not None and stats.get("stored") and stats.get("id"):
+        # The call a host just ran produced stored bytes. Recording which call
+        # it was lets the pre-execution seam avoid running it again; like the
+        # reuse index this is a hint, so a failure only costs the next repeat.
+        try:
+            _calls.remember(session_id, tool_name, arguments, str(stats["id"]),
+                            cfg=cfg)
+        except Exception:  # never let a bookkeeping failure break the result
+            logger.debug("sutra: could not record the call", exc_info=True)
     compressed_bytes = stats.get("compressed_bytes")
     if compressed_bytes is None:
         compressed_bytes = engine.utf8_byte_length(out)
@@ -354,7 +369,8 @@ def _text_slots(result: dict) -> list[tuple[dict, str]]:
 
 
 def process_result(result: Any, *, tool_name: str | None = None,
-                   session_id: str | None = None) -> Any:
+                   session_id: str | None = None,
+                   arguments: Any = None) -> Any:
     """Compress a tool result of any common shape without changing its type.
 
     The one entry point for result-shaped hosts (Hermes middleware, Claude Code
@@ -369,14 +385,20 @@ def process_result(result: Any, *, tool_name: str | None = None,
         if isinstance(result, str):
             return process_text(
                 result, cfg=cfg, tool_name=tool_name or "",
-                session_id=session_id or "").output
+                session_id=session_id or "", arguments=arguments).output
         if isinstance(result, dict):
             changed = False
             new = dict(result)
-            for container, key in _text_slots(new):
+            slots = _text_slots(new)
+            # A call identity belongs to the whole result. One stored entry can
+            # only stand for that result when there is a single text slot to
+            # store, so a multi-slot result records nothing to avoid offering a
+            # restore that would bring back one slot of several.
+            arguments = arguments if len(slots) == 1 else None
+            for container, key in slots:
                 outcome = process_text(
                     container[key], cfg=cfg, tool_name=tool_name or "",
-                    session_id=session_id or "")
+                    session_id=session_id or "", arguments=arguments)
                 if outcome.changed:
                     container[key] = outcome.output
                     changed = True

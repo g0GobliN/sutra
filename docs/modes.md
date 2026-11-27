@@ -68,8 +68,25 @@ path is not an optimization engine and is not disabled by `off`.
   structured read-only tools naming a regular file in the same session, with
   the dependency stamp still matching. Tests, lint, type checks, security scans,
   writes, commands, directory listings and remote fetches are never reused, in
-  any mode. A post-tool hook (Claude Code, Codex, MCP, CLI) cannot skip a call
-  that already ran, so those surfaces compress results instead of skipping
+  any mode. A host with a pre-execution stage asks `sutra pre-execute` about
+  the call: the answer is `allow`, or `deny` quoting the recovery id of the
+  result that identical call already produced, which the agent exchanges for
+  the exact bytes with `sutra_restore`. The index is keyed on the tool name and
+  the canonical JSON of its arguments inside one session, keeps a bounded
+  number of calls, and verifies the store before it suggests one, so a pruned
+  or expired entry is never offered. Only a tool whose effect is its output can
+  be skipped this way: the same read-only predicate the reuse index uses gates
+  the index, so a write, a command or a fetch is recorded and suggested never,
+  because its bytes are not its outcome. A record also carries the dependency
+  stamp of every file its arguments named, on the same size, mtime and hash
+  basis `redundancy.py` uses. A lookup whose stamp cannot be reproduced — the
+  file changed, or a relative path now resolves from another working directory
+  — is never offered, and the record is dropped so the next call does the read.
+  Retaining a call identity also needs a
+  result of a single text entry, since one recovery id restores one entry. A
+  post-tool hook (Claude Code, Codex, MCP, CLI) cannot skip a call that already
+  ran, so those surfaces compress results
+  instead of skipping
   them. See [redundancy.md](redundancy.md).
 - **Request trimming** happens on the Hermes `llm_request` stage when
   `SUTRA_PROMPT=1`: older tool results in the outbound copy are shortened to a

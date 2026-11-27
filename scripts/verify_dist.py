@@ -30,7 +30,7 @@ NAME = "sutra-agent"
 IMPORT_NAME = "sutra"
 
 RUNTIME_MODULES = frozenset({
-    "__init__", "__main__", "cache", "claude_code", "cli", "codex", "config", "context",
+    "__init__", "__main__", "cache", "calls", "claude_code", "cli", "codex", "config", "context",
     "core", "cost", "discovery", "dsh", "engine", "failure", "hermes", "hook",
     "installer", "jsonc", "language", "mcp", "metrics", "opencode", "openclaw",
     "optimize", "orchestrator", "parsers", "policy", "preserve", "prompt", "proxy",

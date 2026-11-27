@@ -108,6 +108,11 @@ def _string_values(value: Any, depth: int = 0) -> Iterable[str]:
     return ()
 
 
+def argument_paths(args: Any) -> list[str]:
+    """The paths a call names, in stable order, as the caller wrote them."""
+    return _argument_paths(args)
+
+
 def _argument_paths(args: Any) -> list[str]:
     """Existing local paths named by the call's arguments, in stable order."""
     if isinstance(args, str):
