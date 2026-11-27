@@ -215,6 +215,27 @@ rewrite is still found; with `min_saved_bytes=0` the skip is not taken, because
 an unchanged candidate counts as accepted there and the recorded `applied` list
 would change.
 
+`aggressive` and `beast` run three plans over the same payload: `format`,
+`caveman` and `format+caveman`. The combination plan begins with the strategies
+the `format` plan has just applied, so that work is done twice unless something
+remembers it. One memo spans the plans of a search, keyed by the strategy
+object and the exact input text.
+
+The key is the object, not the function behind it: two strategies that share an
+apply function but carry different state must never answer for each other, and
+a caller's own strategy must never receive a built-in's result. Sharing across
+plans therefore requires those plans to hold the same strategy objects, which
+`orchestrator._strategy_registry()` arranges by building one instance per
+built-in strategy for one search. Only text is cached: a strategy that raises
+still raises for the pass that asked, and a result that is not text is answered
+by that pass and computed again next time.
+
+On a 53 KB prose payload `beast` fell from 553 ms to 483 ms and `aggressive`
+from 481 ms to 468 ms, with a byte-identical result. On a 26 KB JSON-lines
+payload the five duplicated formatting passes are cheap enough that the
+difference is inside the noise, so the saving follows what the duplicated
+strategy costs. `balanced` runs no combination plan and is unaffected.
+
 The loop is fail-open: with `SUTRA_MODE=off` the diagram above does not execute
 at all, and a broken strategy or validator can only lose its own candidate,
 never the caller's text.

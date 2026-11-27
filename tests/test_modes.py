@@ -380,3 +380,53 @@ def test_active_mode_delivers_a_lossless_rewrite_without_a_marker(monkeypatch):
     assert outcome.output != text
     assert "[sutra:" not in outcome.output
     assert "in order to" not in outcome.output.lower()
+
+
+def _search_payload(rows: int = 400) -> str:
+    return "\r\n".join(
+        json.dumps({"id": index, "note": "  spaced  " * 4}) for index in range(rows)
+    ) + "\r\n"
+
+
+def _counting(real, log):
+    name = getattr(real, "__name__", repr(real))
+
+    def counted(value):
+        log.append((name, value))
+        return real(value)
+
+    return counted
+
+
+def test_the_plans_of_one_search_apply_each_strategy_once(monkeypatch):
+    optimize = plugin_module("optimize")
+    language = plugin_module("language")
+    text = _search_payload()
+    applied: list[tuple[int, str]] = []
+    for name in ("_apply_crlf", "_apply_unicode_space", "_apply_trailing_space",
+                 "_apply_blank_runs", "_apply_indent_trim"):
+        monkeypatch.setattr(optimize, name,
+                            _counting(getattr(optimize, name), applied))
+    monkeypatch.setattr(language, "compress_text",
+                        _counting(language.compress_text, applied))
+    report = orchestrator.optimize_text(
+        text, cfg=_cfg(monkeypatch, SUTRA_MODE="beast"))
+    assert report.saved_bytes > 0, "the payload must reach the plans"
+    duplicates = len(applied) - len(set(applied))
+    assert duplicates == 0, f"{duplicates} (strategy, text) pairs ran twice"
+
+
+def test_the_shared_memo_does_not_change_a_beast_search(monkeypatch):
+    optimize = plugin_module("optimize")
+    text = _search_payload()
+    cached = orchestrator.optimize_text(
+        text, cfg=_cfg(monkeypatch, SUTRA_MODE="beast"))
+    real = optimize._apply
+    monkeypatch.setattr(optimize, "_apply",
+                        lambda strategy, value, memo=None: real(strategy, value, None))
+    uncached = orchestrator.optimize_text(
+        text, cfg=_cfg(monkeypatch, SUTRA_MODE="beast"))
+    assert cached.text == uncached.text
+    assert cached.saved_bytes == uncached.saved_bytes
+    assert [(plan.plan, plan.saved_bytes, plan.applied) for plan in cached.plans] == [
+        (plan.plan, plan.saved_bytes, plan.applied) for plan in uncached.plans]
