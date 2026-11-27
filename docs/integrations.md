@@ -72,6 +72,22 @@ normalized) and each restores the exact original. The evidence tools
 by an `mcp__<server>__` suffix — and an already-compressed result is below the
 threshold, so a second automatic pass over either is a no-op.
 
+## Pre-call hooks, per host
+
+Ponytail reuse can only *avoid* a call when the host asks before dispatching it.
+A post-call stage cannot prevent anything: the call has already run. This is
+what each host offers, and nothing here is inferred:
+
+| Host | Pre-call hook | What the hook can say |
+|---|---|---|
+| DeepSeek Harness | `tools/pre-execute` waterfall | allow, deny with a reason, cancel, or ask — no substituted result |
+| OpenClaw 2026.11.x | `before_tool_call`, declared as `PluginHookBeforeToolCallEvent` with a `{params?, block?, blockReason?, requireApproval?}` result | rewrite the arguments, block the call, or ask for approval — no substituted result |
+| OpenCode | `tool.execute.before` is documented by the project | **Unverified here**: no `opencode` executable is installed, so the hook could not be exercised |
+| Hermes Agent | none — `tool_execution` is a post-execution middleware | nothing runs before the call |
+
+Where SUTRA uses one of these hooks is described in [modes.md](modes.md); this
+table is about the hosts, not about SUTRA.
+
 ## Compatibility matrix
 
 Status labels mean exactly what they say; nothing is listed as supported on
