@@ -43,16 +43,30 @@ def _payload() -> str:
     return "\n".join(json.dumps(row) for row in rows)
 
 
+def _source_bundle() -> str:
+    """The repository's bundle, with a message that says what is missing."""
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    bundle = os.path.join(root, "dsh_host_index.js")
+    if not os.path.isfile(bundle):
+        pytest.fail(f"the harness bundle is missing: {bundle}")
+    return bundle
+
+
+def _library(tmp_path):
+    """The directory a child interpreter needs on PYTHONPATH to import sutra."""
+    exposed = tmp_path / "lib" / "sutra"
+    if not exposed.exists():
+        exposed = expose_package(exposed)
+    return exposed.parent
+
+
 def _bundle(tmp_path):
     """A package directory shaped like the installed bundle."""
     root = tmp_path / "bundle"
     root.mkdir()
     (root / "package.json").write_text(json.dumps({"type": "module"}),
                                       encoding="utf-8")
-    shutil.copy(
-        os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                     "dsh_host_index.js"),
-        root / "index.js")
+    shutil.copy(_source_bundle(), root / "index.js")
     return root
 
 
@@ -60,11 +74,13 @@ def _run(tmp_path, home, body, *, python=None):
     """Load the bundle under a stub host and run one scenario in it."""
     node = shutil.which("node")
     bundle = _bundle(tmp_path)
-    library = expose_package(tmp_path / "lib" / "sutra").parent
+    library = _library(tmp_path)
     script = tmp_path / "scenario.mjs"
     script.write_text(
-        f'import {{ apply }} from {json.dumps(str(bundle / "index.js"))}\n'
+        "import { pathToFileURL } from 'node:url'\n"
+        "const { apply } = await import(pathToFileURL(process.env.SUTRA_BUNDLE).href)\n"
         "\n"
+        "function say(value) { return process.stdout.write(JSON.stringify(value) + '\\n') }\n"
         "const handlers = {}\n"
         "const context = {\n"
         "  on: (event, handler) => { handlers[event] = handler },\n"
@@ -78,10 +94,19 @@ def _run(tmp_path, home, body, *, python=None):
         '  mode: "balanced",\n'
         "  minTextBytes: 8,\n"
         "})\n"
+        "for (const name of ['tools/post-execute', 'tools/pre-execute']) {\n"
+        "  if (typeof handlers[name] !== 'function') {\n"
+        "    process.stderr.write('the bundle did not register ' + name"
+        " + '; it registered ' + Object.keys(handlers).join(', '))\n"
+        "    process.exit(3)\n"
+        "  }\n"
+        "}\n"
         "\n"
         + body,
         encoding="utf-8")
-    env = dict(os.environ, PYTHONPATH=str(library))
+    env = dict(os.environ, PYTHONPATH=str(library),
+               SUTRA_BUNDLE=str(bundle / "index.js"),
+               SUTRA_STORE_DIR=str(home / "store"))
     return subprocess.run([node, str(script)], capture_output=True, text=True,
                           timeout=180, cwd=str(tmp_path), env=env)
 
@@ -102,12 +127,12 @@ def test_the_result_stage_replaces_the_text_and_the_store_keeps_the_original(
         "  exec, { content: [{ type: 'text', text }] }, async () => kept)\n"
         "const rewritten = answer.content[0].text\n"
         "const match = rewritten.match(/id=(su_[0-9a-f]{32})/)\n"
-        "console.log(JSON.stringify({\n"
+        "say({\n"
         "  kind: answer.kind,\n"
         "  changed: rewritten !== text,\n"
         "  marker: rewritten.includes('[sutra:'),\n"
         "  id: match ? match[1] : '',\n"
-        "}))\n"
+        "})\n"
     )
     finished = _run(tmp_path, home, body)
     assert finished.returncode == 0, finished.stdout + finished.stderr
@@ -120,6 +145,8 @@ def test_the_result_stage_replaces_the_text_and_the_store_keeps_the_original(
 
     # The store is the authority on recovery: the CLI pages its answer for a
     # model's window, the stored bytes are whole.
+    # The plugin points its children at <home>/store (dsh_host_index.js:47),
+    # which is what this lookup reads.
     monkeypatch.setenv("SUTRA_STORE_DIR", str(home / "store"))
     store = plugin_module("store")
     keeper = store.store_from_env()
@@ -133,7 +160,7 @@ def test_the_result_stage_replaces_the_text_and_the_store_keeps_the_original(
     asked = subprocess.run(
         [sys.executable, "-m", "sutra.cli", "restore", "--id", report["id"]],
         capture_output=True, text=True, timeout=60,
-        env=dict(os.environ, PYTHONPATH=str(tmp_path / "lib"),
+        env=dict(os.environ, PYTHONPATH=str(_library(tmp_path)),
                  SUTRA_STORE_DIR=str(home / "store")))
     assert asked.returncode == 0, asked.stderr
     assert json.loads(asked.stdout)["status"] == "ok", "the agent's own path works"
@@ -155,11 +182,11 @@ def test_the_seam_denies_a_repeated_read_and_lets_a_write_through(tmp_path):
         "const repeat = await handlers['tools/pre-execute'](exec, downstream)\n"
         "const write = await handlers['tools/pre-execute'](\n"
         "  { ...exec, name: 'write_file' }, downstream)\n"
-        "console.log(JSON.stringify({\n"
+        "say({\n"
         "  repeat: repeat.kind,\n"
         "  reason: typeof repeat.reason === 'string' ? repeat.reason : '',\n"
         "  write: write.kind,\n"
-        "}))\n"
+        "})\n"
     )
     finished = _run(tmp_path, home, body)
     assert finished.returncode == 0, finished.stdout + finished.stderr
@@ -180,8 +207,8 @@ def test_an_interpreter_that_cannot_start_leaves_both_stages_alone(tmp_path):
         "  exec, { content: [{ type: 'text', text: 'x' }] }, async () => kept)\n"
         "const before = await handlers['tools/pre-execute'](\n"
         "  exec, async () => ({ kind: 'allow' }))\n"
-        "console.log(JSON.stringify({ after: after.content[0].text,\n"
-        "  before: before.kind }))\n"
+        "say({ after: after.content[0].text,\n"
+        "  before: before.kind })\n"
     )
     finished = _run(tmp_path, home, body, python=str(tmp_path / "no-python"))
 
